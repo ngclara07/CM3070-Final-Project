@@ -34,11 +34,28 @@ venv/
 # ==============================================================
 # Dataset policy
 #
-# Full datasets and collected sessions remain local.
-# Include small anonymised sample data separately when required.
+# Ignore the full local dataset, but permit the curated,
+# anonymised sample dataset under:
+#
+# data/session_aligned/sample/
 # ==============================================================
 
-/data/
+/data/*
+
+# Permit traversal into data/session_aligned
+!/data/session_aligned/
+
+/data/session_aligned/*
+
+# Commit only the curated sample directory
+!/data/session_aligned/sample/
+!/data/session_aligned/sample/**
+
+
+# ==============================================================
+# Other processed datasets outside data/
+# ==============================================================
+
 /emosurv_processed/
 
 
