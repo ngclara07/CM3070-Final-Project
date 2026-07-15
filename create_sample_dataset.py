@@ -1,10 +1,10 @@
 # filename: create_sample_dataset.py
 #
-# Purpose:
-# Create a small, balanced, reproducible multimodal sample dataset
+# purpose:
+# create a small, balanced, reproducible multimodal sample dataset
 # containing five complete sessions from each behavioural class.
 #
-# The script:
+# the script:
 # - uses retroactive_keystroke_features.csv as the authoritative
 #   source of session IDs and behavioural labels;
 # - selects five sessions from each of four behavioural classes;

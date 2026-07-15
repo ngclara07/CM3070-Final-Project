@@ -1,4 +1,4 @@
-<!-- readme.md -->
+<!-- README.md -->
 
 # SenseFuzeAI
 
@@ -68,6 +68,40 @@ The project dataset contains:
 
 ---
 
+## Sample Dataset
+
+To keep this repository lightweight and suitable for GitHub, only a small representative sample dataset is included.
+
+The `sample_data/` directory contains:
+
+- 20 aligned multimodal sessions
+- 5 sessions per behavioural class
+- balanced class distribution
+- audio, image, keystroke and text files for every selected session
+- filtered copies of `metadata.csv` and `retroactive_keystroke_features.csv`
+
+The sample dataset is intended for:
+
+- testing the application
+- validating the repository structure
+- demonstrating the end-to-end processing and inference workflow
+- performing lightweight validation and smoke testing
+
+The full research dataset (309 multimodal sessions) is not included in this repository.
+
+The sample dataset should contain only data authorised for academic distribution. Audio recordings, facial images, typed text, keystroke records, sensitive identifiers, and confidential content must be reviewed and appropriately anonymised before publication.
+
+The included class distribution is:
+
+| Behavioural State | Sample Count |
+|---|---:|
+| Focused | 5 |
+| Distracted | 5 |
+| Fatigued | 5 |
+| Overloaded | 5 |
+
+--- 
+
 ## System Architecture
 
 SenseFuzeAI consists of four unimodal pipelines and one fusion pipeline.
@@ -110,8 +144,8 @@ python text_live_gui.py
 
 The audio pipeline uses:
 
-Librosa acoustic features
-WavLM audio embeddings
+- Librosa acoustic features
+- WavLM audio embeddings
 
 It supports uploaded audio files and microphone recording.
 
@@ -153,6 +187,8 @@ Main live GUI:
 python live_fusion_gui.py
 ```
 
+---
+
 ## User-Facing Prediction Design
 
 The final interface philosophy is: 
@@ -176,6 +212,7 @@ Technical details such as:
 
 are shown only in technical panels or expandable sections.
 
+---
 
 ## Web Application
 
@@ -214,7 +251,29 @@ Useful endpoints:
 
 > GET /health <br>
 > GET /model-status <br>
-> POST predict_live
+> POST /predict_live
+
+---
+
+## Installation
+
+Create and activate a Python virtual environment:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the required dependencies:
+
+```powershell
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+The `.venv/` directory is intentionally excluded from version control and should be recreated locally.
+
+---
 
 ## Training Scripts 
 
@@ -239,6 +298,40 @@ The multimodal comparison script evaluates multiple classifiers, including:
 - LightGBM
 - CatBoost where applicable
 
+---
+
+## Reproducing the Sample Dataset
+
+A reproducible dataset-generation script is included.
+
+Run:
+
+```bash
+python create_sample_dataset.py
+```
+
+The script automatically:
+
+- selects a balanced subset of sessions
+- extracts 5 samples from each behavioural class
+- copies all associated audio, image, text, and keystroke files
+- generates filtered CSV files
+
+The generated `sample_data/` directory contains:
+
+- `audio/`
+- `images/`
+- `keystrokes/`
+- `texts/`
+- `metadata.csv`
+- `retroactive_keystroke_features.csv`
+- `sample_manifest.csv`
+- `selected_sessions.csv`
+- `class_distribution.csv`
+
+This ensures that the balanced demonstration dataset can be regenerated consistently from the complete aligned dataset. The sample dataset is intended for pipeline validation and demonstration rather than reproduction of the full 309-session evaluation results.
+
+---
 
 ## Evaluation 
 
@@ -260,12 +353,14 @@ Outputs are saved to:
 
 Generated artifacts include:
 
-* ranked result tables
-* cross-validation and test-set plots
-* runtime comparison plots
-* permutation leakage plots
-* markdown summary
-* JSON summary
+- ranked result tables
+- cross-validation and test-set plots
+- runtime comparison plots
+- permutation leakage plots
+- markdown summary
+- JSON summary
+
+---
 
 ## Live GUI Applications
 
@@ -293,18 +388,20 @@ Logs are saved under:
 
 > data/processed/
 
+---
+
 ## Model Artifacts 
 
 Expected model directories include:
 
-> models/keystroke_demo/ <br>
-> models/text_demo/ <br>
-> models/audio_demo/ <br>
-> models/image_demo/ <br>
-> models/fusion_demo/ <br>
-> models/all-mpnet-base-v2/ <br>
-> models/wavlm-base-plus/ <br>
-> models/clip-vit-large-patch14/
+- `models/keystroke_demo/`
+- `models/text_demo/`
+- `models/audio_demo/`
+- `models/image_demo/`
+- `models/fusion_demo/`
+- `models/all-mpnet-base-v2/`
+- `models/wavlm-base-plus/`
+- `models/clip-vit-large-patch14/`
 
 Important model files:
 
@@ -314,6 +411,36 @@ Important model files:
 > image_pipeline.joblib <br>
 > fusion_pipeline.joblib <br>
 > feature_columns.json
+
+---
+
+## Pre-trained Models
+
+The repository expects several pre-trained embedding models.
+
+The repository retains small model-support files, including configurations, tokenizers, metadata, and demonstration pipelines. Large downloaded pretrained weight files, particularly `*.safetensors`, are intentionally excluded because they exceed GitHub's ordinary repository-size limits.
+
+The required pretrained models must therefore be downloaded or restored locally before running workflows that depend on their full weights.
+
+Download or place the following models inside the `models/` directory before running the system:
+
+- all-mpnet-base-v2
+- wavlm-base-plus
+- clip-vit-large-patch14
+
+The application loads these models from their expected local directories under `models/`.
+
+Model-download utilities are provided in the project root, including:
+
+- `download_mpnet_model.py`
+- `download_wavlm_model.py`
+- `download_image_model.py`
+- `download_whisper.py`
+- `download_yamnet.py`
+- `download_audio_model.py`
+- `download_text_model.py`
+
+---
 
 ## Inference Script 
 
@@ -333,23 +460,27 @@ python final_multimodal_inference.py ^
   --image path/to/image.jpg
 ```
 
+---
+
 ## Explainability and Diagnostics
 
 SenseFuzeAI provides diagnostic outputs including:
 
-* class probability distribution
-* confidence gap
-* confidence level
-* feature dimension
-* active modalities
-* keystroke timing features
-* audio feature summaries
-* image embedding status
-* device information
-* runtime
-* logged predictions
+- class probability distribution
+- confidence gap
+- confidence level
+- feature dimension
+- active modalities
+- keystroke timing features
+- audio feature summaries
+- image embedding status
+- device information
+- runtime
+- logged predictions
 
 These diagnostics are intended for evaluation and dissertation analysis, not as the primary user-facing output.
+
+---
 
 ## Technologies Used 
 
@@ -357,7 +488,7 @@ These diagnostics are intended for evaluation and dissertation analysis, not as 
 
 * Scikit-learn
 * XGBoost
-* LightGSM
+* LightGBM
 * CatBoost
 * Joblib
 
@@ -395,6 +526,8 @@ These diagnostics are intended for evaluation and dissertation analysis, not as 
 
 * Tkinter
 
+---
+
 ## Current Limitations
 
 1. The dataset is small, with 309 samples.
@@ -405,6 +538,11 @@ These diagnostics are intended for evaluation and dissertation analysis, not as 
 6. Keystroke behaviour varies across users and typing contexts.
 7. Missing modality handling may reduce fusion reliability.
 8. The system is designed for academic research and demonstration, not production deployment.
+9. The complete research dataset is intentionally excluded from the GitHub repository due to repository size limitations.
+10. Only a balanced demonstration dataset is distributed for pipeline validation, smoke testing, and repository-level reproducibility.
+11. Some pre-trained embedding models must be downloaded separately before training or inference.
+
+---
 
 ## Future Improvements 
 
@@ -419,6 +557,8 @@ Potential future work includes:
 * real-time continuous inference optimisation
 * user testing and interface refinement
 * privacy-preserving behavioural modelling
+
+---
 
 ## Research Contribution
 
@@ -436,12 +576,37 @@ SenseFuzeAI contributes an end-to-end multimodal behavioural AI framework that i
 
 The system demonstrates how multiple pre-trained AI models can be orchestrated across different data domains to achieve a unified behavioural-state prediction goal.
 
+---
+
+## Repository Structure
+
+```text
+.
+├── app/
+├── models/
+├── sample_data/
+├── tests/
+├── utils/
+├── web_app/
+├── create_sample_dataset.py
+├── final_multimodal_inference.py
+├── requirements.txt
+├── train_*.py
+├── *_live_gui.py
+└── README.md
+```
+
+The repository includes source code, configuration files, selected model-support files, and a balanced sample dataset for demonstration and reproducibility. The full `data/` directory, large pretrained weight files, local virtual environments, caches, and other generated artefacts are intentionally excluded.
+
+---
+
 ## Author
 
 Student Name: Clara Ng <br>
-Student UOL ID: 240662088 <br>
 SenseFuzeAI Research Project <br>
 Multimodal Behavioural AI System
+
+---
 
 ## License
 
