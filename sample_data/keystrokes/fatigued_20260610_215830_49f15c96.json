@@ -1,0 +1,733 @@
+{
+    "session_id": "fatigued_20260610_215830_49f15c96",
+    "label": "fatigued",
+    "created_at": "2026-06-10T21:58:30",
+    "events": [
+        {
+            "type": "down",
+            "key": "shift_l",
+            "timestamp_perf": 14615.8722697,
+            "timestamp_epoch": 1781099808.5435767
+        },
+        {
+            "type": "down",
+            "key": "i",
+            "timestamp_perf": 14616.3350358,
+            "timestamp_epoch": 1781099809.0069826
+        },
+        {
+            "type": "up",
+            "key": "i",
+            "timestamp_perf": 14616.4252501,
+            "timestamp_epoch": 1781099809.0963228
+        },
+        {
+            "type": "up",
+            "key": "shift_l",
+            "timestamp_perf": 14616.4626289,
+            "timestamp_epoch": 1781099809.134339
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14616.8324204,
+            "timestamp_epoch": 1781099809.50371
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14616.9056101,
+            "timestamp_epoch": 1781099809.577358
+        },
+        {
+            "type": "down",
+            "key": "f",
+            "timestamp_perf": 14617.7698467,
+            "timestamp_epoch": 1781099810.4411402
+        },
+        {
+            "type": "up",
+            "key": "f",
+            "timestamp_perf": 14617.8389984,
+            "timestamp_epoch": 1781099810.5101888
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14618.4808527,
+            "timestamp_epoch": 1781099811.1521733
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14618.5852121,
+            "timestamp_epoch": 1781099811.2560184
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14618.9492134,
+            "timestamp_epoch": 1781099811.6205614
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14619.0517679,
+            "timestamp_epoch": 1781099811.7226546
+        },
+        {
+            "type": "down",
+            "key": "l",
+            "timestamp_perf": 14619.4696811,
+            "timestamp_epoch": 1781099812.1416807
+        },
+        {
+            "type": "up",
+            "key": "l",
+            "timestamp_perf": 14619.5623625,
+            "timestamp_epoch": 1781099812.233064
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14619.929696,
+            "timestamp_epoch": 1781099812.6016984
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14620.0086016,
+            "timestamp_epoch": 1781099812.6793423
+        },
+        {
+            "type": "down",
+            "key": "t",
+            "timestamp_perf": 14620.4336751,
+            "timestamp_epoch": 1781099813.1051688
+        },
+        {
+            "type": "up",
+            "key": "t",
+            "timestamp_perf": 14620.5444978,
+            "timestamp_epoch": 1781099813.216247
+        },
+        {
+            "type": "down",
+            "key": "i",
+            "timestamp_perf": 14620.8405092,
+            "timestamp_epoch": 1781099813.511764
+        },
+        {
+            "type": "up",
+            "key": "i",
+            "timestamp_perf": 14620.9727864,
+            "timestamp_epoch": 1781099813.644533
+        },
+        {
+            "type": "down",
+            "key": "r",
+            "timestamp_perf": 14621.3063712,
+            "timestamp_epoch": 1781099813.9770093
+        },
+        {
+            "type": "up",
+            "key": "r",
+            "timestamp_perf": 14621.3988746,
+            "timestamp_epoch": 1781099814.0704212
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14621.7285766,
+            "timestamp_epoch": 1781099814.4004786
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14621.8403496,
+            "timestamp_epoch": 1781099814.5117953
+        },
+        {
+            "type": "down",
+            "key": "d",
+            "timestamp_perf": 14622.1662352,
+            "timestamp_epoch": 1781099814.837523
+        },
+        {
+            "type": "up",
+            "key": "d",
+            "timestamp_perf": 14622.2746444,
+            "timestamp_epoch": 1781099814.9461346
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14622.5260825,
+            "timestamp_epoch": 1781099815.1977527
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14622.6597311,
+            "timestamp_epoch": 1781099815.331071
+        },
+        {
+            "type": "down",
+            "key": "a",
+            "timestamp_perf": 14622.97633,
+            "timestamp_epoch": 1781099815.6480494
+        },
+        {
+            "type": "up",
+            "key": "a",
+            "timestamp_perf": 14623.0856268,
+            "timestamp_epoch": 1781099815.7570145
+        },
+        {
+            "type": "down",
+            "key": "n",
+            "timestamp_perf": 14623.3971243,
+            "timestamp_epoch": 1781099816.0690024
+        },
+        {
+            "type": "up",
+            "key": "n",
+            "timestamp_perf": 14623.5049571,
+            "timestamp_epoch": 1781099816.1760907
+        },
+        {
+            "type": "down",
+            "key": "d",
+            "timestamp_perf": 14623.849433,
+            "timestamp_epoch": 1781099816.520896
+        },
+        {
+            "type": "up",
+            "key": "d",
+            "timestamp_perf": 14623.9701984,
+            "timestamp_epoch": 1781099816.6417985
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14624.3107928,
+            "timestamp_epoch": 1781099816.9827552
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14624.4356673,
+            "timestamp_epoch": 1781099817.1067274
+        },
+        {
+            "type": "down",
+            "key": "m",
+            "timestamp_perf": 14627.2826377,
+            "timestamp_epoch": 1781099819.954676
+        },
+        {
+            "type": "up",
+            "key": "m",
+            "timestamp_perf": 14627.3785079,
+            "timestamp_epoch": 1781099820.0501988
+        },
+        {
+            "type": "down",
+            "key": "y",
+            "timestamp_perf": 14627.815292,
+            "timestamp_epoch": 1781099820.486496
+        },
+        {
+            "type": "up",
+            "key": "y",
+            "timestamp_perf": 14627.90417,
+            "timestamp_epoch": 1781099820.5753155
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14628.3197713,
+            "timestamp_epoch": 1781099820.9913278
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14628.4040537,
+            "timestamp_epoch": 1781099821.0757985
+        },
+        {
+            "type": "down",
+            "key": "t",
+            "timestamp_perf": 14628.8111268,
+            "timestamp_epoch": 1781099821.4826567
+        },
+        {
+            "type": "up",
+            "key": "t",
+            "timestamp_perf": 14628.9114793,
+            "timestamp_epoch": 1781099821.582669
+        },
+        {
+            "type": "down",
+            "key": "y",
+            "timestamp_perf": 14629.2550933,
+            "timestamp_epoch": 1781099821.926678
+        },
+        {
+            "type": "up",
+            "key": "y",
+            "timestamp_perf": 14629.3702448,
+            "timestamp_epoch": 1781099822.0422904
+        },
+        {
+            "type": "down",
+            "key": "p",
+            "timestamp_perf": 14629.7187826,
+            "timestamp_epoch": 1781099822.3901834
+        },
+        {
+            "type": "up",
+            "key": "p",
+            "timestamp_perf": 14629.8576851,
+            "timestamp_epoch": 1781099822.528999
+        },
+        {
+            "type": "down",
+            "key": "i",
+            "timestamp_perf": 14630.1935846,
+            "timestamp_epoch": 1781099822.864892
+        },
+        {
+            "type": "up",
+            "key": "i",
+            "timestamp_perf": 14630.2924929,
+            "timestamp_epoch": 1781099822.9643078
+        },
+        {
+            "type": "down",
+            "key": "n",
+            "timestamp_perf": 14630.6214703,
+            "timestamp_epoch": 1781099823.2928505
+        },
+        {
+            "type": "up",
+            "key": "n",
+            "timestamp_perf": 14630.7170235,
+            "timestamp_epoch": 1781099823.3886516
+        },
+        {
+            "type": "down",
+            "key": "g",
+            "timestamp_perf": 14631.1243093,
+            "timestamp_epoch": 1781099823.795972
+        },
+        {
+            "type": "up",
+            "key": "g",
+            "timestamp_perf": 14631.2096192,
+            "timestamp_epoch": 1781099823.8813527
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14631.5755744,
+            "timestamp_epoch": 1781099824.2466857
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14631.659129,
+            "timestamp_epoch": 1781099824.3305104
+        },
+        {
+            "type": "down",
+            "key": "r",
+            "timestamp_perf": 14632.1318615,
+            "timestamp_epoch": 1781099824.8031805
+        },
+        {
+            "type": "up",
+            "key": "r",
+            "timestamp_perf": 14632.25233,
+            "timestamp_epoch": 1781099824.9234395
+        },
+        {
+            "type": "down",
+            "key": "h",
+            "timestamp_perf": 14632.5673456,
+            "timestamp_epoch": 1781099825.239324
+        },
+        {
+            "type": "up",
+            "key": "h",
+            "timestamp_perf": 14632.6678771,
+            "timestamp_epoch": 1781099825.3391972
+        },
+        {
+            "type": "down",
+            "key": "y",
+            "timestamp_perf": 14633.1376849,
+            "timestamp_epoch": 1781099825.808815
+        },
+        {
+            "type": "up",
+            "key": "y",
+            "timestamp_perf": 14633.2649342,
+            "timestamp_epoch": 1781099825.9369633
+        },
+        {
+            "type": "down",
+            "key": "t",
+            "timestamp_perf": 14633.5458941,
+            "timestamp_epoch": 1781099826.217028
+        },
+        {
+            "type": "up",
+            "key": "t",
+            "timestamp_perf": 14633.6503819,
+            "timestamp_epoch": 1781099826.3220527
+        },
+        {
+            "type": "down",
+            "key": "h",
+            "timestamp_perf": 14634.01434,
+            "timestamp_epoch": 1781099826.6863317
+        },
+        {
+            "type": "up",
+            "key": "h",
+            "timestamp_perf": 14634.1278306,
+            "timestamp_epoch": 1781099826.7994845
+        },
+        {
+            "type": "down",
+            "key": "m",
+            "timestamp_perf": 14634.478511,
+            "timestamp_epoch": 1781099827.1495628
+        },
+        {
+            "type": "up",
+            "key": "m",
+            "timestamp_perf": 14634.5870073,
+            "timestamp_epoch": 1781099827.258011
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14634.8648815,
+            "timestamp_epoch": 1781099827.536904
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14634.9541074,
+            "timestamp_epoch": 1781099827.6251612
+        },
+        {
+            "type": "down",
+            "key": "f",
+            "timestamp_perf": 14635.2839619,
+            "timestamp_epoch": 1781099827.9559386
+        },
+        {
+            "type": "up",
+            "key": "f",
+            "timestamp_perf": 14635.3792606,
+            "timestamp_epoch": 1781099828.0507343
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14635.8911871,
+            "timestamp_epoch": 1781099828.562884
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14636.0095199,
+            "timestamp_epoch": 1781099828.6811109
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14636.3462229,
+            "timestamp_epoch": 1781099829.0174704
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14636.4755037,
+            "timestamp_epoch": 1781099829.146924
+        },
+        {
+            "type": "down",
+            "key": "l",
+            "timestamp_perf": 14636.8472732,
+            "timestamp_epoch": 1781099829.51888
+        },
+        {
+            "type": "up",
+            "key": "l",
+            "timestamp_perf": 14636.957183,
+            "timestamp_epoch": 1781099829.6292043
+        },
+        {
+            "type": "down",
+            "key": "s",
+            "timestamp_perf": 14637.2748086,
+            "timestamp_epoch": 1781099829.9456873
+        },
+        {
+            "type": "up",
+            "key": "s",
+            "timestamp_perf": 14637.3883292,
+            "timestamp_epoch": 1781099830.0603764
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14637.8585243,
+            "timestamp_epoch": 1781099830.5302548
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14637.9689009,
+            "timestamp_epoch": 1781099830.6405845
+        },
+        {
+            "type": "down",
+            "key": "s",
+            "timestamp_perf": 14638.33768,
+            "timestamp_epoch": 1781099831.0093522
+        },
+        {
+            "type": "up",
+            "key": "s",
+            "timestamp_perf": 14638.4657508,
+            "timestamp_epoch": 1781099831.1369083
+        },
+        {
+            "type": "down",
+            "key": "l",
+            "timestamp_perf": 14638.9027816,
+            "timestamp_epoch": 1781099831.5741212
+        },
+        {
+            "type": "up",
+            "key": "l",
+            "timestamp_perf": 14639.0572013,
+            "timestamp_epoch": 1781099831.7288628
+        },
+        {
+            "type": "down",
+            "key": "o",
+            "timestamp_perf": 14639.5132215,
+            "timestamp_epoch": 1781099832.1847568
+        },
+        {
+            "type": "up",
+            "key": "o",
+            "timestamp_perf": 14639.679588,
+            "timestamp_epoch": 1781099832.351234
+        },
+        {
+            "type": "down",
+            "key": "w",
+            "timestamp_perf": 14640.0985604,
+            "timestamp_epoch": 1781099832.769765
+        },
+        {
+            "type": "up",
+            "key": "w",
+            "timestamp_perf": 14640.2330887,
+            "timestamp_epoch": 1781099832.9043384
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14640.6704101,
+            "timestamp_epoch": 1781099833.3421102
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14640.8170422,
+            "timestamp_epoch": 1781099833.4885254
+        },
+        {
+            "type": "down",
+            "key": "a",
+            "timestamp_perf": 14641.3507112,
+            "timestamp_epoch": 1781099834.0226686
+        },
+        {
+            "type": "up",
+            "key": "a",
+            "timestamp_perf": 14641.5108549,
+            "timestamp_epoch": 1781099834.1819777
+        },
+        {
+            "type": "down",
+            "key": "n",
+            "timestamp_perf": 14641.920112,
+            "timestamp_epoch": 1781099834.5917609
+        },
+        {
+            "type": "up",
+            "key": "n",
+            "timestamp_perf": 14642.0656066,
+            "timestamp_epoch": 1781099834.7375662
+        },
+        {
+            "type": "down",
+            "key": "d",
+            "timestamp_perf": 14642.4951278,
+            "timestamp_epoch": 1781099835.1669497
+        },
+        {
+            "type": "up",
+            "key": "d",
+            "timestamp_perf": 14642.6170508,
+            "timestamp_epoch": 1781099835.2886312
+        },
+        {
+            "type": "down",
+            "key": "space",
+            "timestamp_perf": 14643.0372914,
+            "timestamp_epoch": 1781099835.7086673
+        },
+        {
+            "type": "up",
+            "key": "space",
+            "timestamp_perf": 14643.1634348,
+            "timestamp_epoch": 1781099835.8354263
+        },
+        {
+            "type": "down",
+            "key": "d",
+            "timestamp_perf": 14643.7207721,
+            "timestamp_epoch": 1781099836.3921344
+        },
+        {
+            "type": "up",
+            "key": "d",
+            "timestamp_perf": 14643.8508255,
+            "timestamp_epoch": 1781099836.5221908
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14644.2973962,
+            "timestamp_epoch": 1781099836.9690783
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14644.4284864,
+            "timestamp_epoch": 1781099837.1002393
+        },
+        {
+            "type": "down",
+            "key": "l",
+            "timestamp_perf": 14644.8701981,
+            "timestamp_epoch": 1781099837.5413115
+        },
+        {
+            "type": "up",
+            "key": "l",
+            "timestamp_perf": 14645.0136841,
+            "timestamp_epoch": 1781099837.68569
+        },
+        {
+            "type": "down",
+            "key": "a",
+            "timestamp_perf": 14645.4797804,
+            "timestamp_epoch": 1781099838.1511686
+        },
+        {
+            "type": "up",
+            "key": "a",
+            "timestamp_perf": 14645.5802131,
+            "timestamp_epoch": 1781099838.2522013
+        },
+        {
+            "type": "down",
+            "key": "y",
+            "timestamp_perf": 14646.1387386,
+            "timestamp_epoch": 1781099838.810055
+        },
+        {
+            "type": "up",
+            "key": "y",
+            "timestamp_perf": 14646.2514962,
+            "timestamp_epoch": 1781099838.923128
+        },
+        {
+            "type": "down",
+            "key": "e",
+            "timestamp_perf": 14646.7350198,
+            "timestamp_epoch": 1781099839.4070785
+        },
+        {
+            "type": "up",
+            "key": "e",
+            "timestamp_perf": 14646.8418866,
+            "timestamp_epoch": 1781099839.5133026
+        },
+        {
+            "type": "down",
+            "key": "d",
+            "timestamp_perf": 14647.2799204,
+            "timestamp_epoch": 1781099839.951424
+        },
+        {
+            "type": "up",
+            "key": "d",
+            "timestamp_perf": 14647.3874556,
+            "timestamp_epoch": 1781099840.0585647
+        },
+        {
+            "type": "down",
+            "key": ".",
+            "timestamp_perf": 14647.8152388,
+            "timestamp_epoch": 1781099840.4866045
+        },
+        {
+            "type": "up",
+            "key": ".",
+            "timestamp_perf": 14647.9497261,
+            "timestamp_epoch": 1781099840.6209126
+        }
+    ],
+    "keydown_count": 58,
+    "event_count": 116,
+    "expected_event_count": 116,
+    "validation_passed": true,
+    "validation_message": "\u2713 Session validation passed",
+    "features": {
+        "total_duration_sec": 31.943,
+        "keydown_count": 58,
+        "word_count": 11,
+        "typing_speed_kps": 1.8157,
+        "typing_speed_wpm": 20.6618,
+        "delay_mean": 0.5604,
+        "delay_std": 0.3392,
+        "delay_min": 0.3598,
+        "delay_max": 2.9718,
+        "hold_mean": 0.1212,
+        "hold_std": 0.0662,
+        "pause_count_1000": 1,
+        "pause_count_2000": 1,
+        "pause_count_5000": 0,
+        "pause_ratio_1000": 0.0175,
+        "pause_ratio_2000": 0.0175,
+        "mental_block_ratio_5000": 0.0,
+        "correction_count": 0,
+        "correction_ratio": 0.0,
+        "rhythm_consistency": 0.7467,
+        "burstiness_proxy": 0.6054,
+        "fits_starts_index": 0.0175
+    },
+    "feature_extraction_version": "retroactive_v1"
+}
