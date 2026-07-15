@@ -1,0 +1,16 @@
+SenseFuzeAI Local Audio Model
+=============================
+
+Model: YAMNet
+Source: https://tfhub.dev/google/yamnet/1
+Local purpose: acoustic context analysis for behavioural-state inference
+
+This model is stored locally to improve demo reliability and avoid runtime
+dependency on TensorFlow Hub temporary cache or internet access.
+
+Expected use:
+  app/models/audio_models.py should load this directory first:
+      models/yamnet/
+
+If this directory is missing or invalid, the audio model loader may fall
+back to TensorFlow Hub online loading depending on your implementation.

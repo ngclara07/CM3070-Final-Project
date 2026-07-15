@@ -1,0 +1,116 @@
+Image Model Training and Selection Report
+=========================================
+
+Created at: 2026-05-16T22:35:49
+Dataset: data\processed\processed_image_dataset.csv
+Model artifact: model_artifacts\image_model.joblib
+Feature mode: safe_visual_features
+Original rows: 308
+Rows used: 215
+Split method: existing_split_column
+Train samples: 148
+Test samples: 31
+Selection rule: highest macro F1, then highest accuracy
+
+Class distribution:
+label
+focused       44
+distracted    57
+fatigued      44
+overloaded    70
+Name: count, dtype: int64
+
+Quality distribution after filtering:
+quality_flag
+high_reliability        143
+moderate_reliability     72
+Name: count, dtype: int64
+
+Candidate Model Comparison
+--------------------------
+Candidate                    Status       Accuracy   Macro F1  Weighted F1
+random_forest                evaluated      0.9677     0.9641       0.9684
+svm_linear                   evaluated      0.9355     0.9306       0.9373
+svm_rbf                      evaluated      0.9355     0.9148       0.9304
+logistic_regression          evaluated      0.9032     0.8923       0.9051
+gaussian_naive_bayes         evaluated      0.9032     0.8871       0.8984
+decision_tree                evaluated      0.8387     0.8347       0.8403
+knn_3                        evaluated      0.8065     0.7838       0.7999
+knn_5                        evaluated      0.8065     0.7838       0.7999
+
+Selected model: random_forest
+
+Selected Model Metrics
+----------------------
+Accuracy: 0.9677
+Macro Precision: 0.9583
+Macro Recall: 0.9750
+Macro F1: 0.9641
+Weighted Precision: 0.9731
+Weighted Recall: 0.9677
+Weighted F1: 0.9684
+
+Selected Model Classification Report
+------------------------------------
+              precision    recall  f1-score   support
+
+     focused       1.00      1.00      1.00         8
+  distracted       1.00      1.00      1.00         8
+    fatigued       0.83      1.00      0.91         5
+  overloaded       1.00      0.90      0.95        10
+
+    accuracy                           0.97        31
+   macro avg       0.96      0.97      0.96        31
+weighted avg       0.97      0.97      0.97        31
+
+Confusion matrix labels:
+['focused', 'distracted', 'fatigued', 'overloaded']
+
+Confusion matrix:
+[[8, 0, 0, 0], [0, 8, 0, 0], [0, 0, 5, 0], [0, 0, 1, 9]]
+
+Selected feature columns
+------------------------
+- width
+- height
+- face_detected
+- face_confidence
+- body_detected
+- pose_visibility
+- shoulder_visibility
+- behaviour_focused_score
+- behaviour_distracted_score
+- behaviour_fatigued_score
+- behaviour_overloaded_score
+- scene_focused_score
+- scene_distracted_score
+- scene_fatigued_score
+- scene_overloaded_score
+- face_focused_score
+- face_distracted_score
+- face_fatigued_score
+- face_overloaded_score
+- body_focused_score
+- body_distracted_score
+- body_fatigued_score
+- body_overloaded_score
+- posture_cue_not_detected
+- posture_cue_possible_slouched_or_head_down
+- posture_cue_upright_or_neutral
+- head_position_cue_low_head_position
+- head_position_cue_normal_head_position
+- head_position_cue_unknown
+
+Visual report files
+-------------------
+candidate_comparison_csv: model_artifacts\visual_reports\image\image_candidate_model_comparison.csv
+candidate_comparison_chart: model_artifacts\visual_reports\image\image_candidate_model_comparison.png
+candidate_model_table: model_artifacts\visual_reports\image\image_candidate_model_table.png
+confusion_matrix_heatmap: model_artifacts\visual_reports\image\image_confusion_matrix.png
+classification_report_csv: model_artifacts\visual_reports\image\image_classification_report.csv
+classification_report_heatmap: model_artifacts\visual_reports\image\image_classification_report_heatmap.png
+class_distribution_chart: model_artifacts\visual_reports\image\image_class_distribution.png
+
+Methodological note
+-------------------
+This safer image training script avoids direct visual-fusion labels, quality/reliability fields, majority-vote fields, captions, and agreement-with-folder columns. The purpose is to improve performance beyond strict metadata-only training while avoiding the strongest sources of feature leakage. If performance is lower than the earlier 100% result, this is expected and more defensible.

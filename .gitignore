@@ -1,0 +1,67 @@
+# ==============================================================
+# Local archive
+# ==============================================================
+
+/archive/
+
+
+# ==============================================================
+# Python-generated files
+# ==============================================================
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+
+# ==============================================================
+# Local Python environments
+# ==============================================================
+
+.venv/
+venv/
+
+
+# ==============================================================
+# Environment variables and credentials
+# ==============================================================
+
+.env
+.env.*
+!.env.example
+
+
+# ==============================================================
+# Dataset policy
+#
+# Full datasets and collected sessions remain local.
+# Include small anonymised sample data separately when required.
+# ==============================================================
+
+/data/
+/emosurv_processed/
+
+
+# ==============================================================
+# Model policy
+#
+# Retain small model-support files such as:
+# - configuration files
+# - tokenizers
+# - metadata
+# - CSV evaluation results
+# - small demonstration pipelines
+#
+# Exclude only large pretrained model-weight files.
+# ==============================================================
+
+/models/**/*.safetensors
+
+
+# ==============================================================
+# Operating-system generated files
+# ==============================================================
+
+.DS_Store
+Thumbs.db
+Desktop.ini

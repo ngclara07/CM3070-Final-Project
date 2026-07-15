@@ -1,0 +1,382 @@
+{
+    "model_name": "keystroke_svm_linear_typing_dynamics",
+    "created_at": "2026-05-14T04:38:00",
+    "target": "behaviour_state",
+    "features": [
+        "typing_speed",
+        "hold_mean",
+        "hold_std",
+        "delay_mean",
+        "delay_std",
+        "delay_cv",
+        "pause_ratio_500",
+        "pause_ratio_1000",
+        "pause_ratio_2000",
+        "mental_block_ratio_5000",
+        "correction_ratio",
+        "repeated_key_ratio",
+        "rapid_burst_ratio",
+        "burstiness_proxy",
+        "fits_starts_index",
+        "rhythm_consistency",
+        "error_rate_proxy"
+    ],
+    "classes": [
+        "focused",
+        "distracted",
+        "fatigued",
+        "overloaded"
+    ],
+    "selection_metric": "macro_f1_then_accuracy",
+    "selected_classifier": "svm_linear",
+    "accuracy": 0.9788293897882939,
+    "macro_precision": 0.9485173753778955,
+    "macro_recall": 0.9865570890424438,
+    "macro_f1": 0.9661059746968597,
+    "weighted_precision": 0.9801748816683853,
+    "weighted_recall": 0.9788293897882939,
+    "weighted_f1": 0.9790860379239512,
+    "dataset_path": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\emosurv_processed\\combined_behaviour_samples.csv",
+    "model_path": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\keystroke_model.joblib",
+    "method": "keystroke_dynamics_plus_svm_linear",
+    "timing_unit": "milliseconds",
+    "typing_speed_unit": "keys_per_millisecond",
+    "label_type": "heuristic_pseudo_label",
+    "test_size": 0.2,
+    "random_state": 42,
+    "rows_used": 4014,
+    "train_samples": 3211,
+    "test_samples": 803,
+    "class_distribution": {
+        "focused": 2202,
+        "distracted": 836,
+        "fatigued": 187,
+        "overloaded": 789
+    },
+    "train_class_distribution": {
+        "focused": 1761,
+        "distracted": 669,
+        "fatigued": 150,
+        "overloaded": 631
+    },
+    "test_class_distribution": {
+        "focused": 441,
+        "distracted": 167,
+        "fatigued": 37,
+        "overloaded": 158
+    },
+    "candidate_model_comparison": {
+        "svm_rbf": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9464508094645081,
+            "macro_precision": 0.8780824375107339,
+            "macro_recall": 0.9344553083968465,
+            "macro_f1": 0.90218568667857,
+            "weighted_precision": 0.9523305883974512,
+            "weighted_recall": 0.9464508094645081,
+            "weighted_f1": 0.9482469498461,
+            "confusion_matrix": [
+                [
+                    419,
+                    5,
+                    8,
+                    9
+                ],
+                [
+                    0,
+                    157,
+                    7,
+                    3
+                ],
+                [
+                    0,
+                    3,
+                    33,
+                    1
+                ],
+                [
+                    0,
+                    6,
+                    1,
+                    151
+                ]
+            ]
+        },
+        "svm_linear": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9788293897882939,
+            "macro_precision": 0.9485173753778955,
+            "macro_recall": 0.9865570890424438,
+            "macro_f1": 0.9661059746968597,
+            "weighted_precision": 0.9801748816683853,
+            "weighted_recall": 0.9788293897882939,
+            "weighted_f1": 0.9790860379239512,
+            "confusion_matrix": [
+                [
+                    428,
+                    4,
+                    4,
+                    5
+                ],
+                [
+                    0,
+                    164,
+                    2,
+                    1
+                ],
+                [
+                    0,
+                    0,
+                    37,
+                    0
+                ],
+                [
+                    0,
+                    1,
+                    0,
+                    157
+                ]
+            ]
+        },
+        "random_forest": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9327521793275217,
+            "macro_precision": 0.8972303013442254,
+            "macro_recall": 0.8371789292312622,
+            "macro_f1": 0.8608603023187659,
+            "weighted_precision": 0.9304182741293576,
+            "weighted_recall": 0.9327521793275217,
+            "weighted_f1": 0.9302921322537568,
+            "confusion_matrix": [
+                [
+                    432,
+                    3,
+                    2,
+                    4
+                ],
+                [
+                    8,
+                    150,
+                    3,
+                    6
+                ],
+                [
+                    10,
+                    6,
+                    20,
+                    1
+                ],
+                [
+                    5,
+                    6,
+                    0,
+                    147
+                ]
+            ]
+        },
+        "logistic_regression": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9763387297633873,
+            "macro_precision": 0.9305949024971159,
+            "macro_recall": 0.9844079171373948,
+            "macro_f1": 0.9537192021410172,
+            "weighted_precision": 0.9795751841288852,
+            "weighted_recall": 0.9763387297633873,
+            "weighted_f1": 0.9771239818670195,
+            "confusion_matrix": [
+                [
+                    427,
+                    4,
+                    7,
+                    3
+                ],
+                [
+                    0,
+                    164,
+                    3,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    37,
+                    0
+                ],
+                [
+                    0,
+                    1,
+                    1,
+                    156
+                ]
+            ]
+        },
+        "decision_tree": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.8841843088418431,
+            "macro_precision": 0.7944720193391598,
+            "macro_recall": 0.8220721278159747,
+            "macro_f1": 0.8050070314070846,
+            "weighted_precision": 0.8903521103678117,
+            "weighted_recall": 0.8841843088418431,
+            "weighted_f1": 0.8858782735766622,
+            "confusion_matrix": [
+                [
+                    408,
+                    8,
+                    12,
+                    13
+                ],
+                [
+                    15,
+                    132,
+                    8,
+                    12
+                ],
+                [
+                    5,
+                    5,
+                    24,
+                    3
+                ],
+                [
+                    5,
+                    4,
+                    3,
+                    146
+                ]
+            ]
+        },
+        "gaussian_naive_bayes": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.8418430884184309,
+            "macro_precision": 0.7987508600689615,
+            "macro_recall": 0.6633475266367709,
+            "macro_f1": 0.7096141921368483,
+            "weighted_precision": 0.8468992176862589,
+            "weighted_recall": 0.8418430884184309,
+            "weighted_f1": 0.8302508948854017,
+            "confusion_matrix": [
+                [
+                    441,
+                    0,
+                    0,
+                    0
+                ],
+                [
+                    37,
+                    120,
+                    3,
+                    7
+                ],
+                [
+                    24,
+                    3,
+                    10,
+                    0
+                ],
+                [
+                    39,
+                    8,
+                    6,
+                    105
+                ]
+            ]
+        },
+        "knn_3": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9215442092154421,
+            "macro_precision": 0.8887556984695538,
+            "macro_recall": 0.8158184470054402,
+            "macro_f1": 0.8444659735060599,
+            "weighted_precision": 0.91919499545758,
+            "weighted_recall": 0.9215442092154421,
+            "weighted_f1": 0.9184430173787833,
+            "confusion_matrix": [
+                [
+                    434,
+                    0,
+                    2,
+                    5
+                ],
+                [
+                    12,
+                    149,
+                    3,
+                    3
+                ],
+                [
+                    11,
+                    5,
+                    19,
+                    2
+                ],
+                [
+                    8,
+                    12,
+                    0,
+                    138
+                ]
+            ]
+        },
+        "knn_5": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9190535491905355,
+            "macro_precision": 0.8759152172613711,
+            "macro_recall": 0.8231733915808804,
+            "macro_f1": 0.8457641019717487,
+            "weighted_precision": 0.9171921600554612,
+            "weighted_recall": 0.9190535491905355,
+            "weighted_f1": 0.9168671292820272,
+            "confusion_matrix": [
+                [
+                    434,
+                    1,
+                    1,
+                    5
+                ],
+                [
+                    12,
+                    147,
+                    6,
+                    2
+                ],
+                [
+                    10,
+                    5,
+                    21,
+                    1
+                ],
+                [
+                    6,
+                    16,
+                    0,
+                    136
+                ]
+            ]
+        }
+    },
+    "visual_reports": {
+        "candidate_comparison_csv": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_candidate_model_comparison.csv",
+        "candidate_comparison_chart": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_candidate_model_comparison.png",
+        "candidate_model_table": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_candidate_model_table.png",
+        "classification_report_csv": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_classification_report.csv",
+        "classification_report_heatmap": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_classification_report_heatmap.png",
+        "confusion_matrix_heatmap": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_confusion_matrix.png",
+        "class_distribution_chart": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\model_artifacts\\visual_reports\\keystroke\\keystroke_class_distribution.png"
+    },
+    "behaviour_mapping": {
+        "focused": "High speed, consistent rhythm, low errors",
+        "distracted": "Irregular typing, long pauses, inconsistent speed",
+        "fatigued": "Lower speed, higher IKI, backspaces, mental blocks",
+        "overloaded": "Erratic fits-and-starts rhythm, high error proxy"
+    },
+    "methodological_note": "This model estimates behavioural typing states from keystroke dynamics. Labels are heuristic pseudo-labels and should be interpreted as behavioural typing proxies, not direct psychological ground truth. Multiple classifiers were compared, and the saved keystroke_model.joblib is the best candidate by macro F1-score, with accuracy used as the tie-breaker. Visual report artefacts are generated for use in the final report and prototype video."
+}

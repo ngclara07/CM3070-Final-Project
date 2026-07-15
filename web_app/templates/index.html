@@ -1,0 +1,139 @@
+<!-- templates/index.html -->
+ 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SenseFuzeAI Live Fusion</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}" />
+</head>
+
+<body>
+  <div class="scene-bg"></div>
+  <div class="grid-floor"></div>
+
+  <main class="app-shell">
+    <section class="hero-card">
+      <div class="orb"></div>
+      <h1>SenseFuzeAI</h1>
+      <p>Live Multimodal Behavioural AI System</p>
+      <span>Keystroke · Text · Audio · Webcam Fusion</span>
+    </section>
+
+    <section class="system-panel">
+      <h2>Live System Readiness</h2>
+
+      <div class="readiness-grid">
+        <div class="ready-item" id="modelReady"><span>Fusion Model</span><b>Checking</b></div>
+        <div class="ready-item" id="textReady"><span>Text</span><b>Missing</b></div>
+        <div class="ready-item" id="keyReady"><span>Keystroke</span><b>Missing</b></div>
+        <div class="ready-item" id="audioReady"><span>Audio</span><b>Optional</b></div>
+        <div class="ready-item" id="imageReady"><span>Webcam</span><b>Optional</b></div>
+      </div>
+
+      <p id="modelStatusText">Checking model status...</p>
+    </section>
+
+    <section class="fusion-panel">
+      <div class="modality-grid">
+        <div class="modality-card" id="textCard">
+          <div class="card-head">
+            <h2>Live Text + Keystrokes</h2>
+            <span class="badge">inactive</span>
+          </div>
+
+          <textarea id="textInput" placeholder="Type naturally here..."></textarea>
+
+          <div class="metric-grid">
+            <div><span>Characters</span><b id="charCount">0</b></div>
+            <div><span>Keypresses</span><b id="keyCount">0</b></div>
+          </div>
+        </div>
+
+        <div class="modality-card" id="webcamCard">
+          <div class="card-head">
+            <h2>Live Webcam</h2>
+            <span class="badge">inactive</span>
+          </div>
+
+          <video id="webcam" autoplay muted playsinline></video>
+          <canvas id="frameCanvas" class="hidden"></canvas>
+          <p id="webcamStatus">Webcam inactive.</p>
+        </div>
+
+        <div class="modality-card" id="audioCard">
+          <div class="card-head">
+            <h2>Live Audio</h2>
+            <span class="badge">inactive</span>
+          </div>
+
+          <p id="audioStatus">Microphone inactive.</p>
+        </div>
+
+        <div class="modality-card">
+          <h2>Session Controls</h2>
+          <button id="startBtn" class="control-btn">Start Live Session</button>
+          <button id="stopBtn" class="control-btn danger" disabled>Stop Session</button>
+          <button id="resetBtn" class="control-btn neutral">Reset Session</button>
+          <p id="sessionStatus">Session not started.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="result-panel">
+      <h2>Current Behavioural State</h2>
+      <p id="status">Awaiting live session...</p>
+
+      <div class="state-display">
+        <span class="state-caption">Predicted State</span>
+        <div id="prediction" class="prediction-box">—</div>
+
+        <div class="confidence-block">
+          <span>Confidence</span>
+          <strong id="confidencePercent">—</strong>
+          <div class="confidence-track">
+            <div id="confidenceFill" class="confidence-fill"></div>
+          </div>
+        </div>
+
+        <div class="confidence-level-box">
+          <span>Prediction Confidence</span>
+          <strong id="confidenceLevel">—</strong>
+        </div>
+      </div>
+
+      <details class="technical-details">
+        <summary>Show Technical Details</summary>
+
+        <div class="technical-grid">
+          <div>
+            <span>Second-highest class</span>
+            <strong id="secondaryState">—</strong>
+          </div>
+
+          <div>
+            <span>Confidence gap</span>
+            <strong id="confidenceGap">—</strong>
+          </div>
+
+          <div>
+            <span>Feature dimension</span>
+            <strong id="featureDimension">—</strong>
+          </div>
+
+          <div>
+            <span>Device</span>
+            <strong id="deviceInfo">—</strong>
+          </div>
+        </div>
+
+        <h3>Probability Distribution</h3>
+        <div id="probabilities"></div>
+      </details>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', path='/script.js') }}"></script>
+</body>
+</html>

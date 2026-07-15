@@ -1,0 +1,34 @@
+[
+    {
+        "suite": "Unit Testing",
+        "file": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\tests\\test_01_unit.py",
+        "status": "passed",
+        "return_code": 0,
+        "stdout": "============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0 -- C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\.venv\\Scripts\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\nplugins: anyio-4.13.0\ncollecting ... collected 4 items\n\ntests/test_01_unit.py::test_confidence_level_logic PASSED                [ 25%]\ntests/test_01_unit.py::test_keystroke_count_extraction PASSED            [ 50%]\ntests/test_01_unit.py::test_invalid_keystroke_json_returns_zero PASSED   [ 75%]\ntests/test_01_unit.py::test_fallback_prediction_outputs_valid_distribution PASSED [100%]\n\n============================== 4 passed in 0.84s ==============================\n",
+        "stderr": ""
+    },
+    {
+        "suite": "Integration Testing",
+        "file": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\tests\\test_02_integration.py",
+        "status": "passed",
+        "return_code": 0,
+        "stdout": "============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0 -- C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\.venv\\Scripts\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\nplugins: anyio-4.13.0\ncollecting ... collected 3 items\n\ntests/test_02_integration.py::test_required_model_artifacts_exist PASSED [ 33%]\ntests/test_02_integration.py::test_fusion_feature_schema_contains_all_modalities PASSED [ 66%]\ntests/test_02_integration.py::test_final_inference_class_importable PASSED [100%]\n\n============================== 3 passed in 6.80s ==============================\n",
+        "stderr": ""
+    },
+    {
+        "suite": "System Testing",
+        "file": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\tests\\test_03_system.py",
+        "status": "passed",
+        "return_code": 0,
+        "stdout": "============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0 -- C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\.venv\\Scripts\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\nplugins: anyio-4.13.0\ncollecting ... collected 4 items\n\ntests/test_03_system.py::test_web_health_endpoint PASSED                 [ 25%]\ntests/test_03_system.py::test_web_model_status_endpoint PASSED           [ 50%]\ntests/test_03_system.py::test_predict_live_rejects_short_text PASSED     [ 75%]\ntests/test_03_system.py::test_predict_live_rejects_insufficient_keystrokes PASSED [100%]\n\n============================== 4 passed in 0.83s ==============================\n",
+        "stderr": ""
+    },
+    {
+        "suite": "Acceptance Testing",
+        "file": "C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\tests\\test_04_acceptance.py",
+        "status": "passed",
+        "return_code": 0,
+        "stdout": "============================= test session starts =============================\nplatform win32 -- Python 3.11.9, pytest-9.1.1, pluggy-1.6.0 -- C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\.venv\\Scripts\\python.exe\ncachedir: .pytest_cache\nrootdir: C:\\Users\\Clara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\nplugins: anyio-4.13.0\ncollecting ... collected 5 items\n\ntests/test_04_acceptance.py::test_project_contains_required_live_interfaces PASSED [ 20%]\ntests/test_04_acceptance.py::test_project_uses_at_least_three_pretrained_models PASSED [ 40%]\ntests/test_04_acceptance.py::test_project_contains_multimodal_fusion_model PASSED [ 60%]\ntests/test_04_acceptance.py::test_final_output_design_supported_in_web_script PASSED [ 80%]\ntests/test_04_acceptance.py::test_dissertation_ready_evaluation_scripts_exist PASSED [100%]\n\n============================== 5 passed in 0.03s ==============================\n",
+        "stderr": ""
+    }
+]

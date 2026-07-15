@@ -1,0 +1,120 @@
+Experimental Fusion Model Training and Selection Report
+======================================================
+
+Created at: 2026-05-21T18:47:46
+Fusion dataset: model_artifacts\fusion_training_dataset.csv
+Model artifact: model_artifacts\fusion_model.joblib
+Rows used: 4713
+Train samples: 3770
+Test samples: 943
+Selection rule: highest macro F1, then highest accuracy
+
+Rows by source modality:
+source_modality
+keystroke    4014
+audio         311
+image         308
+text           80
+Name: count, dtype: int64
+
+Class distribution:
+label
+focused       2376
+distracted    1011
+fatigued       362
+overloaded     964
+Name: count, dtype: int64
+
+Train class distribution:
+label
+focused       1901
+distracted     809
+fatigued       289
+overloaded     771
+Name: count, dtype: int64
+
+Test class distribution:
+label
+focused       475
+distracted    202
+fatigued       73
+overloaded    193
+Name: count, dtype: int64
+
+Candidate Model Comparison
+--------------------------
+Candidate                    Status       Accuracy   Macro F1  Weighted F1
+knn_5                        evaluated      0.9809     0.9728       0.9809
+knn_3                        evaluated      0.9809     0.9716       0.9809
+logistic_regression          evaluated      0.9777     0.9711       0.9778
+svm_rbf                      evaluated      0.9777     0.9708       0.9778
+random_forest                evaluated      0.9756     0.9657       0.9756
+svm_linear                   evaluated      0.9756     0.9655       0.9756
+decision_tree                evaluated      0.9692     0.9599       0.9693
+gaussian_naive_bayes         evaluated      0.9650     0.9564       0.9653
+
+Selected model: knn_5
+
+Selected Model Metrics
+----------------------
+Accuracy: 0.9809
+Macro Precision: 0.9758
+Macro Recall: 0.9701
+Macro F1: 0.9728
+Weighted Precision: 0.9810
+Weighted Recall: 0.9809
+Weighted F1: 0.9809
+
+Selected Model Classification Report
+------------------------------------
+              precision    recall  f1-score   support
+
+     focused       0.99      0.99      0.99       475
+  distracted       0.97      0.99      0.98       202
+    fatigued       0.97      0.93      0.95        73
+  overloaded       0.97      0.97      0.97       193
+
+    accuracy                           0.98       943
+   macro avg       0.98      0.97      0.97       943
+weighted avg       0.98      0.98      0.98       943
+
+Confusion matrix labels:
+['focused', 'distracted', 'fatigued', 'overloaded']
+
+Confusion matrix:
+[[470, 2, 1, 2], [2, 199, 0, 1], [2, 1, 68, 2], [0, 4, 1, 188]]
+
+Feature columns:
+- audio_focused_prob
+- audio_distracted_prob
+- audio_fatigued_prob
+- audio_overloaded_prob
+- image_focused_prob
+- image_distracted_prob
+- image_fatigued_prob
+- image_overloaded_prob
+- keystroke_focused_prob
+- keystroke_distracted_prob
+- keystroke_fatigued_prob
+- keystroke_overloaded_prob
+- text_focused_prob
+- text_distracted_prob
+- text_fatigued_prob
+- text_overloaded_prob
+- has_audio
+- has_image
+- has_keystroke
+- has_text
+
+Visual Report Artefacts
+-----------------------
+candidate_comparison_csv: model_artifacts\visual_reports\fusion\fusion_candidate_model_comparison.csv
+candidate_comparison_chart: model_artifacts\visual_reports\fusion\fusion_candidate_model_comparison.png
+candidate_model_table: model_artifacts\visual_reports\fusion\fusion_candidate_model_table.png
+classification_report_csv: model_artifacts\visual_reports\fusion\fusion_classification_report.csv
+classification_report_heatmap: model_artifacts\visual_reports\fusion\fusion_classification_report_heatmap.png
+confusion_matrix_heatmap: model_artifacts\visual_reports\fusion\fusion_confusion_matrix.png
+class_distribution_chart: model_artifacts\visual_reports\fusion\fusion_class_distribution.png
+
+Important methodological note:
+This fusion model is experimental because the rows are stacked from modality-level datasets and are not guaranteed to represent the same real user session. Weighted late fusion remains the recommended runtime fusion method unless session-aligned data is collected. The visual report artefacts are intended for project reporting, model-comparison evidence, and prototype demonstration.

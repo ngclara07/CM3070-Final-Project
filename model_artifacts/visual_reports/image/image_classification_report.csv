@@ -1,0 +1,5 @@
+class,precision,recall,f1_score,support
+focused,1.0,1.0,1.0,8
+distracted,1.0,1.0,1.0,8
+fatigued,0.8333333333333334,1.0,0.9090909090909091,5
+overloaded,1.0,0.9,0.9473684210526315,10

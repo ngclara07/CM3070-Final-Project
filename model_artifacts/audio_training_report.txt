@@ -1,0 +1,138 @@
+Audio Model Training and Selection Report
+=========================================
+
+Created at: 2026-05-14T04:31:56
+Dataset: data\processed\processed_audio_dataset.csv
+Model artifact: model_artifacts\audio_model.joblib
+Rows used: 311
+Split method: existing_split_column
+Train samples: 217
+Test samples: 47
+Selection rule: highest macro F1, then highest accuracy
+
+Class distribution:
+label
+focused       77
+distracted    78
+fatigued      78
+overloaded    78
+Name: count, dtype: int64
+
+Train class distribution:
+label
+focused       54
+distracted    55
+fatigued      54
+overloaded    54
+Name: count, dtype: int64
+
+Test class distribution:
+label
+focused       12
+distracted    11
+fatigued      12
+overloaded    12
+Name: count, dtype: int64
+
+Candidate Model Comparison
+--------------------------
+Candidate                    Status       Accuracy   Macro F1  Weighted F1
+random_forest                evaluated      0.8723     0.8706       0.8698
+logistic_regression          evaluated      0.8723     0.8692       0.8674
+knn_5                        evaluated      0.8511     0.8506       0.8513
+knn_3                        evaluated      0.8511     0.8495       0.8513
+svm_rbf                      evaluated      0.8085     0.8093       0.8083
+svm_linear                   evaluated      0.7872     0.7867       0.7860
+gaussian_naive_bayes         evaluated      0.7447     0.7418       0.7427
+decision_tree                evaluated      0.6383     0.6194       0.6251
+
+Selected model: random_forest
+
+Selected Model Metrics
+----------------------
+Accuracy: 0.8723
+Macro Precision: 0.8737
+Macro Recall: 0.8731
+Macro F1: 0.8706
+Weighted Precision: 0.8729
+Weighted Recall: 0.8723
+Weighted F1: 0.8698
+
+Selected Model Classification Report
+------------------------------------
+              precision    recall  f1-score   support
+
+     focused       1.00      1.00      1.00        12
+  distracted       0.91      0.91      0.91        11
+    fatigued       0.79      0.92      0.85        12
+  overloaded       0.80      0.67      0.73        12
+
+    accuracy                           0.87        47
+   macro avg       0.87      0.87      0.87        47
+weighted avg       0.87      0.87      0.87        47
+
+Confusion matrix labels:
+['focused', 'distracted', 'fatigued', 'overloaded']
+
+Confusion matrix:
+[[12, 0, 0, 0], [0, 10, 0, 1], [0, 0, 11, 1], [0, 1, 3, 8]]
+
+Feature columns:
+- duration_seconds
+- sample_rate
+- rms_mean
+- rms_std
+- zero_crossing_rate_mean
+- zero_crossing_rate_std
+- spectral_centroid_mean
+- spectral_centroid_std
+- spectral_bandwidth_mean
+- spectral_bandwidth_std
+- spectral_rolloff_mean
+- spectral_rolloff_std
+- spectral_flatness_mean
+- spectral_flatness_std
+- tempo
+- chroma_mean
+- chroma_std
+- spectral_contrast_mean
+- spectral_contrast_std
+- mfcc_1_mean
+- mfcc_1_std
+- mfcc_2_mean
+- mfcc_2_std
+- mfcc_3_mean
+- mfcc_3_std
+- mfcc_4_mean
+- mfcc_4_std
+- mfcc_5_mean
+- mfcc_5_std
+- mfcc_6_mean
+- mfcc_6_std
+- mfcc_7_mean
+- mfcc_7_std
+- mfcc_8_mean
+- mfcc_8_std
+- mfcc_9_mean
+- mfcc_9_std
+- mfcc_10_mean
+- mfcc_10_std
+- mfcc_11_mean
+- mfcc_11_std
+- mfcc_12_mean
+- mfcc_12_std
+- mfcc_13_mean
+- mfcc_13_std
+
+Visual Report Artefacts
+-----------------------
+candidate_comparison_csv: model_artifacts\visual_reports\audio\audio_candidate_model_comparison.csv
+candidate_comparison_chart: model_artifacts\visual_reports\audio\audio_candidate_model_comparison.png
+candidate_model_table: model_artifacts\visual_reports\audio\audio_candidate_model_table.png
+classification_report_csv: model_artifacts\visual_reports\audio\audio_classification_report.csv
+classification_report_heatmap: model_artifacts\visual_reports\audio\audio_classification_report_heatmap.png
+confusion_matrix_heatmap: model_artifacts\visual_reports\audio\audio_confusion_matrix.png
+class_distribution_chart: model_artifacts\visual_reports\audio\audio_class_distribution.png
+
+Methodological note:
+The audio model selection process compares several multi-class classification algorithms. The selected model is chosen using macro F1-score as the primary criterion because all four behaviour classes are important. Accuracy is used only as a tie-breaker.

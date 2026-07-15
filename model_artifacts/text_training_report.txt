@@ -1,0 +1,92 @@
+Text Model Training and Selection Report
+========================================
+
+Created at: 2026-05-14T04:42:36
+Dataset: data\processed\processed_text_dataset.csv
+Model artifact: model_artifacts\text_model.joblib
+Rows used: 80
+Split method: stratified_train_test_split
+Train samples: 64
+Test samples: 16
+Selection rule: highest macro F1, then highest accuracy
+
+Class distribution:
+label
+focused       20
+distracted    20
+fatigued      20
+overloaded    20
+Name: count, dtype: int64
+
+Train class distribution:
+label
+focused       16
+distracted    16
+fatigued      16
+overloaded    16
+Name: count, dtype: int64
+
+Test class distribution:
+label
+focused       4
+distracted    4
+fatigued      4
+overloaded    4
+Name: count, dtype: int64
+
+Candidate Model Comparison
+--------------------------
+Candidate                          Status       Accuracy   Macro F1  Weighted F1
+naive_bayes_complement             evaluated      0.6875     0.6821       0.6821
+knn_cosine_5                       evaluated      0.6875     0.6821       0.6821
+knn_cosine_3                       evaluated      0.6875     0.6583       0.6583
+svm_linear_svc                     evaluated      0.6250     0.6379       0.6379
+random_forest                      evaluated      0.6250     0.6000       0.6000
+logistic_regression                evaluated      0.5625     0.5685       0.5685
+svm_svc_linear_probability         evaluated      0.5625     0.5665       0.5665
+naive_bayes_multinomial            evaluated      0.5625     0.5476       0.5476
+decision_tree                      evaluated      0.4375     0.4000       0.4000
+
+Selected model: naive_bayes_complement
+
+Selected Model Metrics
+----------------------
+Accuracy: 0.6875
+Macro Precision: 0.7083
+Macro Recall: 0.6875
+Macro F1: 0.6821
+Weighted Precision: 0.7083
+Weighted Recall: 0.6875
+Weighted F1: 0.6821
+
+Selected Model Classification Report
+------------------------------------
+              precision    recall  f1-score   support
+
+     focused       0.50      0.50      0.50         4
+  distracted       0.67      0.50      0.57         4
+    fatigued       0.67      1.00      0.80         4
+  overloaded       1.00      0.75      0.86         4
+
+    accuracy                           0.69        16
+   macro avg       0.71      0.69      0.68        16
+weighted avg       0.71      0.69      0.68        16
+
+Confusion matrix labels:
+['focused', 'distracted', 'fatigued', 'overloaded']
+
+Selected model confusion matrix:
+[[2, 1, 1, 0], [2, 2, 0, 0], [0, 0, 4, 0], [0, 0, 1, 3]]
+
+Visual Report Artefacts
+-----------------------
+candidate_comparison_csv: model_artifacts\visual_reports\text\text_candidate_model_comparison.csv
+candidate_comparison_chart: model_artifacts\visual_reports\text\text_candidate_model_comparison.png
+candidate_model_table: model_artifacts\visual_reports\text\text_candidate_model_table.png
+classification_report_csv: model_artifacts\visual_reports\text\text_classification_report.csv
+classification_report_heatmap: model_artifacts\visual_reports\text\text_classification_report_heatmap.png
+confusion_matrix_heatmap: model_artifacts\visual_reports\text\text_confusion_matrix.png
+class_distribution_chart: model_artifacts\visual_reports\text\text_class_distribution.png
+
+Methodological note:
+The text modality uses TF-IDF features followed by a multi-class classifier. Candidate algorithms included SVM, Random Forest, Logistic Regression, Decision Tree, Naive Bayes, and kNN. Logistic Regression is used as the correct classification alternative to ordinary Linear Regression. The final model was selected empirically using macro F1-score because this is a four-class classification problem and class-level balance is important.

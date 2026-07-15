@@ -1,0 +1,20 @@
+{
+    "num_samples": 309,
+    "num_features": 2367,
+    "modalities": [
+        "keystroke",
+        "text",
+        "audio",
+        "image"
+    ],
+    "candidate_models": [
+        "random_forest",
+        "svm_rbf",
+        "xgboost",
+        "lightgbm",
+        "catboost"
+    ],
+    "selected_model": "random_forest",
+    "selection_metric": "5-fold CV macro-F1",
+    "model_artifact": "models\\fusion_demo\\fusion_pipeline.joblib"
+}

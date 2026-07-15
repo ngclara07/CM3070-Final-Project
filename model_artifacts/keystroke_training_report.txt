@@ -1,0 +1,109 @@
+Keystroke Model Training and Selection Report
+=============================================
+
+Created at: 2026-05-14T04:38:00
+Dataset: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\emosurv_processed\combined_behaviour_samples.csv
+Model artifact: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\keystroke_model.joblib
+Rows used: 4014
+Train samples: 3211
+Test samples: 803
+Selection rule: highest macro F1, then highest accuracy
+
+Class distribution:
+behaviour_state
+focused       2202
+distracted     836
+fatigued       187
+overloaded     789
+Name: count, dtype: int64
+
+Train class distribution:
+behaviour_state
+focused       1761
+distracted     669
+fatigued       150
+overloaded     631
+Name: count, dtype: int64
+
+Test class distribution:
+behaviour_state
+focused       441
+distracted    167
+fatigued       37
+overloaded    158
+Name: count, dtype: int64
+
+Candidate Model Comparison
+--------------------------
+Candidate                    Status       Accuracy   Macro F1  Weighted F1
+svm_linear                   evaluated      0.9788     0.9661       0.9791
+logistic_regression          evaluated      0.9763     0.9537       0.9771
+svm_rbf                      evaluated      0.9465     0.9022       0.9482
+random_forest                evaluated      0.9328     0.8609       0.9303
+knn_5                        evaluated      0.9191     0.8458       0.9169
+knn_3                        evaluated      0.9215     0.8445       0.9184
+decision_tree                evaluated      0.8842     0.8050       0.8859
+gaussian_naive_bayes         evaluated      0.8418     0.7096       0.8303
+
+Selected model: svm_linear
+
+Selected Model Metrics
+----------------------
+Accuracy: 0.9788
+Macro Precision: 0.9485
+Macro Recall: 0.9866
+Macro F1: 0.9661
+Weighted Precision: 0.9802
+Weighted Recall: 0.9788
+Weighted F1: 0.9791
+
+Selected Model Classification Report
+------------------------------------
+              precision    recall  f1-score   support
+
+     focused       1.00      0.97      0.99       441
+  distracted       0.97      0.98      0.98       167
+    fatigued       0.86      1.00      0.93        37
+  overloaded       0.96      0.99      0.98       158
+
+    accuracy                           0.98       803
+   macro avg       0.95      0.99      0.97       803
+weighted avg       0.98      0.98      0.98       803
+
+Confusion matrix labels:
+['focused', 'distracted', 'fatigued', 'overloaded']
+
+Confusion matrix:
+[[428, 4, 4, 5], [0, 164, 2, 1], [0, 0, 37, 0], [0, 1, 0, 157]]
+
+Feature columns:
+- typing_speed
+- hold_mean
+- hold_std
+- delay_mean
+- delay_std
+- delay_cv
+- pause_ratio_500
+- pause_ratio_1000
+- pause_ratio_2000
+- mental_block_ratio_5000
+- correction_ratio
+- repeated_key_ratio
+- rapid_burst_ratio
+- burstiness_proxy
+- fits_starts_index
+- rhythm_consistency
+- error_rate_proxy
+
+Visual Report Artefacts
+-----------------------
+candidate_comparison_csv: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_candidate_model_comparison.csv
+candidate_comparison_chart: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_candidate_model_comparison.png
+candidate_model_table: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_candidate_model_table.png
+classification_report_csv: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_classification_report.csv
+classification_report_heatmap: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_classification_report_heatmap.png
+confusion_matrix_heatmap: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_confusion_matrix.png
+class_distribution_chart: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\visual_reports\keystroke\keystroke_class_distribution.png
+
+Methodological note:
+The keystroke model selection process compares several multi-class classification algorithms over typing-dynamics features. The selected model is chosen using macro F1-score as the primary criterion because all four behaviour classes are important. Accuracy is used only as a tie-breaker. The labels are heuristic pseudo-labels and should be interpreted as behavioural typing proxies rather than direct psychological ground truth.

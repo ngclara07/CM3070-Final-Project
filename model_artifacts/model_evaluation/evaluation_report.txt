@@ -1,0 +1,94 @@
+SenseFuzeAI Full Model Candidate Evaluation Report
+=================================================
+
+Generated at: 2026-05-22T04:46:05
+Project root: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app
+Output directory: C:\Users\Clara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\model_artifacts\model_evaluation
+
+Important methodological note
+-----------------------------
+This evaluation compares available modality-level models, baselines, and precomputed pipeline outputs. Runtime web-app fusion should remain calibrated dynamic weighted late fusion unless true session-aligned multimodal data is collected for training a defensible supervised fusion model.
+
+Candidate results
+-----------------
+
+Modality:  keystroke
+Candidate: trained_keystroke_model
+Status:    ok
+Accuracy:  0.9751
+Macro F1:  0.9567
+Weighted F1: 0.9756
+Support:   4014
+Notes:     Selected keystroke classifier evaluated on processed keystroke feature data.
+
+Modality:  keystroke
+Candidate: rule_based_keystroke_baseline
+Status:    ok
+Accuracy:  0.8082
+Macro F1:  0.5923
+Weighted F1: 0.7866
+Support:   4014
+Notes:     Transparent rule baseline using typing speed, pauses, rhythm, and correction/error indicators.
+
+Modality:  text
+Candidate: trained_text_model
+Status:    ok
+Accuracy:  0.9375
+Macro F1:  0.9375
+Weighted F1: 0.9375
+Support:   80
+Notes:     Selected text classifier loaded from text_model.joblib. This evaluates the trained text behaviour model on the processed text dataset.
+
+Modality:  text
+Candidate: rule_based_keyword_baseline
+Status:    ok
+Accuracy:  0.4875
+Macro F1:  0.4835
+Weighted F1: 0.4835
+Support:   80
+Notes:     Transparent lexical baseline. Used as a simple comparison point to justify why the trained text model is preferable.
+
+Modality:  audio
+Candidate: trained_audio_feature_model
+Status:    ok
+Accuracy:  0.9625
+Macro F1:  0.9601
+Weighted F1: 0.9625
+Support:   80
+Notes:     Trained librosa-feature audio classifier evaluated using processed audio feature columns.
+
+Modality:  image
+Candidate: trained_image_model
+Status:    ok
+Accuracy:  0.9375
+Macro F1:  0.9398
+Weighted F1: 0.9374
+Support:   80
+Notes:     Trained image classifier evaluated using safe visual features from processed_image_dataset.csv.
+
+Modality:  image
+Candidate: precomputed_clip_blip_mediapipe_fusion
+Status:    ok
+Accuracy:  0.6250
+Macro F1:  0.5938
+Weighted F1: 0.5942
+Support:   80
+Notes:     Precomputed vision pipeline output from process_image_data.py. Represents CLIP prompt scoring, BLIP captioning, and MediaPipe face/body/posture analysis.
+
+Modality:  image
+Candidate: clip_full_image_behaviour_cue
+Status:    ok
+Accuracy:  0.5750
+Macro F1:  0.5766
+Weighted F1: 0.5772
+Support:   80
+Notes:     Single visual cue candidate using the full-image CLIP behaviour prompt classification.
+
+Modality:  fusion
+Candidate: experimental_trained_fusion_model
+Status:    ok
+Accuracy:  0.9958
+Macro F1:  0.9939
+Weighted F1: 0.9958
+Support:   4713
+Notes:     Experimental trained fusion model evaluated on the constructed fusion dataset. This is useful for model-selection evidence, but final runtime deployment should use calibrated dynamic weighted late fusion unless true session-aligned multimodal data is available.

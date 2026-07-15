@@ -1,0 +1,41 @@
+{
+    "data_path": "data\\processed\\master_sessions_raw.csv",
+    "label_column": "label",
+    "num_samples": 309,
+    "num_features": 22,
+    "feature_columns": [
+        "total_duration_sec",
+        "keydown_count",
+        "word_count",
+        "typing_speed_kps",
+        "typing_speed_wpm",
+        "delay_mean",
+        "delay_std",
+        "delay_min",
+        "delay_max",
+        "hold_mean",
+        "hold_std",
+        "pause_count_1000",
+        "pause_count_2000",
+        "pause_count_5000",
+        "pause_ratio_1000",
+        "pause_ratio_2000",
+        "mental_block_ratio_5000",
+        "correction_count",
+        "correction_ratio",
+        "rhythm_consistency",
+        "burstiness_proxy",
+        "fits_starts_index"
+    ],
+    "candidate_models": [
+        "logistic_regression",
+        "decision_tree",
+        "random_forest",
+        "svm_rbf",
+        "knn",
+        "gaussian_naive_bayes"
+    ],
+    "selected_model": "random_forest",
+    "selection_metric": "5-fold CV macro-F1",
+    "clean_sessions_only": true
+}

@@ -1,0 +1,434 @@
+{
+    "model_name": "image_random_forest",
+    "created_at": "2026-05-16T22:35:49",
+    "dataset_path": "data\\processed\\processed_image_dataset.csv",
+    "model_path": "model_artifacts\\image_model.joblib",
+    "target": "label",
+    "classes": [
+        "focused",
+        "distracted",
+        "fatigued",
+        "overloaded"
+    ],
+    "feature_mode": "safe_visual_features",
+    "features": [
+        "width",
+        "height",
+        "face_detected",
+        "face_confidence",
+        "body_detected",
+        "pose_visibility",
+        "shoulder_visibility",
+        "behaviour_focused_score",
+        "behaviour_distracted_score",
+        "behaviour_fatigued_score",
+        "behaviour_overloaded_score",
+        "scene_focused_score",
+        "scene_distracted_score",
+        "scene_fatigued_score",
+        "scene_overloaded_score",
+        "face_focused_score",
+        "face_distracted_score",
+        "face_fatigued_score",
+        "face_overloaded_score",
+        "body_focused_score",
+        "body_distracted_score",
+        "body_fatigued_score",
+        "body_overloaded_score",
+        "posture_cue_not_detected",
+        "posture_cue_possible_slouched_or_head_down",
+        "posture_cue_upright_or_neutral",
+        "head_position_cue_low_head_position",
+        "head_position_cue_normal_head_position",
+        "head_position_cue_unknown"
+    ],
+    "feature_count": 29,
+    "selection_metric": "macro_f1_then_accuracy",
+    "selected_classifier": "random_forest",
+    "accuracy": 0.967741935483871,
+    "macro_precision": 0.9583333333333334,
+    "macro_recall": 0.975,
+    "macro_f1": 0.9641148325358851,
+    "weighted_precision": 0.9731182795698925,
+    "weighted_recall": 0.967741935483871,
+    "weighted_f1": 0.96835931470906,
+    "method": "safe_processed_visual_features_plus_random_forest",
+    "split_method": "existing_split_column",
+    "test_size": 0.2,
+    "random_state": 42,
+    "original_rows": 308,
+    "rows_used": 215,
+    "train_samples": 148,
+    "test_samples": 31,
+    "class_distribution": {
+        "focused": 44,
+        "distracted": 57,
+        "fatigued": 44,
+        "overloaded": 70
+    },
+    "train_class_distribution": {
+        "focused": 29,
+        "distracted": 38,
+        "fatigued": 32,
+        "overloaded": 49
+    },
+    "test_class_distribution": {
+        "focused": 8,
+        "distracted": 8,
+        "fatigued": 5,
+        "overloaded": 10
+    },
+    "quality_filter": [
+        "high_reliability",
+        "moderate_reliability"
+    ],
+    "quality_filter_used": true,
+    "excluded_leakage_columns": [
+        "absent_or_uncertain_cues",
+        "agreement_ratio",
+        "agreement_with_folder_label",
+        "behaviour_caption",
+        "behaviour_description",
+        "body_box",
+        "body_crop_path",
+        "distracted_score",
+        "error",
+        "face_box",
+        "face_crop_path",
+        "fatigued_score",
+        "filename",
+        "filepath",
+        "focused_score",
+        "generic_caption",
+        "label",
+        "majority_visual_label",
+        "majority_vote_count",
+        "overloaded_score",
+        "possible_conflicting_cues",
+        "predicted_behaviour_cue",
+        "predicted_body_cue",
+        "predicted_face_cue",
+        "predicted_scene_cue",
+        "quality_flag",
+        "reliability_score",
+        "scene_description",
+        "split",
+        "supporting_visual_cues",
+        "total_votes",
+        "visual_cue_summary",
+        "visual_fused_label",
+        "visual_fused_margin",
+        "visual_fused_score",
+        "visual_fused_second_label",
+        "visual_fused_second_score",
+        "visual_votes"
+    ],
+    "candidate_model_comparison": {
+        "svm_rbf": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9354838709677419,
+            "macro_precision": 0.9583333333333334,
+            "macro_recall": 0.9,
+            "macro_f1": 0.9147727272727273,
+            "weighted_precision": 0.946236559139785,
+            "weighted_recall": 0.9354838709677419,
+            "weighted_f1": 0.9303519061583577,
+            "confusion_matrix": [
+                [
+                    8,
+                    0,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    3,
+                    2
+                ],
+                [
+                    0,
+                    0,
+                    0,
+                    10
+                ]
+            ]
+        },
+        "svm_linear": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9354838709677419,
+            "macro_precision": 0.9285714285714286,
+            "macro_recall": 0.95,
+            "macro_f1": 0.9305555555555556,
+            "weighted_precision": 0.9539170506912443,
+            "weighted_recall": 0.9354838709677419,
+            "weighted_f1": 0.9372759856630825,
+            "confusion_matrix": [
+                [
+                    8,
+                    0,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    5,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    2,
+                    8
+                ]
+            ]
+        },
+        "random_forest": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.967741935483871,
+            "macro_precision": 0.9583333333333334,
+            "macro_recall": 0.975,
+            "macro_f1": 0.9641148325358851,
+            "weighted_precision": 0.9731182795698925,
+            "weighted_recall": 0.967741935483871,
+            "weighted_f1": 0.96835931470906,
+            "confusion_matrix": [
+                [
+                    8,
+                    0,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    5,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    1,
+                    9
+                ]
+            ]
+        },
+        "logistic_regression": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9032258064516129,
+            "macro_precision": 0.8888888888888888,
+            "macro_recall": 0.8999999999999999,
+            "macro_f1": 0.8923444976076556,
+            "weighted_precision": 0.9103942652329748,
+            "weighted_recall": 0.9032258064516129,
+            "weighted_f1": 0.9050779441271801,
+            "confusion_matrix": [
+                [
+                    8,
+                    0,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    4,
+                    1
+                ],
+                [
+                    0,
+                    0,
+                    2,
+                    8
+                ]
+            ]
+        },
+        "decision_tree": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.8387096774193549,
+            "macro_precision": 0.85625,
+            "macro_recall": 0.8625,
+            "macro_f1": 0.8346979817568052,
+            "weighted_precision": 0.8879032258064515,
+            "weighted_recall": 0.8387096774193549,
+            "weighted_f1": 0.8403129655501572,
+            "confusion_matrix": [
+                [
+                    6,
+                    2,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    5,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    3,
+                    7
+                ]
+            ]
+        },
+        "gaussian_naive_bayes": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9032258064516129,
+            "macro_precision": 0.9267676767676768,
+            "macro_recall": 0.875,
+            "macro_f1": 0.8870798319327732,
+            "weighted_precision": 0.9126751384815901,
+            "weighted_recall": 0.9032258064516129,
+            "weighted_f1": 0.8984142043914339,
+            "confusion_matrix": [
+                [
+                    8,
+                    0,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    3,
+                    2
+                ],
+                [
+                    1,
+                    0,
+                    0,
+                    9
+                ]
+            ]
+        },
+        "knn_3": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.8064516129032258,
+            "macro_precision": 0.8238636363636365,
+            "macro_recall": 0.78125,
+            "macro_f1": 0.7837863890495469,
+            "weighted_precision": 0.8306451612903226,
+            "weighted_recall": 0.8064516129032258,
+            "weighted_f1": 0.7998532310926199,
+            "confusion_matrix": [
+                [
+                    5,
+                    3,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    3,
+                    2
+                ],
+                [
+                    0,
+                    0,
+                    1,
+                    9
+                ]
+            ]
+        },
+        "knn_5": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.8064516129032258,
+            "macro_precision": 0.8238636363636365,
+            "macro_recall": 0.78125,
+            "macro_f1": 0.7837863890495469,
+            "weighted_precision": 0.8306451612903226,
+            "weighted_recall": 0.8064516129032258,
+            "weighted_f1": 0.7998532310926199,
+            "confusion_matrix": [
+                [
+                    5,
+                    3,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    8,
+                    0,
+                    0
+                ],
+                [
+                    0,
+                    0,
+                    3,
+                    2
+                ],
+                [
+                    0,
+                    0,
+                    1,
+                    9
+                ]
+            ]
+        }
+    },
+    "visual_reports": {
+        "candidate_comparison_csv": "model_artifacts\\visual_reports\\image\\image_candidate_model_comparison.csv",
+        "candidate_comparison_chart": "model_artifacts\\visual_reports\\image\\image_candidate_model_comparison.png",
+        "candidate_model_table": "model_artifacts\\visual_reports\\image\\image_candidate_model_table.png",
+        "confusion_matrix_heatmap": "model_artifacts\\visual_reports\\image\\image_confusion_matrix.png",
+        "classification_report_csv": "model_artifacts\\visual_reports\\image\\image_classification_report.csv",
+        "classification_report_heatmap": "model_artifacts\\visual_reports\\image\\image_classification_report_heatmap.png",
+        "class_distribution_chart": "model_artifacts\\visual_reports\\image\\image_class_distribution.png"
+    },
+    "note": "This image model uses a safer feature selection strategy. It excludes direct visual-fusion outputs, majority-vote fields, agreement-with-folder columns, quality flags, reliability scores, captions, and pseudo-label text fields. It retains detection metadata, raw CLIP prompt score columns, and one-hot encoded MediaPipe posture/head-position cues. This is intended to improve performance over metadata-only training while avoiding the most problematic leakage columns."
+}

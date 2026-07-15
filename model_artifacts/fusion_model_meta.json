@@ -1,0 +1,388 @@
+{
+    "model_name": "experimental_multimodal_late_fusion_knn_5",
+    "created_at": "2026-05-21T18:47:46",
+    "classes": [
+        "focused",
+        "distracted",
+        "fatigued",
+        "overloaded"
+    ],
+    "features": [
+        "audio_focused_prob",
+        "audio_distracted_prob",
+        "audio_fatigued_prob",
+        "audio_overloaded_prob",
+        "image_focused_prob",
+        "image_distracted_prob",
+        "image_fatigued_prob",
+        "image_overloaded_prob",
+        "keystroke_focused_prob",
+        "keystroke_distracted_prob",
+        "keystroke_fatigued_prob",
+        "keystroke_overloaded_prob",
+        "text_focused_prob",
+        "text_distracted_prob",
+        "text_fatigued_prob",
+        "text_overloaded_prob",
+        "has_audio",
+        "has_image",
+        "has_keystroke",
+        "has_text"
+    ],
+    "selection_metric": "macro_f1_then_accuracy",
+    "selected_classifier": "knn_5",
+    "accuracy": 0.9809119830328739,
+    "macro_precision": 0.9757756086469008,
+    "macro_recall": 0.9700555781564462,
+    "macro_f1": 0.9727871860895434,
+    "weighted_precision": 0.980956277015713,
+    "weighted_recall": 0.9809119830328739,
+    "weighted_f1": 0.9808810723233379,
+    "method": "experimental_late_fusion_using_modality_prediction_outputs_plus_knn_5",
+    "model_path": "model_artifacts\\fusion_model.joblib",
+    "fusion_dataset_path": "model_artifacts\\fusion_training_dataset.csv",
+    "test_size": 0.2,
+    "random_state": 42,
+    "rows_used": 4713,
+    "train_samples": 3770,
+    "test_samples": 943,
+    "source_modality_distribution": {
+        "keystroke": 4014,
+        "audio": 311,
+        "image": 308,
+        "text": 80
+    },
+    "class_distribution": {
+        "focused": 2376,
+        "distracted": 1011,
+        "fatigued": 362,
+        "overloaded": 964
+    },
+    "train_class_distribution": {
+        "focused": 1901,
+        "distracted": 809,
+        "fatigued": 289,
+        "overloaded": 771
+    },
+    "test_class_distribution": {
+        "focused": 475,
+        "distracted": 202,
+        "fatigued": 73,
+        "overloaded": 193
+    },
+    "candidate_model_comparison": {
+        "svm_rbf": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9777306468716861,
+            "macro_precision": 0.9673627675805376,
+            "macro_recall": 0.9742733142775708,
+            "macro_f1": 0.9707657792749675,
+            "weighted_precision": 0.9779633468895258,
+            "weighted_recall": 0.9777306468716861,
+            "weighted_f1": 0.9777930618521443,
+            "confusion_matrix": [
+                [
+                    465,
+                    3,
+                    2,
+                    5
+                ],
+                [
+                    2,
+                    199,
+                    0,
+                    1
+                ],
+                [
+                    1,
+                    0,
+                    70,
+                    2
+                ],
+                [
+                    0,
+                    3,
+                    2,
+                    188
+                ]
+            ]
+        },
+        "svm_linear": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.975609756097561,
+            "macro_precision": 0.9646790562373881,
+            "macro_recall": 0.9665972651857981,
+            "macro_f1": 0.9655464374391314,
+            "weighted_precision": 0.9758297988549588,
+            "weighted_recall": 0.975609756097561,
+            "weighted_f1": 0.9756357411346318,
+            "confusion_matrix": [
+                [
+                    466,
+                    3,
+                    1,
+                    5
+                ],
+                [
+                    2,
+                    200,
+                    0,
+                    0
+                ],
+                [
+                    1,
+                    2,
+                    68,
+                    2
+                ],
+                [
+                    0,
+                    4,
+                    3,
+                    186
+                ]
+            ]
+        },
+        "random_forest": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.975609756097561,
+            "macro_precision": 0.9672862598394514,
+            "macro_recall": 0.9644679444391163,
+            "macro_f1": 0.96570840129427,
+            "weighted_precision": 0.9757600168534039,
+            "weighted_recall": 0.975609756097561,
+            "weighted_f1": 0.9755890308347158,
+            "confusion_matrix": [
+                [
+                    466,
+                    3,
+                    1,
+                    5
+                ],
+                [
+                    2,
+                    200,
+                    0,
+                    0
+                ],
+                [
+                    2,
+                    1,
+                    67,
+                    3
+                ],
+                [
+                    0,
+                    4,
+                    2,
+                    187
+                ]
+            ]
+        },
+        "logistic_regression": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9777306468716861,
+            "macro_precision": 0.9687394053236817,
+            "macro_recall": 0.9735042932794797,
+            "macro_f1": 0.9710654676447191,
+            "weighted_precision": 0.9779908520329932,
+            "weighted_recall": 0.9777306468716861,
+            "weighted_f1": 0.9777969167451103,
+            "confusion_matrix": [
+                [
+                    466,
+                    3,
+                    1,
+                    5
+                ],
+                [
+                    2,
+                    199,
+                    0,
+                    1
+                ],
+                [
+                    0,
+                    1,
+                    70,
+                    2
+                ],
+                [
+                    0,
+                    4,
+                    2,
+                    187
+                ]
+            ]
+        },
+        "decision_tree": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9692470837751855,
+            "macro_precision": 0.9585756722951846,
+            "macro_recall": 0.9613631595554368,
+            "macro_f1": 0.9598925412945232,
+            "weighted_precision": 0.9695430999093415,
+            "weighted_recall": 0.9692470837751855,
+            "weighted_f1": 0.9693211529418532,
+            "confusion_matrix": [
+                [
+                    463,
+                    4,
+                    2,
+                    6
+                ],
+                [
+                    4,
+                    196,
+                    0,
+                    2
+                ],
+                [
+                    1,
+                    1,
+                    68,
+                    3
+                ],
+                [
+                    0,
+                    4,
+                    2,
+                    187
+                ]
+            ]
+        },
+        "gaussian_naive_bayes": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9650053022269353,
+            "macro_precision": 0.9452800425117203,
+            "macro_recall": 0.9686065165795748,
+            "macro_f1": 0.9563789188381505,
+            "weighted_precision": 0.9662781247882322,
+            "weighted_recall": 0.9650053022269353,
+            "weighted_f1": 0.9652535977426911,
+            "confusion_matrix": [
+                [
+                    455,
+                    7,
+                    4,
+                    9
+                ],
+                [
+                    2,
+                    198,
+                    1,
+                    1
+                ],
+                [
+                    0,
+                    0,
+                    71,
+                    2
+                ],
+                [
+                    0,
+                    4,
+                    3,
+                    186
+                ]
+            ]
+        },
+        "knn_3": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9809119830328739,
+            "macro_precision": 0.9711065420145217,
+            "macro_recall": 0.9721848989031279,
+            "macro_f1": 0.9715932752110026,
+            "weighted_precision": 0.9810532166537583,
+            "weighted_recall": 0.9809119830328739,
+            "weighted_f1": 0.980936956843556,
+            "confusion_matrix": [
+                [
+                    470,
+                    3,
+                    1,
+                    1
+                ],
+                [
+                    2,
+                    199,
+                    1,
+                    0
+                ],
+                [
+                    1,
+                    1,
+                    69,
+                    2
+                ],
+                [
+                    0,
+                    4,
+                    2,
+                    187
+                ]
+            ]
+        },
+        "knn_5": {
+            "status": "evaluated",
+            "reason": null,
+            "accuracy": 0.9809119830328739,
+            "macro_precision": 0.9757756086469008,
+            "macro_recall": 0.9700555781564462,
+            "macro_f1": 0.9727871860895434,
+            "weighted_precision": 0.980956277015713,
+            "weighted_recall": 0.9809119830328739,
+            "weighted_f1": 0.9808810723233379,
+            "confusion_matrix": [
+                [
+                    470,
+                    2,
+                    1,
+                    2
+                ],
+                [
+                    2,
+                    199,
+                    0,
+                    1
+                ],
+                [
+                    2,
+                    1,
+                    68,
+                    2
+                ],
+                [
+                    0,
+                    4,
+                    1,
+                    188
+                ]
+            ]
+        }
+    },
+    "visual_reports": {
+        "candidate_comparison_csv": "model_artifacts\\visual_reports\\fusion\\fusion_candidate_model_comparison.csv",
+        "candidate_comparison_chart": "model_artifacts\\visual_reports\\fusion\\fusion_candidate_model_comparison.png",
+        "candidate_model_table": "model_artifacts\\visual_reports\\fusion\\fusion_candidate_model_table.png",
+        "classification_report_csv": "model_artifacts\\visual_reports\\fusion\\fusion_classification_report.csv",
+        "classification_report_heatmap": "model_artifacts\\visual_reports\\fusion\\fusion_classification_report_heatmap.png",
+        "confusion_matrix_heatmap": "model_artifacts\\visual_reports\\fusion\\fusion_confusion_matrix.png",
+        "class_distribution_chart": "model_artifacts\\visual_reports\\fusion\\fusion_class_distribution.png"
+    },
+    "modality_models": {
+        "audio_model": "model_artifacts\\audio_model.joblib",
+        "image_model": "model_artifacts\\image_model.joblib",
+        "keystroke_model": "model_artifacts\\keystroke_model.joblib",
+        "text_model": "model_artifacts\\text_model.joblib"
+    },
+    "text_modality_note": "The text modality uses the trained text_model.joblib artifact created by train_text_model.py. That artifact contains a TF-IDF vectorizer and the best selected classifier from the candidate model comparison. If the selected text classifier does not expose predict_proba(), this fusion script uses decision_function() or one-hot prediction fallback to generate fusion-compatible scores.",
+    "important_note": "This fusion model is experimental. It is trained using stacked modality-level prediction rows rather than true session-aligned multimodal samples. The main application may still use weighted late fusion as the recommended runtime method. A stronger trained fusion model would require shared session_id values linking keystroke, text, audio, and image data from the same interaction."
+}
