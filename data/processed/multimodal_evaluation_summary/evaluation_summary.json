@@ -1,0 +1,53 @@
+{
+    "best_cross_validation": {
+        "feature_group": "keystroke_text_image",
+        "model": "random_forest",
+        "num_features": 1558,
+        "cv_accuracy_mean": 1.0,
+        "cv_accuracy_std": 0.0,
+        "cv_macro_f1_mean": 1.0,
+        "cv_macro_f1_std": 0.0
+    },
+    "best_test": {
+        "feature_group": "keystroke_image",
+        "model": "catboost",
+        "num_features": 790,
+        "test_accuracy": 1.0,
+        "test_macro_f1": 1.0
+    },
+    "baseline_group": "keystroke_only",
+    "num_cv_rows": 90,
+    "num_test_rows": 15,
+    "num_feature_groups": 15,
+    "metadata": {
+        "dataset": "data\\processed\\multimodal_features.csv",
+        "num_samples": 309,
+        "cv_splits": 5,
+        "n_estimators_or_iterations": 100,
+        "models": [
+            "logistic_regression",
+            "random_forest",
+            "svm_rbf",
+            "xgboost",
+            "lightgbm",
+            "catboost"
+        ],
+        "feature_groups": {
+            "keystroke_only": 22,
+            "text_only": 768,
+            "audio_only": 809,
+            "image_only": 768,
+            "keystroke_text": 790,
+            "keystroke_audio": 831,
+            "keystroke_image": 790,
+            "text_audio": 1577,
+            "text_image": 1536,
+            "audio_image": 1577,
+            "keystroke_text_audio": 1599,
+            "keystroke_text_image": 1558,
+            "keystroke_audio_image": 1599,
+            "text_audio_image": 2345,
+            "multimodal_all": 2367
+        }
+    }
+}

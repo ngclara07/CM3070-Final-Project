@@ -1,0 +1,16 @@
+feature_group,best_model,num_features,test_accuracy,test_macro_f1,test_rank
+keystroke_image,catboost,790,1.0,1.0,1
+keystroke_text_audio,lightgbm,1599,1.0,1.0,2
+text_image,logistic_regression,1536,1.0,1.0,3
+text_audio_image,logistic_regression,2345,1.0,1.0,4
+multimodal_all,random_forest,2367,1.0,1.0,5
+keystroke_text,lightgbm,790,1.0,1.0,6
+keystroke_audio_image,xgboost,1599,0.9838709677419356,0.9843597262952102,7
+text_audio,logistic_regression,1577,0.9838709677419356,0.9838709677419356,8
+keystroke_text_image,random_forest,1558,0.9838709677419356,0.9838709677419356,9
+text_only,logistic_regression,768,0.9838709677419356,0.9838709677419356,10
+keystroke_audio,lightgbm,831,0.9838709677419356,0.98380355276907,11
+keystroke_only,random_forest,22,0.9838709677419356,0.98380355276907,12
+image_only,svm_rbf,768,0.9516129032258064,0.9513510682865522,13
+audio_image,svm_rbf,1577,0.9193548387096774,0.9183424102778942,14
+audio_only,svm_rbf,809,0.8709677419354839,0.8678372210953347,15

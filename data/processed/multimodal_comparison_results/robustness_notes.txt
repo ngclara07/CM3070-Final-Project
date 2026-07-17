@@ -1,0 +1,9 @@
+Leakage / robustness validation notes
+====================================
+
+Interpretation:
+- Four-class chance-level macro-F1 is approximately 0.25.
+- If permutation macro-F1 is near 0.25, this is good.
+- If permutation macro-F1 remains high, there may be data leakage.
+- If text_only performance is near-perfect, guided text prompts may encode labels strongly.
+- This should be discussed as a dataset limitation if applicable.

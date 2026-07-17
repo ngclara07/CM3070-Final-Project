@@ -1,0 +1,10 @@
+              precision    recall  f1-score   support
+
+  distracted       0.88      1.00      0.94        15
+    fatigued       1.00      1.00      1.00        15
+     focused       1.00      1.00      1.00        16
+  overloaded       1.00      0.88      0.93        16
+
+    accuracy                           0.97        62
+   macro avg       0.97      0.97      0.97        62
+weighted avg       0.97      0.97      0.97        62
