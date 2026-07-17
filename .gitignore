@@ -33,23 +33,37 @@ venv/
 
 # ==============================================================
 # Dataset policy
-#
-# Ignore the full local dataset, but permit the curated,
-# anonymised sample dataset under:
-#
-# data/session_aligned/sample/
 # ==============================================================
 
 /data/*
 
-# Permit traversal into data/session_aligned
+
+# Curated session sample
+
 !/data/session_aligned/
 
 /data/session_aligned/*
 
-# Commit only the curated sample directory
 !/data/session_aligned/sample/
 !/data/session_aligned/sample/**
+
+
+# Selected processed results
+
+!/data/processed/
+
+/data/processed/*
+
+/data/processed/archive/
+
+!/data/processed/keystroke_baseline_results/
+!/data/processed/keystroke_baseline_results/**
+
+!/data/processed/multimodal_comparison_results/
+!/data/processed/multimodal_comparison_results/**
+
+!/data/processed/multimodal_evaluation_summary/
+!/data/processed/multimodal_evaluation_summary/**
 
 
 # ==============================================================
@@ -61,15 +75,6 @@ venv/
 
 # ==============================================================
 # Model policy
-#
-# Retain small model-support files such as:
-# - configuration files
-# - tokenizers
-# - metadata
-# - CSV evaluation results
-# - small demonstration pipelines
-#
-# Exclude only large pretrained model-weight files.
 # ==============================================================
 
 /models/**/*.safetensors
