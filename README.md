@@ -25,7 +25,7 @@ SenseFuzeAI is a research-oriented multimodal behavioural intelligence platform 
 - CLIP image embeddings
 - multimodal fusion features
 
-The project investigates whether multimodal fusion improves behavioural-state recognition compared with unimodal classification. It includes model training pipelines, standalone live GUIs, a FastAPI web application, live multimodal capture, evaluation scripts, ranked model comparisons, and dissertation-ready summary outputs.
+The project investigates whether multimodal fusion improves behavioural-state recognition compared with unimodal classification. It includes model training pipelines, standalone live GUIs, a FastAPI web application, live multimodal capture, webcam-specific image calibration, evaluation scripts, ranked model comparisons, and dissertation-ready summary outputs.
 
 ---
 
@@ -161,17 +161,45 @@ python audio_live_gui.py
 
 ### 4. Image Pipeline
 
-The image pipeline uses CLIP visual embeddings for image, video, or webcam-based behavioural-state inference.
+The image pipeline uses CLIP visual embeddings for image, video, and webcam-based behavioural-state inference.
 
 Model used:
 
 > models/clip-vit-large-patch14
+
+In addition to the original image-classification pipeline, the project includes a webcam-calibration workflow designed to improve the alignment between live webcam frames and the behavioural-state image classifier.
+
+The webcam-calibration workflow includes:
+
+- construction of a labelled webcam calibration dataset
+- extraction and preparation of webcam frames
+- CLIP-based image feature processing
+- training and comparison of candidate calibration models
+- generation of calibration evaluation reports
+- creation of a webcam-calibrated image pipeline for live inference
+
+Calibration scripts:
+
+```bash
+python build_webcam_calibration_dataset.py
+python retrain_image_webcam_calibrated.py
+```
+
+The resulting calibrated model is stored as:
+
+> models/image_demo/image_pipeline_webcam_calibrated.joblib
+
+Calibration metadata is stored as:
+
+> models/image_demo/webcam_calibrated_metadata.json
 
 Main live GUI:
 
 ```bash
 python image_live_gui.py
 ```
+
+---
 
 ### 5. Fusion Pipeline
 
@@ -186,6 +214,34 @@ Main live GUI:
 ```bash
 python live_fusion_gui.py
 ```
+
+---
+
+### 6. Webcam Calibration Pipeline
+
+A dedicated webcam-calibration pipeline is included to address the domain difference between the original image-training data and frames captured from a live webcam.
+
+The calibration workflow consists of two principal stages:
+
+1. `build_webcam_calibration_dataset.py` prepares the webcam calibration dataset and associated image features.
+2. `retrain_image_webcam_calibrated.py` trains and evaluates candidate image classifiers using the calibration data and produces a webcam-calibrated image pipeline.
+
+Generated calibration outputs include:
+
+- webcam calibration frames
+- extracted calibration features
+- candidate-model evaluation results
+- training summaries and reports
+- calibrated model metadata
+- the trained webcam-calibrated image pipeline
+
+Evaluation outputs are stored under:
+
+> `data/processed/webcam_calibration_evaluation/`
+
+The calibrated image model can subsequently be used by the live image and multimodal inference workflows to provide image predictions that are better aligned with the live webcam capture environment.
+
+The webcam calibration dataset is intended as a project-specific calibration resource and does not replace the original multimodal research dataset.
 
 ---
 
@@ -285,9 +341,13 @@ python train_keystroke_demo_pipeline.py
 python train_text_demo_pipeline.py
 python train_audio_demo_pipeline.py
 python train_image_demo_pipeline.py
+python build_webcam_calibration_dataset.py
+python retrain_image_webcam_calibrated.py
 python train_fusion_demo_pipeline.py
 python train_multimodal_comparison.py
 ```
+
+The image workflow additionally supports webcam-specific calibration. `build_webcam_calibration_dataset.py` prepares the calibration data, while `retrain_image_webcam_calibrated.py` evaluates candidate classifiers and generates the calibrated image pipeline used by the live webcam workflow.
 
 The multimodal comparison script evaluates multiple classifiers, including:
 
@@ -409,8 +469,12 @@ Important model files:
 > text_pipeline.joblib <br>
 > audio_pipeline.joblib <br>
 > image_pipeline.joblib <br>
+> image_pipeline_webcam_calibrated.joblib <br>
+> webcam_calibrated_metadata.json <br>
 > fusion_pipeline.joblib <br>
 > feature_columns.json
+
+The webcam-calibrated image pipeline is an additional project-trained model intended for live webcam inference. It complements the original image pipeline rather than replacing the underlying CLIP embedding model.
 
 ---
 
@@ -534,13 +598,14 @@ These diagnostics are intended for evaluation and dissertation analysis, not as 
 2. Behavioural states are complex and can overlap in real-world settings.
 3. Labels may contain subjective or heuristic assumptions.
 4. Audio performance may be affected by background noise.
-5. Webcam and image predictions depend on lighting and frame quality.
+5. Webcam and image predictions remain sensitive to lighting, camera position, background conditions, frame quality, and differences between calibration and deployment environments.
 6. Keystroke behaviour varies across users and typing contexts.
 7. Missing modality handling may reduce fusion reliability.
 8. The system is designed for academic research and demonstration, not production deployment.
 9. The complete research dataset is intentionally excluded from the GitHub repository due to repository size limitations.
 10. Only a balanced demonstration dataset is distributed for pipeline validation, smoke testing, and repository-level reproducibility.
 11. Some pre-trained embedding models must be downloaded separately before training or inference.
+12. The webcam-calibrated image model is based on a limited project-specific calibration dataset and should not be interpreted as demonstrating generalisation across different users, cameras, environments, or deployment conditions.
 
 ---
 
@@ -568,6 +633,7 @@ SenseFuzeAI contributes an end-to-end multimodal behavioural AI framework that i
 * semantic language embeddings
 * speech/audio representations
 * visual embeddings
+* webcam-specific visual calibration for live image inference
 * comparative model benchmarking
 * real-time fusion inference
 * live GUI demonstrations
@@ -582,21 +648,32 @@ The system demonstrates how multiple pre-trained AI models can be orchestrated a
 
 ```text
 .
-├── app/
+├── data/
+│   └── processed/
+│       ├── keystroke_baseline_results/
+│       ├── multimodal_comparison_results/
+│       ├── multimodal_evaluation_summary/
+│       └── webcam_calibration_evaluation/
 ├── models/
+│   ├── fusion_demo/
+│   └── image_demo/
 ├── sample_data/
+├── test_reports/
 ├── tests/
 ├── utils/
 ├── web_app/
+├── build_webcam_calibration_dataset.py
 ├── create_sample_dataset.py
 ├── final_multimodal_inference.py
+├── retrain_image_webcam_calibrated.py
 ├── requirements.txt
+├── run_all_tests.py
 ├── train_*.py
 ├── *_live_gui.py
 └── README.md
 ```
 
-The repository includes source code, configuration files, selected model-support files, and a balanced sample dataset for demonstration and reproducibility. The full `data/` directory, large pretrained weight files, local virtual environments, caches, and other generated artefacts are intentionally excluded.
+The repository includes source code, configuration files, selected model-support files, selected processed evaluation outputs, and a balanced sample dataset for demonstration and reproducibility. The complete research dataset, large pretrained weight files, local virtual environments, caches, archives, and other unnecessary generated artefacts are intentionally excluded.
 
 ---
 
