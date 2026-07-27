@@ -1,5 +1,5 @@
 {
-    "created_at": "2026-07-27T19:07:02.239352+08:00",
+    "created_at": "2026-07-27T21:15:20.263354+08:00",
     "model_type": "webcam_calibrated_image_classifier",
     "pretrained_visual_encoder": {
         "name": "clip-vit-large-patch14",
@@ -810,7 +810,7 @@
         "weighted_f1": 0.8584533282809145
     },
     "final_training_rows": 629,
-    "final_fit_runtime_seconds": 0.4362954000243917,
+    "final_fit_runtime_seconds": 0.38535719993524253,
     "original_model_preserved": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\models\\image_demo\\image_pipeline.joblib",
     "calibrated_model_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\models\\image_demo\\image_pipeline_webcam_calibrated.joblib"
 }

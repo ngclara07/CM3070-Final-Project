@@ -1,5 +1,5 @@
 {
-    "created_at": "2026-07-27T19:07:02.241335+08:00",
+    "created_at": "2026-07-27T21:15:20.264354+08:00",
     "clip_model": "clip-vit-large-patch14",
     "clip_model_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\models\\clip-vit-large-patch14",
     "clip_embedding_dimension": 768,
@@ -50,7 +50,7 @@
             "macro_recall": 0.859375,
             "macro_f1": 0.8584533282809145,
             "weighted_f1": 0.8584533282809145,
-            "runtime_seconds": 0.4361429000273347,
+            "runtime_seconds": 0.4186557999346405,
             "status": "evaluated"
         },
         {
@@ -60,7 +60,7 @@
             "macro_recall": 0.765625,
             "macro_f1": 0.752629173290938,
             "weighted_f1": 0.752629173290938,
-            "runtime_seconds": 0.2886849999194965,
+            "runtime_seconds": 0.37142159999348223,
             "status": "evaluated"
         },
         {
@@ -70,7 +70,7 @@
             "macro_recall": 0.75,
             "macro_f1": 0.7340647098711615,
             "weighted_f1": 0.7340647098711615,
-            "runtime_seconds": 0.06660079990979284,
+            "runtime_seconds": 0.1307474001077935,
             "status": "evaluated"
         },
         {
@@ -80,7 +80,7 @@
             "macro_recall": 0.71875,
             "macro_f1": 0.7042326546003017,
             "weighted_f1": 0.7042326546003017,
-            "runtime_seconds": 0.10652749997097999,
+            "runtime_seconds": 0.1770581000018865,
             "status": "evaluated"
         }
     ],
