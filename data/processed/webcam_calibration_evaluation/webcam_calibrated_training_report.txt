@@ -1,0 +1,102 @@
+SenseFuzeAI Webcam-Calibrated Image Model Training Report
+======================================================================
+
+Created at: 2026-07-27T19:07:02.251653
+
+Pretrained Visual Encoder
+----------------------------------------------------------------------
+Model: clip-vit-large-patch14
+Model path: C:\Users\CLara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\models\clip-vit-large-patch14
+Embedding dimension: 768
+CLIP fine-tuned: No. Pretrained CLIP remains frozen.
+
+Calibration Dataset
+----------------------------------------------------------------------
+Dataset: C:\Users\CLara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\data\processed\webcam_calibration_clip_features.csv
+Total webcam frame samples: 320
+Unique source videos: 80
+
+Webcam class distribution:
+label
+distracted    80
+fatigued      80
+focused       80
+overloaded    80
+Name: count, dtype: int64
+
+Evaluation Design
+----------------------------------------------------------------------
+Split method: StratifiedGroupKFold
+Grouping variable: source_video
+Number of folds: 5
+Training webcam frames: 256
+Testing webcam frames: 64
+Training source videos: 64
+Testing source videos: 16
+
+Held-out webcam distribution:
+label
+distracted    16
+fatigued      16
+focused       16
+overloaded    16
+Name: count, dtype: int64
+
+Original CLIP Image Data
+----------------------------------------------------------------------
+Included as supplementary training data: True
+Compatible original image rows: 309
+
+Candidate Model Comparison
+----------------------------------------------------------------------
+random_forest            Accuracy=0.8594 MacroF1=0.8585 MacroRecall=0.8594 WeightedF1=0.8585
+svm_rbf                  Accuracy=0.7656 MacroF1=0.7526 MacroRecall=0.7656 WeightedF1=0.7526
+logistic_regression      Accuracy=0.7500 MacroF1=0.7341 MacroRecall=0.7500 WeightedF1=0.7341
+svm_linear               Accuracy=0.7188 MacroF1=0.7042 MacroRecall=0.7188 WeightedF1=0.7042
+
+Selected Model
+----------------------------------------------------------------------
+Selected classifier: random_forest
+Selection rule: highest macro F1, then highest accuracy
+Accuracy: 0.8594
+Macro Precision: 0.8838
+Macro Recall: 0.8594
+Macro F1: 0.8585
+Weighted F1: 0.8585
+
+Held-Out Webcam Classification Report
+----------------------------------------------------------------------
+              precision    recall  f1-score   support
+
+     focused       0.70      1.00      0.82        16
+  distracted       1.00      1.00      1.00        16
+    fatigued       0.92      0.75      0.83        16
+  overloaded       0.92      0.69      0.79        16
+
+    accuracy                           0.86        64
+   macro avg       0.88      0.86      0.86        64
+weighted avg       0.88      0.86      0.86        64
+
+
+Confusion Matrix Labels
+----------------------------------------------------------------------
+['focused', 'distracted', 'fatigued', 'overloaded']
+
+Confusion Matrix
+----------------------------------------------------------------------
+[[16  0  0  0]
+ [ 0 16  0  0]
+ [ 3  0 12  1]
+ [ 4  0  1 11]]
+
+Final Deployment Artifact
+----------------------------------------------------------------------
+Final training rows: 629
+Calibrated model: C:\Users\CLara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\models\image_demo\image_pipeline_webcam_calibrated.joblib
+Original model preserved: C:\Users\CLara\Documents\SIM-UOL Year 3\Semester 2\CM3070 Final project (FP)\assessments_april26\behaviour_app\models\image_demo\image_pipeline.joblib
+
+Methodological Note
+----------------------------------------------------------------------
+The pretrained CLIP ViT-L/14 model is used as a frozen visual feature extractor. The calibration process retrains only the downstream behavioural-state classifier.
+
+Evaluation is grouped by source video to prevent frames originating from the same video appearing in both training and test sets. This reduces frame-level leakage and produces a more defensible estimate of live webcam generalisation.

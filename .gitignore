@@ -73,6 +73,18 @@ venv/
 !/data/processed/multimodal_evaluation_summary/**
 
 
+# Webcam calibration outputs
+
+!/data/processed/webcam_calibration_evaluation/
+!/data/processed/webcam_calibration_evaluation/**
+
+!/data/processed/webcam_calibration_frames/
+!/data/processed/webcam_calibration_frames/**
+
+!/data/webcam_calibration_clip_features_summary.json
+!/data/webcam_calibration_clip_features.csv
+
+
 # ==============================================================
 # Other processed datasets outside data/
 # ==============================================================

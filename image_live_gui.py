@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import csv
 import json
-import os
 import threading
 import time
-from collections import deque
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from tkinter import filedialog, messagebox
@@ -19,28 +18,58 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn.functional as F
+
 from PIL import Image, ImageTk
 from transformers import CLIPModel, CLIPProcessor
 
 
 # =============================================================================
-# Paths
+# PROJECT PATHS
 # =============================================================================
 
-MODEL_DIR = Path("models/image_demo")
-MODEL_PATH = MODEL_DIR / "image_pipeline.joblib"
-FEATURE_COLUMNS_PATH = MODEL_DIR / "feature_columns.json"
+ROOT_DIR = Path(__file__).resolve().parent
 
-CLIP_MODEL_PATH = "models/clip-vit-large-patch14"
+MODEL_DIR = ROOT_DIR / "models" / "image_demo"
 
-OUTPUT_DIR = Path("data/processed")
-LOG_PATH = OUTPUT_DIR / "image_live_gui_predictions.csv"
+# Original image classifier.
+# This artifact remains untouched.
+ORIGINAL_MODEL_PATH = (
+    MODEL_DIR
+    / "image_pipeline.joblib"
+)
 
-WEBCAM_FRAME_DIR = OUTPUT_DIR / "webcam_debug_frames"
+# Newly calibrated webcam/video classifier.
+CALIBRATED_MODEL_PATH = (
+    MODEL_DIR
+    / "image_pipeline_webcam_calibrated.joblib"
+)
+
+FEATURE_COLUMNS_PATH = (
+    MODEL_DIR
+    / "feature_columns.json"
+)
+
+# Same pretrained CLIP visual encoder used during training/calibration.
+CLIP_MODEL_PATH = (
+    ROOT_DIR
+    / "models"
+    / "clip-vit-large-patch14"
+)
+
+OUTPUT_DIR = (
+    ROOT_DIR
+    / "data"
+    / "processed"
+)
+
+LOG_PATH = (
+    OUTPUT_DIR
+    / "image_live_gui_predictions.csv"
+)
 
 
 # =============================================================================
-# Configuration
+# CONFIGURATION
 # =============================================================================
 
 LABELS = [
@@ -50,52 +79,85 @@ LABELS = [
     "overloaded",
 ]
 
-DISPLAY_SIZE = (360, 220)
+EXPECTED_FEATURE_DIMENSION = 768
 
-# Do not immediately classify the first unstable webcam frames.
-WEBCAM_WARMUP_SECONDS = 2.0
-
-# Run expensive CLIP inference every N seconds.
 LIVE_PREDICTION_INTERVAL_SEC = 1.0
 
-# Temporal averaging is more appropriate than majority voting over labels.
-TEMPORAL_PROBABILITY_WINDOW = 6
+# A short smoothing window stabilises live webcam/video output without
+# locking the prediction into one class for too long.
+PREDICTION_SMOOTHING_WINDOW = 3
 
-# Evidence requirements for displaying a definitive live state.
-MIN_TOP_PROBABILITY = 0.35
-MIN_CONFIDENCE_GAP = 0.08
+# If the top two classes are too close, display UNCERTAIN.
+UNCERTAINTY_GAP_THRESHOLD = 0.10
 
-# Existing descriptive confidence categories.
-HIGH_GAP_THRESHOLD = 0.35
-MEDIUM_GAP_THRESHOLD = 0.15
+# Optional minimum top-class probability.
+MIN_TOP_PROBABILITY = 0.40
+
+DISPLAY_SIZE = (
+    360,
+    220,
+)
+
+torch.set_num_threads(2)
 
 
 # =============================================================================
-# Utility functions
+# DEVICE
 # =============================================================================
 
 def get_device() -> torch.device:
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device(
+        "cuda"
+        if torch.cuda.is_available()
+        else "cpu"
+    )
 
 
-def confidence_level(gap: float) -> str:
-    if gap >= HIGH_GAP_THRESHOLD:
+# =============================================================================
+# CONFIDENCE
+# =============================================================================
+
+def confidence_level(
+    gap: float,
+) -> str:
+    if gap >= 0.35:
         return "High"
 
-    if gap >= MEDIUM_GAP_THRESHOLD:
+    if gap >= 0.15:
         return "Medium"
 
     return "Low"
 
 
-def build_clip_model(device: torch.device):
-    processor = CLIPProcessor.from_pretrained(CLIP_MODEL_PATH)
+# =============================================================================
+# CLIP
+# =============================================================================
 
-    model = CLIPModel.from_pretrained(CLIP_MODEL_PATH)
-    model.to(device)
+def build_clip_model(
+    device: torch.device,
+):
+    processor = (
+        CLIPProcessor.from_pretrained(
+            str(CLIP_MODEL_PATH)
+        )
+    )
+
+    model = (
+        CLIPModel.from_pretrained(
+            str(CLIP_MODEL_PATH)
+        )
+    )
+
+    model.to(
+        device
+    )
+
     model.eval()
 
-    return model, processor
+    return (
+        model,
+        processor,
+    )
 
 
 def extract_image_embedding_from_pil(
@@ -105,59 +167,97 @@ def extract_image_embedding_from_pil(
     device: torch.device,
 ) -> np.ndarray:
     """
-    Extract a normalized CLIP image embedding.
-
-    This function is used for BOTH uploaded images and webcam frames so that
-    preprocessing remains identical between both inference paths.
+    Extract the same 768-dimensional normalized CLIP embedding used by the
+    image training and webcam calibration pipelines.
     """
 
-    image = image.convert("RGB")
+    image = image.convert(
+        "RGB"
+    )
 
     inputs = processor(
         images=image,
         return_tensors="pt",
     )
 
-    pixel_values = inputs["pixel_values"].to(device)
+    pixel_values = inputs[
+        "pixel_values"
+    ].to(
+        device
+    )
 
     with torch.inference_mode():
         try:
-            output = model.get_image_features(
-                pixel_values=pixel_values
+            output = (
+                model.get_image_features(
+                    pixel_values=pixel_values
+                )
             )
 
-            if isinstance(output, torch.Tensor):
+            if isinstance(
+                output,
+                torch.Tensor,
+            ):
                 image_features = output
 
-            elif hasattr(output, "image_embeds"):
-                image_features = output.image_embeds
+            elif hasattr(
+                output,
+                "image_embeds",
+            ):
+                image_features = (
+                    output.image_embeds
+                )
 
-            elif hasattr(output, "pooler_output"):
-                image_features = output.pooler_output
+            elif hasattr(
+                output,
+                "pooler_output",
+            ):
+                image_features = (
+                    output.pooler_output
+                )
 
-            elif hasattr(output, "last_hidden_state"):
-                image_features = output.last_hidden_state.mean(dim=1)
+            elif hasattr(
+                output,
+                "last_hidden_state",
+            ):
+                image_features = (
+                    output.last_hidden_state
+                    .mean(dim=1)
+                )
 
             else:
                 raise TypeError(
-                    f"Unsupported CLIP output type: {type(output)}"
+                    "Unsupported CLIP output type: "
+                    f"{type(output)}"
                 )
 
         except Exception:
-            # Compatibility fallback for different transformers versions.
+            # Compatibility fallback for transformer versions where
+            # get_image_features() returns a different wrapper object.
             output = model.vision_model(
                 pixel_values=pixel_values
             )
 
-            if hasattr(output, "pooler_output"):
-                image_features = output.pooler_output
+            if hasattr(
+                output,
+                "pooler_output",
+            ):
+                image_features = (
+                    output.pooler_output
+                )
 
-            elif hasattr(output, "last_hidden_state"):
-                image_features = output.last_hidden_state.mean(dim=1)
+            elif hasattr(
+                output,
+                "last_hidden_state",
+            ):
+                image_features = (
+                    output.last_hidden_state
+                    .mean(dim=1)
+                )
 
             else:
                 raise TypeError(
-                    "Unsupported CLIP vision-model output type: "
+                    "Unsupported CLIP vision output type: "
                     f"{type(output)}"
                 )
 
@@ -176,30 +276,93 @@ def extract_image_embedding_from_pil(
         .astype(np.float32)
     )
 
+    if embedding.ndim != 1:
+        raise ValueError(
+            "CLIP embedding should be one-dimensional. "
+            f"Received shape {embedding.shape}."
+        )
+
+    if embedding.shape[0] != EXPECTED_FEATURE_DIMENSION:
+        raise ValueError(
+            "Unexpected CLIP embedding dimension. "
+            f"Expected {EXPECTED_FEATURE_DIMENSION}, "
+            f"received {embedding.shape[0]}."
+        )
+
+    if not np.all(
+        np.isfinite(
+            embedding
+        )
+    ):
+        raise ValueError(
+            "CLIP embedding contains NaN or infinity."
+        )
+
     return embedding
 
 
 # =============================================================================
-# Application
+# APPLICATION
 # =============================================================================
 
 class ImageDemoApp:
-    def __init__(self, root: tk.Tk):
+    def __init__(
+        self,
+        root: tk.Tk,
+    ):
         self.root = root
 
-        self.root.title("SenseFuzeAI Image Live GUI")
-        self.root.geometry("1080x760")
-        self.root.minsize(900, 720)
-        self.root.configure(bg="#07111f")
-
-        self.validate_required_files()
-
-        OUTPUT_DIR.mkdir(
-            parents=True,
-            exist_ok=True,
+        self.root.title(
+            "SenseFuzeAI Image Live GUI"
         )
 
-        WEBCAM_FRAME_DIR.mkdir(
+        self.root.geometry(
+            "1080x760"
+        )
+
+        self.root.minsize(
+            900,
+            720,
+        )
+
+        self.root.configure(
+            bg="#07111f"
+        )
+
+        # ---------------------------------------------------------------------
+        # Validate model artifacts
+        # ---------------------------------------------------------------------
+
+        if not ORIGINAL_MODEL_PATH.exists():
+            raise FileNotFoundError(
+                "Original image model not found:\n"
+                f"{ORIGINAL_MODEL_PATH}"
+            )
+
+        if not CALIBRATED_MODEL_PATH.exists():
+            raise FileNotFoundError(
+                "Webcam-calibrated image model not found:\n"
+                f"{CALIBRATED_MODEL_PATH}\n\n"
+                "Run retrain_image_webcam_calibrated.py first."
+            )
+
+        if not FEATURE_COLUMNS_PATH.exists():
+            raise FileNotFoundError(
+                "Image feature schema not found:\n"
+                f"{FEATURE_COLUMNS_PATH}"
+            )
+
+        if not CLIP_MODEL_PATH.exists():
+            raise FileNotFoundError(
+                "Pretrained CLIP model not found:\n"
+                f"{CLIP_MODEL_PATH}"
+            )
+
+        # ---------------------------------------------------------------------
+        # Output/logging
+        # ---------------------------------------------------------------------
+
+        OUTPUT_DIR.mkdir(
             parents=True,
             exist_ok=True,
         )
@@ -207,30 +370,48 @@ class ImageDemoApp:
         self.initialise_log_file()
 
         # ---------------------------------------------------------------------
-        # Load classifier
+        # Load BOTH classifiers
         # ---------------------------------------------------------------------
 
-        self.pipeline = joblib.load(MODEL_PATH)
+        self.original_pipeline = joblib.load(
+            ORIGINAL_MODEL_PATH
+        )
+
+        self.calibrated_pipeline = joblib.load(
+            CALIBRATED_MODEL_PATH
+        )
+
+        # ---------------------------------------------------------------------
+        # Load feature schema
+        # ---------------------------------------------------------------------
 
         with FEATURE_COLUMNS_PATH.open(
             "r",
             encoding="utf-8",
-        ) as file:
-            self.feature_columns = json.load(file)
+        ) as f:
+            self.feature_columns = json.load(
+                f
+            )
 
-        if len(self.feature_columns) != 768:
+        if len(
+            self.feature_columns
+        ) != EXPECTED_FEATURE_DIMENSION:
             raise ValueError(
-                "Expected 768 CLIP image features, but "
-                f"feature_columns.json contains {len(self.feature_columns)}."
+                "Unexpected image feature schema size.\n"
+                f"Expected {EXPECTED_FEATURE_DIMENSION}, "
+                f"received {len(self.feature_columns)}."
             )
 
         # ---------------------------------------------------------------------
-        # Load CLIP
+        # Load frozen pretrained CLIP
         # ---------------------------------------------------------------------
 
         self.device = get_device()
 
-        self.clip_model, self.clip_processor = build_clip_model(
+        (
+            self.clip_model,
+            self.clip_processor,
+        ) = build_clip_model(
             self.device
         )
 
@@ -239,136 +420,131 @@ class ImageDemoApp:
         # ---------------------------------------------------------------------
 
         self.capture = None
+
         self.running_video = False
 
-        self.current_frame: Image.Image | None = None
+        self.current_frame: (
+            Image.Image
+            | None
+        ) = None
+
         self.preview_image = None
 
-        self.frame_lock = threading.Lock()
-
         self.last_prediction_time = 0.0
-        self.webcam_started_at = 0.0
 
         self.prediction_busy = False
 
-        # Store probability dictionaries rather than labels.
-        self.live_probability_history: deque[dict[str, float]] = deque(
-            maxlen=TEMPORAL_PROBABILITY_WINDOW
-        )
+        self.prediction_history: list[str] = []
 
-        self.last_source_name = None
+        # Source can be:
+        #
+        #   none
+        #   image
+        #   video
+        #   webcam
+        #
+        self.current_source_type = "none"
+
+        self.current_source_name = "none"
 
         self.build_ui()
 
+
     # =========================================================================
-    # Validation / logging
+    # LOGGING
     # =========================================================================
 
-    def validate_required_files(self) -> None:
-        if not MODEL_PATH.exists():
-            raise FileNotFoundError(
-                f"Image model not found: {MODEL_PATH}"
-            )
-
-        if not FEATURE_COLUMNS_PATH.exists():
-            raise FileNotFoundError(
-                f"Feature columns not found: {FEATURE_COLUMNS_PATH}"
-            )
-
-        if not Path(CLIP_MODEL_PATH).exists():
-            raise FileNotFoundError(
-                f"CLIP model not found: {CLIP_MODEL_PATH}"
-            )
-
-    def initialise_log_file(self) -> None:
-        """
-        Re-create the CSV if an older incompatible header is detected.
-        """
-
-        expected_header = [
-            "timestamp",
-            "mode",
-            "source",
-            "displayed_state",
-            "raw_top_class",
-            "raw_top_probability",
-            "stabilized_top_class",
-            "stabilized_top_probability",
-            "confidence_level",
-            "second_class",
-            "confidence_gap",
-            "feature_dimension",
-            "runtime_seconds",
-            "device",
-            "raw_probabilities_json",
-            "stabilized_probabilities_json",
-        ]
-
-        recreate = False
-
+    def initialise_log_file(
+        self,
+    ) -> None:
         if LOG_PATH.exists():
-            try:
-                with LOG_PATH.open(
-                    "r",
-                    newline="",
-                    encoding="utf-8",
-                ) as file:
-                    reader = csv.reader(file)
-                    existing_header = next(reader, [])
+            return
 
-                recreate = existing_header != expected_header
-
-            except Exception:
-                recreate = True
-
-        if recreate:
-            backup_path = LOG_PATH.with_name(
-                f"{LOG_PATH.stem}_old_"
-                f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                f"{LOG_PATH.suffix}"
+        with LOG_PATH.open(
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as f:
+            writer = csv.writer(
+                f
             )
 
-            LOG_PATH.rename(backup_path)
+            writer.writerow(
+                [
+                    "timestamp",
+                    "mode",
+                    "source_type",
+                    "source",
+                    "model_used",
+                    "current_state",
+                    "raw_top_class",
+                    "confidence",
+                    "confidence_level",
+                    "second_class",
+                    "second_probability",
+                    "confidence_gap",
+                    "uncertain",
+                    "feature_dimension",
+                    "runtime_seconds",
+                    "device",
+                    "probabilities_json",
+                ]
+            )
 
-        if not LOG_PATH.exists():
-            with LOG_PATH.open(
-                "w",
-                newline="",
-                encoding="utf-8",
-            ) as file:
-                writer = csv.writer(file)
-                writer.writerow(expected_header)
 
     # =========================================================================
-    # UI
+    # USER INTERFACE
     # =========================================================================
 
-    def build_ui(self) -> None:
+    def build_ui(
+        self,
+    ) -> None:
+        # ---------------------------------------------------------------------
+        # Header
+        # ---------------------------------------------------------------------
+
         tk.Label(
             self.root,
-            text="SenseFuzeAI Image / Video Behavioural State Classifier",
-            font=("Arial", 20, "bold"),
+            text=(
+                "SenseFuzeAI Image / Video "
+                "Behavioural State Classifier"
+            ),
+            font=(
+                "Arial",
+                20,
+                "bold",
+            ),
             fg="#74f7ff",
             bg="#07111f",
         ).pack(
-            pady=(10, 4)
+            pady=(
+                10,
+                4,
+            )
         )
 
         tk.Label(
             self.root,
             text=(
-                "CLIP-based image inference with "
-                "temporally stabilized live webcam prediction"
+                "Original image classifier + "
+                "webcam-calibrated live classifier "
+                "using frozen CLIP ViT-L/14 embeddings"
             ),
-            font=("Arial", 11),
+            font=(
+                "Arial",
+                10,
+            ),
             fg="white",
             bg="#07111f",
         ).pack(
-            pady=(0, 6)
+            pady=(
+                0,
+                6,
+            )
         )
 
         # ---------------------------------------------------------------------
-        # Status
+        # System status
         # ---------------------------------------------------------------------
 
         status_frame = tk.Frame(
@@ -384,53 +560,84 @@ class ImageDemoApp:
             pady=6,
         )
 
-        self.model_status_label = tk.Label(
+        self.original_model_status_label = tk.Label(
             status_frame,
-            text="Model Status: Loaded",
-            font=("Arial", 11, "bold"),
+            text="Original Model: Loaded",
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
             fg="#66ffd6",
             bg="#10203a",
         )
 
-        self.model_status_label.grid(
+        self.original_model_status_label.grid(
             row=0,
             column=0,
             sticky="w",
             padx=8,
         )
 
+        self.calibrated_model_status_label = tk.Label(
+            status_frame,
+            text="Webcam Model: Loaded",
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
+            fg="#66ffd6",
+            bg="#10203a",
+        )
+
+        self.calibrated_model_status_label.grid(
+            row=0,
+            column=1,
+            sticky="w",
+            padx=18,
+        )
+
         self.image_ready_label = tk.Label(
             status_frame,
             text="Image Readiness: Missing",
-            font=("Arial", 11, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
             fg="#ffb3b3",
             bg="#10203a",
         )
 
         self.image_ready_label.grid(
             row=0,
-            column=1,
+            column=2,
             sticky="w",
-            padx=24,
+            padx=18,
         )
 
         self.device_label = tk.Label(
             status_frame,
             text=f"Device: {self.device}",
-            font=("Arial", 11, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
             fg="#74f7ff",
             bg="#10203a",
         )
 
         self.device_label.grid(
             row=0,
-            column=2,
+            column=3,
             sticky="w",
             padx=8,
         )
 
         # ---------------------------------------------------------------------
-        # Buttons
+        # Controls
         # ---------------------------------------------------------------------
 
         button_frame = tk.Frame(
@@ -447,7 +654,11 @@ class ImageDemoApp:
             text="Choose Image",
             command=self.choose_image,
             width=15,
-            font=("Arial", 10, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
         ).grid(
             row=0,
             column=0,
@@ -460,7 +671,11 @@ class ImageDemoApp:
             text="Choose Video",
             command=self.choose_video,
             width=15,
-            font=("Arial", 10, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
         ).grid(
             row=0,
             column=1,
@@ -475,7 +690,11 @@ class ImageDemoApp:
             width=15,
             bg="#00a884",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
         ).grid(
             row=0,
             column=2,
@@ -485,12 +704,16 @@ class ImageDemoApp:
 
         tk.Button(
             button_frame,
-            text="Save Webcam Frame",
-            command=self.save_current_frame,
-            width=18,
-            bg="#7c4dff",
+            text="Stop",
+            command=self.stop_video,
+            width=10,
+            bg="#c0392b",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
         ).grid(
             row=0,
             column=3,
@@ -500,12 +723,16 @@ class ImageDemoApp:
 
         tk.Button(
             button_frame,
-            text="Stop",
-            command=self.stop_video,
-            width=9,
-            bg="#c0392b",
+            text="Manual Prediction",
+            command=self.predict_current_frame_threaded,
+            width=19,
+            bg="#2E86C1",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
         ).grid(
             row=0,
             column=4,
@@ -515,12 +742,16 @@ class ImageDemoApp:
 
         tk.Button(
             button_frame,
-            text="Manual Prediction",
-            command=self.predict_current_frame_threaded,
-            width=18,
-            bg="#2E86C1",
+            text="Reset",
+            command=self.reset,
+            width=11,
+            bg="#4a5568",
             fg="white",
-            font=("Arial", 10, "bold"),
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
         ).grid(
             row=0,
             column=5,
@@ -528,23 +759,8 @@ class ImageDemoApp:
             pady=4,
         )
 
-        tk.Button(
-            button_frame,
-            text="Reset",
-            command=self.reset,
-            width=10,
-            bg="#4a5568",
-            fg="white",
-            font=("Arial", 10, "bold"),
-        ).grid(
-            row=0,
-            column=6,
-            padx=4,
-            pady=4,
-        )
-
         # ---------------------------------------------------------------------
-        # Runtime status
+        # Status text
         # ---------------------------------------------------------------------
 
         self.status_label = tk.Label(
@@ -552,34 +768,57 @@ class ImageDemoApp:
             text="System ready.",
             fg="#cbd6ff",
             bg="#07111f",
-            font=("Arial", 10),
+            font=(
+                "Arial",
+                10,
+            ),
         )
 
         self.status_label.pack(
             pady=4
         )
 
+        self.active_model_label = tk.Label(
+            self.root,
+            text="Active classifier: —",
+            fg="#ffd166",
+            bg="#07111f",
+            font=(
+                "Arial",
+                10,
+                "bold",
+            ),
+        )
+
+        self.active_model_label.pack(
+            pady=2
+        )
+
         # ---------------------------------------------------------------------
-        # Primary result
+        # Main result
         # ---------------------------------------------------------------------
 
         result_frame = tk.Frame(
             self.root,
             bg="#10203a",
             padx=18,
-            pady=14,
+            pady=12,
         )
 
         result_frame.pack(
             fill="x",
             padx=18,
-            pady=8,
+            pady=6,
         )
 
         tk.Label(
             result_frame,
             text="Current Behavioural State",
-            font=("Arial", 12, "bold"),
+            font=(
+                "Arial",
+                12,
+                "bold",
+            ),
             fg="#cbd6ff",
             bg="#10203a",
         ).pack()
@@ -587,41 +826,56 @@ class ImageDemoApp:
         self.state_label = tk.Label(
             result_frame,
             text="—",
-            font=("Arial", 34, "bold"),
+            font=(
+                "Arial",
+                32,
+                "bold",
+            ),
             fg="#74f7ff",
             bg="#10203a",
         )
 
         self.state_label.pack(
-            pady=(4, 2)
+            pady=(
+                4,
+                1,
+            )
         )
 
         self.confidence_label = tk.Label(
             result_frame,
             text="Confidence: —",
-            font=("Arial", 18, "bold"),
+            font=(
+                "Arial",
+                17,
+                "bold",
+            ),
             fg="white",
             bg="#10203a",
         )
 
         self.confidence_label.pack(
-            pady=2
+            pady=1
         )
 
         self.confidence_level_label = tk.Label(
             result_frame,
             text="Prediction Confidence: —",
-            font=("Arial", 14, "bold"),
+            font=(
+                "Arial",
+                13,
+                "bold",
+            ),
             fg="#cbd6ff",
             bg="#10203a",
         )
 
         self.confidence_level_label.pack(
-            pady=2
+            pady=1
         )
 
         # ---------------------------------------------------------------------
-        # Lower area
+        # Lower frame
         # ---------------------------------------------------------------------
 
         lower_frame = tk.Frame(
@@ -636,6 +890,7 @@ class ImageDemoApp:
             pady=6,
         )
 
+        # Preview
         preview_frame = tk.Frame(
             lower_frame,
             bg="#07111f",
@@ -645,7 +900,10 @@ class ImageDemoApp:
             side="left",
             fill="both",
             expand=False,
-            padx=(0, 12),
+            padx=(
+                0,
+                12,
+            ),
         )
 
         self.preview_label = tk.Label(
@@ -657,10 +915,15 @@ class ImageDemoApp:
             pady=6
         )
 
+        # Technical details
         technical_frame = tk.LabelFrame(
             lower_frame,
             text="Technical Details",
-            font=("Arial", 11, "bold"),
+            font=(
+                "Arial",
+                11,
+                "bold",
+            ),
             fg="#74f7ff",
             bg="#07111f",
             padx=10,
@@ -677,7 +940,10 @@ class ImageDemoApp:
             technical_frame,
             height=7,
             width=80,
-            font=("Consolas", 9),
+            font=(
+                "Consolas",
+                9,
+            ),
             bg="#0b1220",
             fg="#dbeafe",
         )
@@ -692,7 +958,10 @@ class ImageDemoApp:
             technical_frame,
             height=7,
             width=80,
-            font=("Consolas", 9),
+            font=(
+                "Consolas",
+                9,
+            ),
             bg="#0b1220",
             fg="#dbeafe",
         )
@@ -703,97 +972,168 @@ class ImageDemoApp:
             pady=4,
         )
 
+
     # =========================================================================
-    # Source management
+    # SOURCE / CLASSIFIER SELECTION
     # =========================================================================
 
-    def reset_temporal_history(self) -> None:
-        self.live_probability_history.clear()
+    def get_active_pipeline(
+        self,
+    ):
+        """
+        Select the classifier according to the current input domain.
 
-    def choose_image(self) -> None:
+        Still image:
+            original image model
+
+        Video/webcam:
+            webcam-calibrated model
+        """
+
+        if self.current_source_type == "image":
+            return (
+                self.original_pipeline,
+                "original_image_model",
+                ORIGINAL_MODEL_PATH,
+            )
+
+        if self.current_source_type in {
+            "video",
+            "webcam",
+        }:
+            return (
+                self.calibrated_pipeline,
+                "webcam_calibrated_model",
+                CALIBRATED_MODEL_PATH,
+            )
+
+        raise ValueError(
+            "No valid image/video/webcam source is active."
+        )
+
+
+    # =========================================================================
+    # IMAGE INPUT
+    # =========================================================================
+
+    def choose_image(
+        self,
+    ) -> None:
         self.stop_video(
             update_status=False
         )
 
-        self.reset_temporal_history()
+        self.prediction_history = []
 
-        file_path = filedialog.askopenfilename(
-            title="Select image file",
-            filetypes=[
-                (
-                    "Image files",
-                    "*.jpg *.jpeg *.png *.webp"
-                ),
-                (
-                    "All files",
-                    "*.*"
-                ),
-            ],
+        file_path = (
+            filedialog.askopenfilename(
+                title="Select image file",
+                filetypes=[
+                    (
+                        "Image files",
+                        "*.jpg *.jpeg *.png *.webp",
+                    ),
+                    (
+                        "All files",
+                        "*.*",
+                    ),
+                ],
+            )
         )
 
         if not file_path:
             return
 
         try:
-            image = Image.open(
-                file_path
-            ).convert(
-                "RGB"
+            image = (
+                Image.open(
+                    file_path
+                )
+                .convert(
+                    "RGB"
+                )
             )
+
+            self.current_frame = image
+
+            self.current_source_type = (
+                "image"
+            )
+
+            self.current_source_name = (
+                Path(
+                    file_path
+                ).name
+            )
+
+            self.show_pil_image(
+                image
+            )
+
+            self.image_ready_label.config(
+                text="Image Readiness: Ready",
+                fg="#66ffd6",
+            )
+
+            self.active_model_label.config(
+                text=(
+                    "Active classifier: "
+                    "Original Image Model"
+                )
+            )
+
+            self.status_label.config(
+                text=(
+                    f"Loaded image: "
+                    f"{self.current_source_name}"
+                )
+            )
+
+            self.clear_prediction()
 
         except Exception as exc:
             messagebox.showerror(
                 "Image Error",
                 str(exc),
             )
-            return
 
-        with self.frame_lock:
-            self.current_frame = image.copy()
 
-        self.last_source_name = Path(file_path).name
+    # =========================================================================
+    # VIDEO INPUT
+    # =========================================================================
 
-        self.show_pil_image(
-            image
-        )
-
-        self.image_ready_label.config(
-            text="Image Readiness: Ready",
-            fg="#66ffd6",
-        )
-
-        self.status_label.config(
-            text=f"Loaded image: {Path(file_path).name}"
-        )
-
-        self.clear_prediction()
-
-    def choose_video(self) -> None:
+    def choose_video(
+        self,
+    ) -> None:
         self.stop_video(
             update_status=False
         )
 
-        self.reset_temporal_history()
+        self.prediction_history = []
 
-        file_path = filedialog.askopenfilename(
-            title="Select video file",
-            filetypes=[
-                (
-                    "Video files",
-                    "*.mp4 *.avi *.mov *.mkv *.webm"
-                ),
-                (
-                    "All files",
-                    "*.*"
-                ),
-            ],
+        file_path = (
+            filedialog.askopenfilename(
+                title="Select video file",
+                filetypes=[
+                    (
+                        "Video files",
+                        "*.mp4 *.avi *.mov *.mkv *.webm",
+                    ),
+                    (
+                        "All files",
+                        "*.*",
+                    ),
+                ],
+            )
         )
 
         if not file_path:
             return
 
-        self.capture = cv2.VideoCapture(
-            file_path
+        self.capture = (
+            cv2.VideoCapture(
+                file_path
+            )
         )
 
         if not self.capture.isOpened():
@@ -807,56 +1147,73 @@ class ImageDemoApp:
             return
 
         self.running_video = True
-        self.last_prediction_time = 0.0
-        self.webcam_started_at = time.monotonic()
 
-        source_name = Path(file_path).name
-        self.last_source_name = source_name
+        self.current_source_type = (
+            "video"
+        )
+
+        self.current_source_name = (
+            Path(
+                file_path
+            ).name
+        )
+
+        self.prediction_history = []
+
+        self.last_prediction_time = 0.0
 
         self.image_ready_label.config(
             text="Image Readiness: Ready",
             fg="#66ffd6",
         )
 
+        self.active_model_label.config(
+            text=(
+                "Active classifier: "
+                "Webcam-Calibrated Model"
+            )
+        )
+
         self.status_label.config(
-            text=f"Playing video: {source_name}"
+            text=(
+                f"Playing video: "
+                f"{self.current_source_name}"
+            )
         )
 
-        self.video_loop(
-            source_name=source_name,
-            webcam_mode=False,
+        self.video_loop()
+
+
+    # =========================================================================
+    # WEBCAM INPUT
+    # =========================================================================
+
+    def start_webcam(
+        self,
+    ) -> None:
+        self.stop_video(
+            update_status=False
         )
 
-    def open_webcam(self):
-        """
-        Use DirectShow on Windows when possible because it often gives more
-        predictable webcam startup behaviour. Fall back to the default backend.
-        """
+        self.prediction_history = []
 
-        if os.name == "nt":
+        # CAP_DSHOW is generally more stable on Windows.
+        if hasattr(
+            cv2,
+            "CAP_DSHOW",
+        ):
             capture = cv2.VideoCapture(
                 0,
                 cv2.CAP_DSHOW,
             )
 
-            if capture.isOpened():
-                return capture
+        else:
+            capture = cv2.VideoCapture(
+                0
+            )
 
+        if not capture.isOpened():
             capture.release()
-
-        return cv2.VideoCapture(0)
-
-    def start_webcam(self) -> None:
-        self.stop_video(
-            update_status=False
-        )
-
-        self.reset_temporal_history()
-
-        self.capture = self.open_webcam()
-
-        if self.capture is None or not self.capture.isOpened():
-            self.capture = None
 
             messagebox.showerror(
                 "Webcam Error",
@@ -865,70 +1222,81 @@ class ImageDemoApp:
 
             return
 
-        # Request a conventional webcam resolution.
-        # The CLIP processor will still perform its own model-specific resize.
-        self.capture.set(
+        # Set a conventional capture resolution.
+        capture.set(
             cv2.CAP_PROP_FRAME_WIDTH,
             640,
         )
 
-        self.capture.set(
+        capture.set(
             cv2.CAP_PROP_FRAME_HEIGHT,
             480,
         )
 
-        self.capture.set(
-            cv2.CAP_PROP_FPS,
-            30,
-        )
+        self.capture = capture
 
         self.running_video = True
 
-        self.last_prediction_time = 0.0
-        self.webcam_started_at = time.monotonic()
+        self.current_source_type = (
+            "webcam"
+        )
 
-        self.last_source_name = "webcam"
+        self.current_source_name = (
+            "webcam"
+        )
+
+        self.last_prediction_time = 0.0
 
         self.image_ready_label.config(
-            text="Image Readiness: Warming Up",
-            fg="#ffd166",
+            text="Image Readiness: Ready",
+            fg="#66ffd6",
+        )
+
+        self.active_model_label.config(
+            text=(
+                "Active classifier: "
+                "Webcam-Calibrated Model"
+            )
         )
 
         self.status_label.config(
             text=(
-                "Webcam started. Waiting briefly for "
-                "exposure/autofocus stabilization..."
+                "Webcam live prediction enabled."
             )
         )
 
-        self.video_loop(
-            source_name="webcam",
-            webcam_mode=True,
-        )
+        self.video_loop()
+
 
     # =========================================================================
-    # Video / webcam loop
+    # VIDEO LOOP
     # =========================================================================
 
     def video_loop(
         self,
-        source_name: str = "video",
-        webcam_mode: bool = False,
     ) -> None:
-        if not self.running_video:
+        if (
+            not self.running_video
+            or self.capture is None
+        ):
             return
 
-        if self.capture is None:
-            return
+        success, frame = (
+            self.capture.read()
+        )
 
-        ret, frame = self.capture.read()
-
-        if not ret:
+        if (
+            not success
+            or frame is None
+        ):
             self.status_label.config(
-                text="Video/webcam frame capture failed."
+                text="Video/frame capture ended."
             )
 
-            self.stop_video()
+            self.stop_video(
+                update_status=False
+            )
+
             return
 
         frame_rgb = cv2.cvtColor(
@@ -936,14 +1304,15 @@ class ImageDemoApp:
             cv2.COLOR_BGR2RGB,
         )
 
-        pil_image = Image.fromarray(
-            frame_rgb
+        pil_image = (
+            Image.fromarray(
+                frame_rgb
+            )
         )
 
-        # Use a copy so that the inference thread does not race with the
-        # continually changing webcam frame.
-        with self.frame_lock:
-            self.current_frame = pil_image.copy()
+        self.current_frame = (
+            pil_image
+        )
 
         self.show_pil_image(
             pil_image
@@ -951,58 +1320,25 @@ class ImageDemoApp:
 
         now = time.monotonic()
 
-        if webcam_mode:
-            elapsed = now - self.webcam_started_at
-
-            if elapsed < WEBCAM_WARMUP_SECONDS:
-                remaining = max(
-                    0.0,
-                    WEBCAM_WARMUP_SECONDS - elapsed,
-                )
-
-                self.status_label.config(
-                    text=(
-                        "Webcam stabilizing... "
-                        f"{remaining:.1f} seconds"
-                    )
-                )
-
-                self.root.after(
-                    30,
-                    lambda: self.video_loop(
-                        source_name,
-                        webcam_mode,
-                    ),
-                )
-
-                return
-
-            self.image_ready_label.config(
-                text="Image Readiness: Ready",
-                fg="#66ffd6",
-            )
-
         if (
-            now - self.last_prediction_time
+            now
+            - self.last_prediction_time
             >= LIVE_PREDICTION_INTERVAL_SEC
         ):
             self.last_prediction_time = now
 
             self.predict_current_frame_threaded(
-                mode="Live",
-                source_name=source_name,
+                mode="Live"
             )
 
         self.root.after(
             30,
-            lambda: self.video_loop(
-                source_name,
-                webcam_mode,
-            ),
+            self.video_loop,
         )
 
+
     # =========================================================================
-    # Preview / debug saving
+    # PREVIEW
     # =========================================================================
 
     def show_pil_image(
@@ -1015,292 +1351,130 @@ class ImageDemoApp:
             DISPLAY_SIZE
         )
 
-        self.preview_image = ImageTk.PhotoImage(
-            display
+        self.preview_image = (
+            ImageTk.PhotoImage(
+                display
+            )
         )
 
         self.preview_label.config(
             image=self.preview_image
         )
 
-    def get_current_frame_copy(
-        self,
-    ) -> Image.Image | None:
-        with self.frame_lock:
-            if self.current_frame is None:
-                return None
-
-            return self.current_frame.copy()
-
-    def save_current_frame(self) -> None:
-        frame = self.get_current_frame_copy()
-
-        if frame is None:
-            messagebox.showwarning(
-                "No Frame",
-                "No image or webcam frame is currently available.",
-            )
-            return
-
-        timestamp = datetime.now().strftime(
-            "%Y%m%d_%H%M%S_%f"
-        )
-
-        output_path = (
-            WEBCAM_FRAME_DIR
-            / f"webcam_frame_{timestamp}.jpg"
-        )
-
-        frame.save(
-            output_path,
-            format="JPEG",
-            quality=95,
-        )
-
-        self.status_label.config(
-            text=f"Frame saved: {output_path}"
-        )
-
-        messagebox.showinfo(
-            "Frame Saved",
-            (
-                "The exact current frame was saved.\n\n"
-                f"{output_path}\n\n"
-                "You can now load this same file with "
-                "'Choose Image' and compare the prediction."
-            ),
-        )
 
     # =========================================================================
-    # Feature extraction
+    # FEATURE EXTRACTION
     # =========================================================================
 
     def frame_to_features(
         self,
         image: Image.Image,
     ) -> pd.DataFrame:
-        embedding = extract_image_embedding_from_pil(
-            image=image,
-            model=self.clip_model,
-            processor=self.clip_processor,
-            device=self.device,
+        embedding = (
+            extract_image_embedding_from_pil(
+                image=image,
+                model=self.clip_model,
+                processor=self.clip_processor,
+                device=self.device,
+            )
         )
 
-        if embedding.ndim != 1:
-            raise ValueError(
-                f"Expected 1-D CLIP embedding; received {embedding.shape}."
-            )
-
         features = {
-            f"image_clip_emb_{index}": float(value)
-            for index, value in enumerate(embedding)
+            f"image_clip_emb_{index}": float(
+                value
+            )
+            for index, value
+            in enumerate(
+                embedding
+            )
         }
 
         missing = [
             column
-            for column in self.feature_columns
+            for column
+            in self.feature_columns
             if column not in features
         ]
 
         if missing:
             raise ValueError(
-                "Image feature schema mismatch. "
-                f"Missing columns: {missing[:20]}"
+                "Missing image feature columns:\n"
+                f"{missing[:20]}"
             )
 
-        extra = [
-            column
-            for column in features
-            if column not in self.feature_columns
-        ]
-
-        if extra:
-            raise ValueError(
-                "Image feature schema mismatch. "
-                f"Unexpected columns: {extra[:20]}"
-            )
-
-        return pd.DataFrame(
+        x = pd.DataFrame(
             [
                 [
-                    features[column]
-                    for column in self.feature_columns
+                    features[
+                        column
+                    ]
+                    for column
+                    in self.feature_columns
                 ]
             ],
             columns=self.feature_columns,
         )
 
-    # =========================================================================
-    # Prediction helpers
-    # =========================================================================
+        return x
 
-    def classifier_probabilities(
-        self,
-        x: pd.DataFrame,
-    ) -> dict[str, float]:
-        if not hasattr(
-            self.pipeline,
-            "predict_proba",
-        ):
-            raise AttributeError(
-                "The loaded image pipeline does not provide predict_proba()."
-            )
-
-        probabilities = self.pipeline.predict_proba(
-            x
-        )[0]
-
-        classes = self.pipeline.classes_
-
-        result = {
-            str(label): float(probability)
-            for label, probability
-            in zip(classes, probabilities)
-        }
-
-        # Ensure expected classes exist.
-        for label in LABELS:
-            result.setdefault(
-                label,
-                0.0,
-            )
-
-        total = sum(
-            result.values()
-        )
-
-        if total <= 0:
-            raise ValueError(
-                "Classifier returned an invalid probability distribution."
-            )
-
-        return {
-            label: value / total
-            for label, value in result.items()
-        }
-
-    def average_live_probabilities(
-        self,
-    ) -> dict[str, float]:
-        if not self.live_probability_history:
-            return {
-                label: 0.0
-                for label in LABELS
-            }
-
-        averaged = {}
-
-        for label in LABELS:
-            values = [
-                probabilities.get(
-                    label,
-                    0.0,
-                )
-                for probabilities
-                in self.live_probability_history
-            ]
-
-            averaged[label] = float(
-                np.mean(values)
-            )
-
-        total = sum(
-            averaged.values()
-        )
-
-        if total > 0:
-            averaged = {
-                label: probability / total
-                for label, probability
-                in averaged.items()
-            }
-
-        return averaged
-
-    @staticmethod
-    def rank_probabilities(
-        probabilities: dict[str, float],
-    ):
-        return sorted(
-            probabilities.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-
-    def decide_displayed_state(
-        self,
-        probabilities: dict[str, float],
-    ):
-        ranked = self.rank_probabilities(
-            probabilities
-        )
-
-        top_class, top_probability = ranked[0]
-
-        if len(ranked) >= 2:
-            second_class, second_probability = ranked[1]
-        else:
-            second_class, second_probability = "none", 0.0
-
-        gap = float(
-            top_probability - second_probability
-        )
-
-        sufficiently_confident = (
-            top_probability >= MIN_TOP_PROBABILITY
-            and gap >= MIN_CONFIDENCE_GAP
-        )
-
-        if sufficiently_confident:
-            displayed_state = top_class
-        else:
-            displayed_state = "uncertain"
-
-        return (
-            displayed_state,
-            top_class,
-            float(top_probability),
-            second_class,
-            float(second_probability),
-            gap,
-        )
 
     # =========================================================================
-    # Prediction
+    # PREDICTION THREAD
     # =========================================================================
 
     def predict_current_frame_threaded(
         self,
         mode: str = "Manual",
-        source_name: str = "current frame",
     ) -> None:
         if self.prediction_busy:
             return
 
-        frame = self.get_current_frame_copy()
-
-        if frame is None:
-            messagebox.showwarning(
-                "Prediction",
-                "No image/frame is available for prediction.",
-            )
+        if self.current_frame is None:
+            if mode == "Manual":
+                messagebox.showerror(
+                    "Prediction Error",
+                    "No image/frame available for prediction.",
+                )
 
             return
 
-        threading.Thread(
-            target=self.predict_frame,
+        # Copy the frame so the webcam thread cannot change it while CLIP
+        # inference is running.
+        frame_copy = (
+            self.current_frame.copy()
+        )
+
+        source_type = (
+            self.current_source_type
+        )
+
+        source_name = (
+            self.current_source_name
+        )
+
+        thread = threading.Thread(
+            target=self.predict_current_frame,
             args=(
-                frame,
+                frame_copy,
                 mode,
+                source_type,
                 source_name,
             ),
             daemon=True,
-        ).start()
+        )
 
-    def predict_frame(
+        thread.start()
+
+
+    # =========================================================================
+    # PREDICTION
+    # =========================================================================
+
+    def predict_current_frame(
         self,
         frame: Image.Image,
         mode: str,
+        source_type: str,
         source_name: str,
     ) -> None:
         try:
@@ -1309,55 +1483,185 @@ class ImageDemoApp:
             self.root.after(
                 0,
                 lambda: self.status_label.config(
-                    text="Extracting CLIP visual features..."
+                    text=(
+                        "Extracting CLIP visual features..."
+                    )
                 ),
             )
 
-            start = time.perf_counter()
+            start = (
+                time.perf_counter()
+            )
+
+            # -------------------------------------------------------------
+            # Feature extraction
+            # -------------------------------------------------------------
 
             x = self.frame_to_features(
                 frame
             )
 
-            raw_probabilities = self.classifier_probabilities(
-                x
-            )
+            # -------------------------------------------------------------
+            # Source-specific classifier
+            # -------------------------------------------------------------
 
-            raw_ranked = self.rank_probabilities(
-                raw_probabilities
-            )
-
-            raw_top_class, raw_top_probability = raw_ranked[0]
-
-            # -----------------------------------------------------------------
-            # Live webcam/video: temporal probability averaging
-            # -----------------------------------------------------------------
-
-            if mode == "Live":
-                self.live_probability_history.append(
-                    dict(raw_probabilities)
+            if source_type == "image":
+                pipeline = (
+                    self.original_pipeline
                 )
 
-                stabilized_probabilities = (
-                    self.average_live_probabilities()
+                model_used = (
+                    "original_image_model"
+                )
+
+                model_path = (
+                    ORIGINAL_MODEL_PATH
+                )
+
+            elif source_type in {
+                "video",
+                "webcam",
+            }:
+                pipeline = (
+                    self.calibrated_pipeline
+                )
+
+                model_used = (
+                    "webcam_calibrated_model"
+                )
+
+                model_path = (
+                    CALIBRATED_MODEL_PATH
                 )
 
             else:
-                # Manual/upload predictions remain single-image predictions.
-                stabilized_probabilities = dict(
-                    raw_probabilities
+                raise ValueError(
+                    "Unknown source type: "
+                    f"{source_type}"
                 )
 
-            (
-                displayed_state,
-                stabilized_top_class,
-                stabilized_top_probability,
-                second_class,
-                second_probability,
-                confidence_gap,
-            ) = self.decide_displayed_state(
-                stabilized_probabilities
+            # -------------------------------------------------------------
+            # Classification
+            # -------------------------------------------------------------
+
+            prediction = (
+                pipeline.predict(
+                    x
+                )[0]
             )
+
+            if not hasattr(
+                pipeline,
+                "predict_proba",
+            ):
+                raise AttributeError(
+                    "Selected image classifier does not expose "
+                    "predict_proba()."
+                )
+
+            probabilities = (
+                pipeline.predict_proba(
+                    x
+                )[0]
+            )
+
+            classes = (
+                pipeline.classes_
+            )
+
+            probability_dict = {
+                str(class_label): float(
+                    probability
+                )
+                for class_label, probability
+                in zip(
+                    classes,
+                    probabilities,
+                )
+            }
+
+            sorted_probs = sorted(
+                probability_dict.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+
+            top_class, top_prob = (
+                sorted_probs[0]
+            )
+
+            if len(
+                sorted_probs
+            ) >= 2:
+                (
+                    second_class,
+                    second_prob,
+                ) = sorted_probs[1]
+
+            else:
+                second_class = "none"
+                second_prob = 0.0
+
+            gap = float(
+                top_prob
+                - second_prob
+            )
+
+            # -------------------------------------------------------------
+            # Uncertainty handling
+            # -------------------------------------------------------------
+
+            uncertain = (
+                gap
+                < UNCERTAINTY_GAP_THRESHOLD
+                or top_prob
+                < MIN_TOP_PROBABILITY
+            )
+
+            if uncertain:
+                current_state = (
+                    "uncertain"
+                )
+
+            elif (
+                mode == "Live"
+                and source_type
+                in {
+                    "video",
+                    "webcam",
+                }
+            ):
+                self.prediction_history.append(
+                    str(
+                        top_class
+                    )
+                )
+
+                if (
+                    len(
+                        self.prediction_history
+                    )
+                    > PREDICTION_SMOOTHING_WINDOW
+                ):
+                    self.prediction_history.pop(
+                        0
+                    )
+
+                current_state = (
+                    Counter(
+                        self.prediction_history
+                    )
+                    .most_common(
+                        1
+                    )[0][0]
+                )
+
+            else:
+                current_state = (
+                    str(
+                        top_class
+                    )
+                )
 
             runtime = (
                 time.perf_counter()
@@ -1366,64 +1670,118 @@ class ImageDemoApp:
 
             result = {
                 "mode": mode,
-                "source": source_name,
 
-                "displayed_state": displayed_state,
-
-                "raw_top_class": raw_top_class,
-                "raw_top_probability": float(
-                    raw_top_probability
+                "source_type": (
+                    source_type
                 ),
 
-                "stabilized_top_class": stabilized_top_class,
-                "stabilized_top_probability": float(
-                    stabilized_top_probability
+                "source": (
+                    source_name
+                ),
+
+                "model_used": (
+                    model_used
+                ),
+
+                "model_path": (
+                    str(
+                        model_path
+                    )
+                ),
+
+                "prediction": (
+                    str(
+                        prediction
+                    )
+                ),
+
+                "current_state": (
+                    current_state
+                ),
+
+                "raw_top_class": (
+                    str(
+                        top_class
+                    )
+                ),
+
+                "confidence": float(
+                    top_prob
                 ),
 
                 "confidence_percent": float(
-                    stabilized_top_probability * 100
+                    top_prob
+                    * 100
                 ),
 
-                "confidence_level": confidence_level(
-                    confidence_gap
+                "confidence_level": (
+                    confidence_level(
+                        gap
+                    )
                 ),
 
-                "second_class": second_class,
-                "second_probability": second_probability,
-                "confidence_gap": confidence_gap,
-
-                "raw_probabilities": raw_probabilities,
-                "stabilized_probabilities": stabilized_probabilities,
-
-                "history_length": len(
-                    self.live_probability_history
+                "second_class": (
+                    str(
+                        second_class
+                    )
                 ),
 
-                "temporal_window": (
-                    TEMPORAL_PROBABILITY_WINDOW
-                    if mode == "Live"
-                    else "N/A"
+                "second_probability": float(
+                    second_prob
                 ),
 
-                "min_top_probability": MIN_TOP_PROBABILITY,
-                "min_confidence_gap": MIN_CONFIDENCE_GAP,
+                "confidence_gap": (
+                    gap
+                ),
+
+                "uncertain": bool(
+                    uncertain
+                ),
+
+                "probabilities": (
+                    probability_dict
+                ),
 
                 "feature_dimension": int(
                     x.shape[1]
                 ),
 
-                "runtime_seconds": runtime,
+                "runtime_seconds": float(
+                    runtime
+                ),
+
                 "device": str(
                     self.device
                 ),
-            }
 
-            self.root.after(
-                0,
-                lambda: self.update_prediction_ui(
-                    result
+                "smoothing_window": (
+                    PREDICTION_SMOOTHING_WINDOW
+                    if (
+                        mode == "Live"
+                        and source_type
+                        in {
+                            "video",
+                            "webcam",
+                        }
+                    )
+                    else "N/A"
                 ),
-            )
+
+                "recent_live_history": (
+                    list(
+                        self.prediction_history
+                    )
+                    if (
+                        mode == "Live"
+                        and source_type
+                        in {
+                            "video",
+                            "webcam",
+                        }
+                    )
+                    else "N/A"
+                ),
+            }
 
             self.log_prediction(
                 result
@@ -1431,29 +1789,40 @@ class ImageDemoApp:
 
             self.root.after(
                 0,
-                lambda: self.status_label.config(
+                lambda result=result:
+                self.update_prediction_ui(
+                    result
+                ),
+            )
+
+            self.root.after(
+                0,
+                lambda:
+                self.status_label.config(
                     text=(
-                        f"{mode} prediction complete. "
-                        f"Raw: {raw_top_class} | "
-                        f"Stabilized: {stabilized_top_class}"
+                        f"{mode} prediction complete."
                     )
                 ),
             )
 
         except Exception as exc:
-            error_message = str(exc)
+            error_message = str(
+                exc
+            )
 
             self.root.after(
                 0,
-                lambda message=error_message: messagebox.showerror(
+                lambda error_message=error_message:
+                messagebox.showerror(
                     "Prediction Error",
-                    message,
+                    error_message,
                 ),
             )
 
             self.root.after(
                 0,
-                lambda: self.status_label.config(
+                lambda:
+                self.status_label.config(
                     text="Prediction failed."
                 ),
             )
@@ -1461,30 +1830,46 @@ class ImageDemoApp:
         finally:
             self.prediction_busy = False
 
+
     # =========================================================================
-    # UI result rendering
+    # RESULT UI
     # =========================================================================
 
     def update_prediction_ui(
         self,
         result: dict,
     ) -> None:
-        displayed_state = result[
-            "displayed_state"
-        ]
+        # ---------------------------------------------------------------------
+        # Behavioural state
+        # ---------------------------------------------------------------------
 
         self.state_label.config(
-            text=displayed_state.upper()
+            text=(
+                result[
+                    "current_state"
+                ]
+                .upper()
+            )
         )
 
-        if displayed_state == "uncertain":
+        if (
+            result[
+                "current_state"
+            ]
+            == "uncertain"
+        ):
             self.state_label.config(
                 fg="#ffd166"
             )
+
         else:
             self.state_label.config(
                 fg="#74f7ff"
             )
+
+        # ---------------------------------------------------------------------
+        # Confidence
+        # ---------------------------------------------------------------------
 
         self.confidence_label.config(
             text=(
@@ -1493,11 +1878,13 @@ class ImageDemoApp:
             )
         )
 
-        level = result[
-            "confidence_level"
-        ]
+        level = (
+            result[
+                "confidence_level"
+            ]
+        )
 
-        colour = {
+        level_colour = {
             "High": "#66ffd6",
             "Medium": "#ffd166",
             "Low": "#ff6b8a",
@@ -1507,51 +1894,69 @@ class ImageDemoApp:
         )
 
         self.confidence_level_label.config(
-            text=f"Prediction Confidence: {level}",
-            fg=colour,
+            text=(
+                "Prediction Confidence: "
+                f"{level}"
+            ),
+            fg=level_colour,
         )
 
         # ---------------------------------------------------------------------
-        # Probability panel
+        # Model indicator
+        # ---------------------------------------------------------------------
+
+        display_model = (
+            "Original Image Model"
+            if result[
+                "model_used"
+            ]
+            == "original_image_model"
+            else "Webcam-Calibrated Model"
+        )
+
+        self.active_model_label.config(
+            text=(
+                "Active classifier: "
+                f"{display_model}"
+            )
+        )
+
+        # ---------------------------------------------------------------------
+        # Probability distribution
         # ---------------------------------------------------------------------
 
         prob_lines = [
-            "Stabilized probability distribution:",
+            "Probability distribution:",
             "",
         ]
 
-        stabilized_ranked = self.rank_probabilities(
-            result["stabilized_probabilities"]
+        sorted_probabilities = sorted(
+            result[
+                "probabilities"
+            ].items(),
+            key=lambda item:
+            item[1],
+            reverse=True,
         )
 
-        for label, probability in stabilized_ranked:
+        for (
+            label,
+            probability,
+        ) in sorted_probabilities:
             bar_length = int(
-                probability * 30
+                probability
+                * 30
             )
 
-            bar = "█" * bar_length
+            bar = (
+                "█"
+                * bar_length
+            )
 
             prob_lines.append(
                 f"{label:12s}: "
                 f"{probability * 100:6.2f}%  "
                 f"{bar}"
-            )
-
-        prob_lines.extend(
-            [
-                "",
-                "Current raw frame:",
-            ]
-        )
-
-        raw_ranked = self.rank_probabilities(
-            result["raw_probabilities"]
-        )
-
-        for label, probability in raw_ranked:
-            prob_lines.append(
-                f"{label:12s}: "
-                f"{probability * 100:6.2f}%"
             )
 
         self.prob_text.delete(
@@ -1561,7 +1966,9 @@ class ImageDemoApp:
 
         self.prob_text.insert(
             tk.END,
-            "\n".join(prob_lines),
+            "\n".join(
+                prob_lines
+            ),
         )
 
         # ---------------------------------------------------------------------
@@ -1569,27 +1976,96 @@ class ImageDemoApp:
         # ---------------------------------------------------------------------
 
         info_lines = [
-            "Image/video diagnostics:",
+            "Image / video diagnostics:",
             "",
-            f"Mode                    : {result['mode']}",
-            f"Source                  : {result['source']}",
-            f"Displayed state         : {result['displayed_state']}",
-            f"Raw top class           : {result['raw_top_class']}",
-            f"Raw top probability     : {result['raw_top_probability'] * 100:.2f}%",
-            f"Stabilized top class    : {result['stabilized_top_class']}",
-            f"Stabilized probability  : {result['stabilized_top_probability'] * 100:.2f}%",
-            f"Second class            : {result['second_class']}",
-            f"Confidence gap          : {result['confidence_gap']:.4f}",
-            f"Confidence level        : {result['confidence_level']}",
-            f"Required top probability: {result['min_top_probability']:.2f}",
-            f"Required gap            : {result['min_confidence_gap']:.2f}",
-            f"Temporal history        : {result['history_length']}",
-            f"Temporal window         : {result['temporal_window']}",
-            f"Feature dimension       : {result['feature_dimension']}",
-            f"Runtime                 : {result['runtime_seconds']:.4f} sec",
-            f"Device                  : {result['device']}",
-            f"Logged to               : {LOG_PATH}",
-            f"Timestamp               : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            (
+                f"Mode                   : "
+                f"{result['mode']}"
+            ),
+            (
+                f"Source type            : "
+                f"{result['source_type']}"
+            ),
+            (
+                f"Source                 : "
+                f"{result['source']}"
+            ),
+            (
+                f"Classifier             : "
+                f"{display_model}"
+            ),
+            (
+                f"Displayed state        : "
+                f"{result['current_state']}"
+            ),
+            (
+                f"Raw top class          : "
+                f"{result['raw_top_class']}"
+            ),
+            (
+                f"Confidence             : "
+                f"{result['confidence_percent']:.2f}%"
+            ),
+            (
+                f"Confidence level       : "
+                f"{result['confidence_level']}"
+            ),
+            (
+                f"Second-highest class   : "
+                f"{result['second_class']}"
+            ),
+            (
+                f"Second probability     : "
+                f"{result['second_probability'] * 100:.2f}%"
+            ),
+            (
+                f"Confidence gap         : "
+                f"{result['confidence_gap']:.4f}"
+            ),
+            (
+                f"Uncertain              : "
+                f"{result['uncertain']}"
+            ),
+            (
+                f"Gap threshold          : "
+                f"{UNCERTAINTY_GAP_THRESHOLD:.2f}"
+            ),
+            (
+                f"Minimum top probability: "
+                f"{MIN_TOP_PROBABILITY:.2f}"
+            ),
+            (
+                f"Feature dimension      : "
+                f"{result['feature_dimension']}"
+            ),
+            (
+                f"Smoothing window       : "
+                f"{result['smoothing_window']}"
+            ),
+            (
+                f"Recent live history    : "
+                f"{result['recent_live_history']}"
+            ),
+            (
+                f"Runtime                : "
+                f"{result['runtime_seconds']:.4f} sec"
+            ),
+            (
+                f"Device                 : "
+                f"{result['device']}"
+            ),
+            (
+                f"CLIP encoder           : "
+                "clip-vit-large-patch14"
+            ),
+            (
+                f"Logged to              : "
+                f"{LOG_PATH}"
+            ),
+            (
+                f"Timestamp              : "
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            ),
         ]
 
         self.info_text.delete(
@@ -1599,11 +2075,14 @@ class ImageDemoApp:
 
         self.info_text.insert(
             tk.END,
-            "\n".join(info_lines),
+            "\n".join(
+                info_lines
+            ),
         )
 
+
     # =========================================================================
-    # Logging
+    # LOG PREDICTION
     # =========================================================================
 
     def log_prediction(
@@ -1614,38 +2093,88 @@ class ImageDemoApp:
             "a",
             newline="",
             encoding="utf-8",
-        ) as file:
+        ) as f:
             writer = csv.writer(
-                file
+                f
             )
 
             writer.writerow(
                 [
-                    datetime.now().astimezone().isoformat(),
-                    result["mode"],
-                    result["source"],
-                    result["displayed_state"],
-                    result["raw_top_class"],
-                    result["raw_top_probability"],
-                    result["stabilized_top_class"],
-                    result["stabilized_top_probability"],
-                    result["confidence_level"],
-                    result["second_class"],
-                    result["confidence_gap"],
-                    result["feature_dimension"],
-                    result["runtime_seconds"],
-                    result["device"],
+                    datetime.now()
+                    .astimezone()
+                    .isoformat(),
+
+                    result[
+                        "mode"
+                    ],
+
+                    result[
+                        "source_type"
+                    ],
+
+                    result[
+                        "source"
+                    ],
+
+                    result[
+                        "model_used"
+                    ],
+
+                    result[
+                        "current_state"
+                    ],
+
+                    result[
+                        "raw_top_class"
+                    ],
+
+                    result[
+                        "confidence"
+                    ],
+
+                    result[
+                        "confidence_level"
+                    ],
+
+                    result[
+                        "second_class"
+                    ],
+
+                    result[
+                        "second_probability"
+                    ],
+
+                    result[
+                        "confidence_gap"
+                    ],
+
+                    result[
+                        "uncertain"
+                    ],
+
+                    result[
+                        "feature_dimension"
+                    ],
+
+                    result[
+                        "runtime_seconds"
+                    ],
+
+                    result[
+                        "device"
+                    ],
+
                     json.dumps(
-                        result["raw_probabilities"]
-                    ),
-                    json.dumps(
-                        result["stabilized_probabilities"]
+                        result[
+                            "probabilities"
+                        ]
                     ),
                 ]
             )
 
+
     # =========================================================================
-    # Stop/reset
+    # STOP / RESET
     # =========================================================================
 
     def stop_video(
@@ -1655,15 +2184,24 @@ class ImageDemoApp:
         self.running_video = False
 
         if self.capture is not None:
-            self.capture.release()
+            try:
+                self.capture.release()
+            except Exception:
+                pass
+
             self.capture = None
+
+        self.prediction_history = []
 
         if update_status:
             self.status_label.config(
                 text="Video/webcam stopped."
             )
 
-    def clear_prediction(self) -> None:
+
+    def clear_prediction(
+        self,
+    ) -> None:
         self.state_label.config(
             text="—",
             fg="#74f7ff",
@@ -1688,24 +2226,31 @@ class ImageDemoApp:
             tk.END,
         )
 
-    def reset(self) -> None:
+
+    def reset(
+        self,
+    ) -> None:
         self.stop_video(
             update_status=False
         )
 
-        with self.frame_lock:
-            self.current_frame = None
+        self.current_frame = None
 
         self.preview_image = None
 
         self.prediction_busy = False
 
         self.last_prediction_time = 0.0
-        self.webcam_started_at = 0.0
 
-        self.reset_temporal_history()
+        self.prediction_history = []
 
-        self.last_source_name = None
+        self.current_source_type = (
+            "none"
+        )
+
+        self.current_source_name = (
+            "none"
+        )
 
         self.preview_label.config(
             image=""
@@ -1716,6 +2261,10 @@ class ImageDemoApp:
             fg="#ffb3b3",
         )
 
+        self.active_model_label.config(
+            text="Active classifier: —"
+        )
+
         self.status_label.config(
             text="System reset."
         )
@@ -1724,7 +2273,7 @@ class ImageDemoApp:
 
 
 # =============================================================================
-# Entry point
+# MAIN
 # =============================================================================
 
 def main() -> None:
