@@ -1,9 +1,9 @@
 // === web_app/static/script.js ===
 
 
-// =============================================================================
-// DOM REFERENCES
-// =============================================================================
+// ============================================================
+// DOM references
+// ============================================================
 
 const textInput =
   document.getElementById("textInput");
@@ -23,6 +23,9 @@ const stopBtn =
 
 const resetBtn =
   document.getElementById("resetBtn");
+
+const resetTemporalBtn =
+  document.getElementById("resetTemporalBtn");
 
 
 const statusBox =
@@ -44,8 +47,6 @@ const webcamModelStatusText =
   document.getElementById("webcamModelStatusText");
 
 
-// Final fusion result
-
 const predictionBox =
   document.getElementById("prediction");
 
@@ -59,19 +60,22 @@ const confidenceLevel =
   document.getElementById("confidenceLevel");
 
 
-// Webcam modality result
+const rawPrediction =
+  document.getElementById("rawPrediction");
 
-const webcamPrediction =
-  document.getElementById("webcamPrediction");
-
-const webcamConfidence =
-  document.getElementById("webcamConfidence");
-
-const webcamProbabilityBars =
-  document.getElementById("webcamProbabilityBars");
+const rawConfidence =
+  document.getElementById("rawConfidence");
 
 
-// Technical information
+const temporalSamples =
+  document.getElementById("temporalSamples");
+
+const temporalWindow =
+  document.getElementById("temporalWindow");
+
+const temporalWindowStatus =
+  document.getElementById("temporalWindowStatus");
+
 
 const secondaryState =
   document.getElementById("secondaryState");
@@ -85,17 +89,38 @@ const featureDimension =
 const deviceInfo =
   document.getElementById("deviceInfo");
 
+const probabilitiesBox =
+  document.getElementById("probabilities");
+
+const rawProbabilitiesBox =
+  document.getElementById("rawProbabilities");
+
+
+const webcamPrediction =
+  document.getElementById("webcamPrediction");
+
+const webcamConfidence =
+  document.getElementById("webcamConfidence");
+
+const webcamProbabilityBars =
+  document.getElementById("webcamProbabilityBars");
+
+
 const webcamCalibrationUsed =
   document.getElementById("webcamCalibrationUsed");
 
 const activeModalities =
   document.getElementById("activeModalities");
 
-const probabilitiesBox =
-  document.getElementById("probabilities");
+const technicalRawState =
+  document.getElementById("technicalRawState");
 
+const technicalTemporalSamples =
+  document.getElementById("technicalTemporalSamples");
 
-// Readiness
+const sessionIdDisplay =
+  document.getElementById("sessionIdDisplay");
+
 
 const modelReady =
   document.getElementById("modelReady");
@@ -116,8 +141,6 @@ const imageReady =
   document.getElementById("imageReady");
 
 
-// Cards
-
 const textCard =
   document.getElementById("textCard");
 
@@ -128,8 +151,6 @@ const audioCard =
   document.getElementById("audioCard");
 
 
-// Metrics
-
 const charCount =
   document.getElementById("charCount");
 
@@ -137,77 +158,86 @@ const keyCount =
   document.getElementById("keyCount");
 
 
-// =============================================================================
-// RUNTIME STATE
-// =============================================================================
+// ============================================================
+// Configuration
+// ============================================================
+
+const MIN_TEXT_CHARS = 20;
+const MIN_KEYPRESSES = 20;
+
+// Keep this aligned with the backend prediction cadence.
+const LIVE_INTERVAL_MS = 15000;
+
+
+// ============================================================
+// Session state
+// ============================================================
 
 let keystrokeEvents = [];
-
-let activeKeys =
-  new Set();
+let activeKeys = new Set();
 
 
-let mediaStream =
-  null;
+let mediaStream = null;
+let mediaRecorder = null;
 
-let mediaRecorder =
-  null;
-
-let audioChunks =
-  [];
-
-let latestAudioBlob =
-  null;
+let audioChunks = [];
+let latestAudioBlob = null;
 
 
-let liveTimer =
-  null;
+let liveTimer = null;
 
-let sessionActive =
-  false;
+let sessionActive = false;
 
+let fusionModelLoaded = false;
+let webcamModelLoaded = false;
 
-let fusionModelLoaded =
-  false;
-
-let webcamCalibratedModelLoaded =
-  false;
+let predictionInFlight = false;
 
 
-// 15-second multimodal windows.
-// This can be reduced later if runtime performance permits.
+// ============================================================
+// Browser session identifier
+// ============================================================
 
-const LIVE_INTERVAL_MS =
-  15000;
+function createSessionId() {
+
+  if (
+    window.crypto &&
+    typeof window.crypto.randomUUID === "function"
+  ) {
+    return window.crypto.randomUUID();
+  }
+
+  return (
+    "session-" +
+    Date.now().toString(36) +
+    "-" +
+    Math.random().toString(36).slice(2)
+  );
+}
 
 
-// =============================================================================
-// KEY NORMALISATION
-// =============================================================================
+let sessionId = createSessionId();
+
+
+// ============================================================
+// Key normalisation
+// ============================================================
 
 function normaliseKey(event) {
 
-  if (
-    event.key === "Backspace"
-  ) {
+  if (event.key === "Backspace") {
     return "backspace";
   }
 
-  if (
-    event.key === "Delete"
-  ) {
+  if (event.key === "Delete") {
     return "delete";
   }
 
-  if (
-    event.key === " "
-  ) {
+  if (event.key === " ") {
     return "space";
   }
 
-  if (
-    event.key.length === 1
-  ) {
+  if (event.key.length === 1) {
     return event.key.toLowerCase();
   }
 
@@ -215,9 +245,9 @@ function normaliseKey(event) {
 }
 
 
-// =============================================================================
-// READINESS UI
-// =============================================================================
+// ============================================================
+// Readiness helpers
+// ============================================================
 
 function setReady(
   element,
@@ -226,32 +256,24 @@ function setReady(
   missingText = "Missing"
 ) {
 
-  if (!element) {
-    return;
-  }
-
   element.classList.toggle(
     "active",
     isReady
   );
 
-  const valueElement =
-    element.querySelector("b");
-
-  if (valueElement) {
-
-    valueElement.textContent =
-      isReady
-        ? readyText
-        : missingText;
-  }
+  element.querySelector("b").textContent =
+    isReady
+      ? readyText
+      : missingText;
 }
 
 
 function updateReadiness() {
 
-  const textLength =
-    textInput.value.trim().length;
+  const textOk =
+    textInput.value.trim().length
+    >= MIN_TEXT_CHARS;
+
 
   const keydowns =
     keystrokeEvents.filter(
@@ -260,21 +282,22 @@ function updateReadiness() {
     ).length;
 
 
-  const textOk =
-    textLength >= 20;
-
   const keyOk =
-    keydowns >= 20;
+    keydowns
+    >= MIN_KEYPRESSES;
+
 
   const audioOk =
     latestAudioBlob !== null;
+
 
   const imageOk =
     mediaStream !== null;
 
 
   charCount.textContent =
-    textLength;
+    textInput.value.trim().length;
+
 
   keyCount.textContent =
     keydowns;
@@ -290,9 +313,9 @@ function updateReadiness() {
 
   setReady(
     webcamModelReady,
-    webcamCalibratedModelLoaded,
+    webcamModelLoaded,
     "Loaded",
-    "Missing"
+    "Unavailable"
   );
 
 
@@ -342,47 +365,34 @@ function updateReadiness() {
   );
 
 
-  const textBadge =
-    textCard.querySelector(".badge");
-
-  const webcamBadge =
-    webcamCard.querySelector(".badge");
-
-  const audioBadge =
-    audioCard.querySelector(".badge");
-
-
-  if (textBadge) {
-
-    textBadge.textContent =
+  textCard
+    .querySelector(".badge")
+    .textContent =
       textOk && keyOk
         ? "active"
         : "inactive";
-  }
 
 
-  if (webcamBadge) {
-
-    webcamBadge.textContent =
+  webcamCard
+    .querySelector(".badge")
+    .textContent =
       imageOk
         ? "active"
         : "inactive";
-  }
 
 
-  if (audioBadge) {
-
-    audioBadge.textContent =
+  audioCard
+    .querySelector(".badge")
+    .textContent =
       audioOk
         ? "active"
         : "inactive";
-  }
 }
 
 
-// =============================================================================
-// MODEL STATUS
-// =============================================================================
+// ============================================================
+// Model status
+// ============================================================
 
 async function checkModelStatus() {
 
@@ -392,13 +402,6 @@ async function checkModelStatus() {
       await fetch(
         "/model-status"
       );
-
-    if (!response.ok) {
-
-      throw new Error(
-        "Model status endpoint failed."
-      );
-    }
 
 
     const data =
@@ -411,68 +414,73 @@ async function checkModelStatus() {
       );
 
 
-    webcamCalibratedModelLoaded =
+    webcamModelLoaded =
       Boolean(
         data.webcam_calibrated_image_model
       );
 
 
-    if (fusionModelLoaded) {
-
-      modelStatusText.textContent =
-        `Fusion backend loaded: ${data.inference_backend}`;
-
-    } else {
-
-      modelStatusText.textContent =
-        `Fusion backend unavailable. ${
-          data.error || ""
-        }`;
-    }
+    const configuredWindow =
+      Number(
+        data.temporal_probability_window
+        || 5
+      );
 
 
-    if (
-      webcamCalibratedModelLoaded
-    ) {
+    temporalWindow.textContent =
+      configuredWindow;
 
-      webcamModelStatusText.textContent =
-        "Webcam-calibrated image classifier loaded successfully.";
 
-    } else {
+    temporalWindowStatus.textContent =
+      `0 / ${configuredWindow}`;
 
-      webcamModelStatusText.textContent =
-        `Webcam calibration model unavailable. ${
-          data.webcam_error || ""
-        }`;
-    }
+
+    modelStatusText.textContent =
+      fusionModelLoaded
+        ? (
+            "Fusion model loaded. " +
+            `Backend: ${data.inference_backend}`
+          )
+        : (
+            "Fusion model unavailable. " +
+            "Fallback active. " +
+            `${data.error || ""}`
+          );
+
+
+    webcamModelStatusText.textContent =
+      webcamModelLoaded
+        ? (
+            "Webcam-calibrated image " +
+            "classifier loaded."
+          )
+        : (
+            "Webcam-calibrated classifier " +
+            "is unavailable."
+          );
 
 
     updateReadiness();
 
   } catch (error) {
 
-    fusionModelLoaded =
-      false;
-
-    webcamCalibratedModelLoaded =
-      false;
-
+    fusionModelLoaded = false;
+    webcamModelLoaded = false;
 
     modelStatusText.textContent =
       "Could not query model status.";
 
     webcamModelStatusText.textContent =
-      "Could not query webcam model status.";
-
+      "Webcam classifier status unavailable.";
 
     updateReadiness();
   }
 }
 
 
-// =============================================================================
-// KEYSTROKE COLLECTION
-// =============================================================================
+// ============================================================
+// Keystroke capture
+// ============================================================
 
 textInput.addEventListener(
   "keydown",
@@ -482,9 +490,7 @@ textInput.addEventListener(
       normaliseKey(event);
 
 
-    if (
-      activeKeys.has(key)
-    ) {
+    if (activeKeys.has(key)) {
       return;
     }
 
@@ -492,19 +498,21 @@ textInput.addEventListener(
     activeKeys.add(key);
 
 
-    keystrokeEvents.push({
-      type:
-        "down",
+    keystrokeEvents.push(
+      {
+        type: "down",
 
-      key:
-        key,
+        key: key,
 
-      timestamp_perf:
-        performance.now() / 1000,
+        timestamp_perf:
+          performance.now()
+          / 1000,
 
-      timestamp_epoch:
-        Date.now() / 1000
-    });
+        timestamp_epoch:
+          Date.now()
+          / 1000
+      }
+    );
 
 
     updateReadiness();
@@ -523,19 +531,21 @@ textInput.addEventListener(
     activeKeys.delete(key);
 
 
-    keystrokeEvents.push({
-      type:
-        "up",
+    keystrokeEvents.push(
+      {
+        type: "up",
 
-      key:
-        key,
+        key: key,
 
-      timestamp_perf:
-        performance.now() / 1000,
+        timestamp_perf:
+          performance.now()
+          / 1000,
 
-      timestamp_epoch:
-        Date.now() / 1000
-    });
+        timestamp_epoch:
+          Date.now()
+          / 1000
+      }
+    );
 
 
     updateReadiness();
@@ -549,24 +559,24 @@ textInput.addEventListener(
 );
 
 
-// =============================================================================
-// WEBCAM FRAME
-// =============================================================================
+// ============================================================
+// Webcam frame capture
+// ============================================================
 
 function captureWebcamFrame() {
 
   if (
-    !mediaStream
-    || webcam.videoWidth === 0
-    || webcam.videoHeight === 0
+    !mediaStream ||
+    webcam.videoWidth === 0 ||
+    webcam.videoHeight === 0
   ) {
-
     return null;
   }
 
 
   canvas.width =
     webcam.videoWidth;
+
 
   canvas.height =
     webcam.videoHeight;
@@ -592,15 +602,23 @@ function captureWebcamFrame() {
 }
 
 
-// =============================================================================
-// AUDIO RECORDING
-// =============================================================================
+// ============================================================
+// Audio recording cycle
+// ============================================================
 
-function startAudioWindow() {
+function beginAudioRecordingCycle() {
 
   if (
-    !mediaRecorder
-    || !sessionActive
+    !mediaRecorder ||
+    !sessionActive
+  ) {
+    return;
+  }
+
+
+  if (
+    mediaRecorder.state
+    !== "inactive"
   ) {
     return;
   }
@@ -609,20 +627,15 @@ function startAudioWindow() {
   audioChunks = [];
 
 
-  if (
-    mediaRecorder.state === "inactive"
-  ) {
-
-    mediaRecorder.start();
-  }
+  mediaRecorder.start();
 
 
-  window.setTimeout(
+  setTimeout(
     () => {
 
       if (
-        mediaRecorder
-        && mediaRecorder.state === "recording"
+        mediaRecorder &&
+        mediaRecorder.state === "recording"
       ) {
 
         mediaRecorder.stop();
@@ -634,9 +647,9 @@ function startAudioWindow() {
 }
 
 
-// =============================================================================
-// START SESSION
-// =============================================================================
+// ============================================================
+// Start session
+// ============================================================
 
 async function startSession() {
 
@@ -645,13 +658,24 @@ async function startSession() {
   }
 
 
+  // Start a fresh temporal sequence.
+  sessionId =
+    createSessionId();
+
+
+  resetPredictionDisplay();
+
+
   try {
 
     mediaStream =
-      await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true
-      });
+      await navigator.mediaDevices
+        .getUserMedia(
+          {
+            video: true,
+            audio: true
+          }
+        );
 
 
     webcam.srcObject =
@@ -662,63 +686,23 @@ async function startSession() {
 
 
     webcamStatus.textContent =
-      webcamCalibratedModelLoaded
-        ? "Webcam capturing with calibrated image classifier."
-        : "Webcam capturing; calibrated classifier unavailable.";
+      "Webcam capturing.";
 
 
     audioStatus.textContent =
       "Microphone recording.";
 
 
-    const supportedTypes = [
-      "audio/webm;codecs=opus",
-      "audio/webm"
-    ];
-
-
-    let selectedType =
-      "";
-
-
-    for (
-      const candidate
-      of supportedTypes
-    ) {
-
-      if (
-        MediaRecorder.isTypeSupported(candidate)
-      ) {
-
-        selectedType =
-          candidate;
-
-        break;
-      }
-    }
-
-
     mediaRecorder =
-      selectedType
-        ? new MediaRecorder(
-            mediaStream,
-            {
-              mimeType:
-                selectedType
-            }
-          )
-        : new MediaRecorder(
-            mediaStream
-          );
+      new MediaRecorder(
+        mediaStream
+      );
 
 
     mediaRecorder.ondataavailable =
       event => {
 
-        if (
-          event.data
-          && event.data.size > 0
-        ) {
+        if (event.data.size > 0) {
 
           audioChunks.push(
             event.data
@@ -730,23 +714,19 @@ async function startSession() {
     mediaRecorder.onstop =
       () => {
 
-        if (
-          audioChunks.length > 0
-        ) {
+        if (audioChunks.length > 0) {
 
           latestAudioBlob =
             new Blob(
               audioChunks,
               {
-                type:
-                  mediaRecorder.mimeType
-                  || "audio/webm"
+                type: "audio/webm"
               }
             );
 
 
           audioStatus.textContent =
-            "Latest audio analysis window ready.";
+            "Latest audio chunk ready.";
         }
 
 
@@ -758,35 +738,31 @@ async function startSession() {
 
         if (sessionActive) {
 
-          startAudioWindow();
+          beginAudioRecordingCycle();
         }
       };
 
 
-    sessionActive =
-      true;
+    sessionActive = true;
 
 
-    startBtn.disabled =
-      true;
-
-    stopBtn.disabled =
-      false;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
 
 
     sessionStatus.textContent =
-      "Live multimodal session running.";
+      "Live session running.";
 
 
     statusBox.textContent =
-      "Capturing live multimodal behavioural signals...";
+      "Capturing live multimodal behaviour...";
 
 
-    startAudioWindow();
+    beginAudioRecordingCycle();
 
 
     liveTimer =
-      window.setInterval(
+      setInterval(
         runLivePrediction,
         LIVE_INTERVAL_MS
       );
@@ -796,27 +772,18 @@ async function startSession() {
 
   } catch (error) {
 
-    // ------------------------------------------------------------
-    // Limited session:
-    // text + keystrokes remain available
-    // ------------------------------------------------------------
+    // --------------------------------------------------------
+    // Limited modality mode
+    // --------------------------------------------------------
 
-    sessionActive =
-      true;
+    sessionActive = true;
 
-
-    startBtn.disabled =
-      true;
-
-    stopBtn.disabled =
-      false;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
 
 
-    mediaStream =
-      null;
-
-    mediaRecorder =
-      null;
+    mediaStream = null;
+    mediaRecorder = null;
 
 
     sessionStatus.textContent =
@@ -832,11 +799,12 @@ async function startSession() {
 
 
     statusBox.textContent =
-      "Camera or microphone unavailable. Text and keystroke inference remains enabled.";
+      "Camera/microphone unavailable. " +
+      "Text and keystroke prediction remain available.";
 
 
     liveTimer =
-      window.setInterval(
+      setInterval(
         runLivePrediction,
         LIVE_INTERVAL_MS
       );
@@ -847,30 +815,28 @@ async function startSession() {
 }
 
 
-// =============================================================================
-// STOP SESSION
-// =============================================================================
+// ============================================================
+// Stop session
+// ============================================================
 
 function stopSession() {
 
-  sessionActive =
-    false;
+  sessionActive = false;
 
 
-  if (liveTimer !== null) {
+  if (liveTimer) {
 
-    window.clearInterval(
+    clearInterval(
       liveTimer
     );
 
-    liveTimer =
-      null;
+    liveTimer = null;
   }
 
 
   if (
-    mediaRecorder
-    && mediaRecorder.state === "recording"
+    mediaRecorder &&
+    mediaRecorder.state === "recording"
   ) {
 
     mediaRecorder.stop();
@@ -882,31 +848,20 @@ function stopSession() {
     mediaStream
       .getTracks()
       .forEach(
-        track =>
-          track.stop()
+        track => track.stop()
       );
   }
 
 
-  if (webcam) {
-
-    webcam.srcObject =
-      null;
-  }
+  mediaStream = null;
+  mediaRecorder = null;
 
 
-  mediaStream =
-    null;
-
-  mediaRecorder =
-    null;
+  webcam.srcObject = null;
 
 
-  startBtn.disabled =
-    false;
-
-  stopBtn.disabled =
-    true;
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
 
 
   sessionStatus.textContent =
@@ -929,35 +884,127 @@ function stopSession() {
 }
 
 
-// =============================================================================
-// RESET
-// =============================================================================
+// ============================================================
+// Temporal reset
+// ============================================================
 
-function resetSession() {
+async function resetTemporalWindow() {
+
+  try {
+
+    const formData =
+      new FormData();
+
+
+    formData.append(
+      "session_id",
+      sessionId
+    );
+
+
+    const response =
+      await fetch(
+        "/reset_temporal",
+        {
+          method: "POST",
+          body: formData
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        data.detail ||
+        "Could not reset temporal history."
+      );
+    }
+
+
+    temporalSamples.textContent =
+      "0";
+
+
+    temporalWindowStatus.textContent =
+      `0 / ${data.temporal_window || 5}`;
+
+
+    technicalTemporalSamples.textContent =
+      "0";
+
+
+    statusBox.textContent =
+      "Temporal probability window reset.";
+
+  } catch (error) {
+
+    statusBox.textContent =
+      "Temporal reset failed: " +
+      error.message;
+  }
+}
+
+
+// ============================================================
+// Full reset
+// ============================================================
+
+async function resetSession() {
+
+  try {
+
+    await resetTemporalWindow();
+
+  } catch (_) {
+    // Continue resetting the interface.
+  }
+
 
   stopSession();
 
 
-  textInput.value =
-    "";
+  textInput.value = "";
 
 
-  keystrokeEvents =
-    [];
-
+  keystrokeEvents = [];
 
   activeKeys.clear();
 
 
-  audioChunks =
-    [];
+  audioChunks = [];
+
+  latestAudioBlob = null;
 
 
-  latestAudioBlob =
-    null;
+  // Generate a completely new temporal session.
+  sessionId =
+    createSessionId();
 
 
-  // Final prediction
+  resetPredictionDisplay();
+
+
+  statusBox.textContent =
+    "Session reset.";
+
+
+  sessionStatus.textContent =
+    "Session not started.";
+
+
+  updateReadiness();
+}
+
+
+// ============================================================
+// Prediction display reset
+// ============================================================
+
+function resetPredictionDisplay() {
 
   predictionBox.textContent =
     "—";
@@ -982,21 +1029,17 @@ function resetSession() {
   );
 
 
-  // Webcam modality
-
-  webcamPrediction.textContent =
+  rawPrediction.textContent =
     "—";
 
 
-  webcamConfidence.textContent =
+  rawConfidence.textContent =
     "—";
 
 
-  webcamProbabilityBars.innerHTML =
-    "";
+  temporalSamples.textContent =
+    "0";
 
-
-  // Technical
 
   secondaryState.textContent =
     "—";
@@ -1014,6 +1057,14 @@ function resetSession() {
     "—";
 
 
+  webcamPrediction.textContent =
+    "—";
+
+
+  webcamConfidence.textContent =
+    "—";
+
+
   webcamCalibrationUsed.textContent =
     "—";
 
@@ -1022,27 +1073,41 @@ function resetSession() {
     "—";
 
 
+  technicalRawState.textContent =
+    "—";
+
+
+  technicalTemporalSamples.textContent =
+    "—";
+
+
+  sessionIdDisplay.textContent =
+    sessionId;
+
+
   probabilitiesBox.innerHTML =
     "";
 
 
-  statusBox.textContent =
-    "Session reset.";
+  rawProbabilitiesBox.innerHTML =
+    "";
 
 
-  sessionStatus.textContent =
-    "Session not started.";
-
-
-  updateReadiness();
+  webcamProbabilityBars.innerHTML =
+    "";
 }
 
 
-// =============================================================================
-// LIVE PREDICTION
-// =============================================================================
+// ============================================================
+// Run live prediction
+// ============================================================
 
 async function runLivePrediction() {
+
+  if (predictionInFlight) {
+    return;
+  }
+
 
   try {
 
@@ -1061,19 +1126,23 @@ async function runLivePrediction() {
 
 
     if (
-      text.length < 20
-      || keydowns < 20
+      text.length < MIN_TEXT_CHARS ||
+      keydowns < MIN_KEYPRESSES
     ) {
 
       statusBox.textContent =
-        `Waiting for sufficient data: ${text.length}/20 characters, ${keydowns}/20 keypresses.`;
+        "Waiting for sufficient text " +
+        "and keystroke data...";
 
       return;
     }
 
 
+    predictionInFlight = true;
+
+
     statusBox.textContent =
-      "Running multimodal behavioural-state inference...";
+      "Running multimodal fusion prediction...";
 
 
     const frameData =
@@ -1082,6 +1151,12 @@ async function runLivePrediction() {
 
     const formData =
       new FormData();
+
+
+    formData.append(
+      "session_id",
+      sessionId
+    );
 
 
     formData.append(
@@ -1098,9 +1173,7 @@ async function runLivePrediction() {
     );
 
 
-    if (
-      frameData !== null
-    ) {
+    if (frameData !== null) {
 
       formData.append(
         "image_frame",
@@ -1109,9 +1182,7 @@ async function runLivePrediction() {
     }
 
 
-    if (
-      latestAudioBlob !== null
-    ) {
+    if (latestAudioBlob !== null) {
 
       formData.append(
         "audio_chunk",
@@ -1125,39 +1196,22 @@ async function runLivePrediction() {
       await fetch(
         "/predict_live",
         {
-          method:
-            "POST",
-
-          body:
-            formData
+          method: "POST",
+          body: formData
         }
       );
 
 
-    let data;
+    const data =
+      await response.json();
 
 
-    try {
-
-      data =
-        await response.json();
-
-    } catch {
+    if (!response.ok) {
 
       throw new Error(
-        `Server returned HTTP ${response.status}.`
-      );
-    }
-
-
-    if (
-      !response.ok
-    ) {
-
-      throw new Error(
-        data.detail
-        || data.error
-        || "Live prediction failed."
+        data.detail ||
+        data.error ||
+        "Live prediction failed."
       );
     }
 
@@ -1169,60 +1223,141 @@ async function runLivePrediction() {
   } catch (error) {
 
     statusBox.textContent =
-      "Live prediction failed: "
-      + error.message;
+      "Live prediction failed: " +
+      error.message;
+
+  } finally {
+
+    predictionInFlight = false;
   }
 }
 
 
-// =============================================================================
-// FINAL FUSION UI
-// =============================================================================
+// ============================================================
+// Probability renderer
+// ============================================================
 
-function updatePredictionUI(
-  data
+function renderProbabilityBars(
+  container,
+  probabilities,
+  fillClass = ""
 ) {
 
+  container.innerHTML =
+    "";
+
+
+  if (!probabilities) {
+    return;
+  }
+
+
+  Object.entries(
+    probabilities
+  )
+    .sort(
+      (a, b) =>
+        Number(b[1])
+        - Number(a[1])
+    )
+    .forEach(
+      ([label, probability]) => {
+
+        const percentage =
+          (
+            Number(probability)
+            * 100
+          ).toFixed(2);
+
+
+        const row =
+          document.createElement(
+            "div"
+          );
+
+
+        row.className =
+          "prob-row";
+
+
+        row.innerHTML = `
+          <div class="prob-label">
+            <span>${label}</span>
+            <span>${percentage}%</span>
+          </div>
+
+          <div class="track">
+            <div
+              class="fill ${fillClass}"
+              data-width="${percentage}%"
+            ></div>
+          </div>
+        `;
+
+
+        container.appendChild(
+          row
+        );
+      }
+    );
+
+
+  requestAnimationFrame(
+    () => {
+
+      container
+        .querySelectorAll(".fill")
+        .forEach(
+          bar => {
+
+            bar.style.width =
+              bar.dataset.width;
+          }
+        );
+    }
+  );
+}
+
+
+// ============================================================
+// Update prediction UI
+// ============================================================
+
+function updatePredictionUI(data) {
+
+  // ----------------------------------------------------------
+  // Final temporally aggregated result
+  // ----------------------------------------------------------
+
   const state =
-    data.current_state
-    || data.prediction
-    || "unknown";
+    data.current_state ||
+    data.prediction ||
+    "unknown";
 
 
   const confidence =
     Number(
-      data.confidence
-      || 0
+      data.confidence || 0
     );
 
 
   const confidencePct =
-    Number.isFinite(
-      Number(
-        data.confidence_percent
-      )
-    )
-      ? Number(
-          data.confidence_percent
-        )
-      : confidence * 100;
+    Number(
+      data.confidence_percent
+      ?? confidence * 100
+    );
 
 
   const gap =
     Number(
-      data.confidence_gap
-      || 0
+      data.confidence_gap || 0
     );
 
 
   const level =
-    data.confidence_level
-    || "Low";
+    data.confidence_level ||
+    "Low";
 
-
-  // ---------------------------------------------------------------------------
-  // Final behavioural state
-  // ---------------------------------------------------------------------------
 
   predictionBox.textContent =
     state.toUpperCase();
@@ -1255,9 +1390,7 @@ function updatePredictionUI(
   );
 
 
-  if (
-    level === "High"
-  ) {
+  if (level === "High") {
 
     confidenceLevel.classList.add(
       "confidence-high"
@@ -1279,44 +1412,98 @@ function updatePredictionUI(
   }
 
 
-  // ---------------------------------------------------------------------------
-  // Technical information
-  // ---------------------------------------------------------------------------
+  // ----------------------------------------------------------
+  // Temporal diagnostics
+  // ----------------------------------------------------------
+
+  const samples =
+    Number(
+      data.temporal_samples || 0
+    );
+
+
+  const windowSize =
+    Number(
+      data.temporal_window || 5
+    );
+
+
+  temporalSamples.textContent =
+    samples;
+
+
+  temporalWindow.textContent =
+    windowSize;
+
+
+  temporalWindowStatus.textContent =
+    `${samples} / ${windowSize}`;
+
+
+  // ----------------------------------------------------------
+  // Raw current fusion result
+  // ----------------------------------------------------------
+
+  const rawState =
+    data.raw_prediction ||
+    "—";
+
+
+  const rawConfidencePct =
+    Number(
+      data.raw_confidence_percent
+      ?? (
+        Number(
+          data.raw_confidence || 0
+        )
+        * 100
+      )
+    );
+
+
+  rawPrediction.textContent =
+    rawState.toUpperCase();
+
+
+  rawConfidence.textContent =
+    `${rawConfidencePct.toFixed(2)}%`;
+
+
+  // ----------------------------------------------------------
+  // Technical details
+  // ----------------------------------------------------------
 
   const details =
-    data.technical_details
-    || {};
+    data.technical_details || {};
 
 
   secondaryState.textContent =
     (
-      details.second_class
-      || "—"
+      details.second_class ||
+      "—"
     ).toUpperCase();
 
 
   confidenceGap.textContent =
-    Number.isFinite(gap)
-      ? gap.toFixed(4)
-      : "—";
+    gap.toFixed(4);
 
 
   featureDimension.textContent =
-    data.feature_dimension
-    ?? details.feature_dimension
-    ?? "—";
+    data.feature_dimension ??
+    details.feature_dimension ??
+    "—";
 
 
   deviceInfo.textContent =
-    data.device
-    || details.device
-    || "—";
+    data.device ||
+    details.device ||
+    "—";
 
 
   webcamCalibrationUsed.textContent =
     data.webcam_calibration_used
-      ? "YES"
-      : "NO";
+      ? "Yes"
+      : "No";
 
 
   activeModalities.textContent =
@@ -1325,54 +1512,78 @@ function updatePredictionUI(
     );
 
 
-  // ---------------------------------------------------------------------------
-  // Final fusion probabilities
-  // ---------------------------------------------------------------------------
+  technicalRawState.textContent =
+    rawState.toUpperCase();
+
+
+  technicalTemporalSamples.textContent =
+    `${samples} / ${windowSize}`;
+
+
+  sessionIdDisplay.textContent =
+    data.session_id ||
+    sessionId;
+
+
+  // ----------------------------------------------------------
+  // Final aggregated probabilities
+  // ----------------------------------------------------------
 
   renderProbabilityBars(
     probabilitiesBox,
     data.probabilities
-    || {},
-    false
   );
 
 
-  // ---------------------------------------------------------------------------
-  // Webcam calibrated image result
-  // ---------------------------------------------------------------------------
+  // ----------------------------------------------------------
+  // Raw probabilities
+  // ----------------------------------------------------------
 
-  updateWebcamModalityUI(
-    data.image_modality
+  renderProbabilityBars(
+    rawProbabilitiesBox,
+    data.raw_probabilities,
+    "raw-fill"
   );
 
 
-  // ---------------------------------------------------------------------------
-  // Overall status
-  // ---------------------------------------------------------------------------
+  // ----------------------------------------------------------
+  // Webcam-calibrated result
+  // ----------------------------------------------------------
 
-  const calibrationText =
-    data.webcam_calibration_used
-      ? "Webcam calibration active"
-      : "Webcam calibration unavailable/not used";
+  updateWebcamResult(
+    data.webcam_prediction
+  );
 
+
+  // ----------------------------------------------------------
+  // Status message
+  // ----------------------------------------------------------
 
   statusBox.textContent =
-    `Final multimodal prediction complete | ${calibrationText} | Active modalities: ${formatModalities(data.used_modalities)}`;
+    (
+      "Behavioural-state prediction complete | " +
+      `Temporal window: ${samples}/${windowSize} | ` +
+      `Active modalities: ${
+        formatModalities(
+          data.used_modalities
+        )
+      }`
+    );
 }
 
 
-// =============================================================================
-// WEBCAM MODALITY UI
-// =============================================================================
+// ============================================================
+// Webcam-calibrated result
+// ============================================================
 
-function updateWebcamModalityUI(
-  imageResult
+function updateWebcamResult(
+  webcamResult
 ) {
 
-  if (!imageResult) {
+  if (!webcamResult) {
 
     webcamPrediction.textContent =
-      "NOT AVAILABLE";
+      "—";
 
 
     webcamConfidence.textContent =
@@ -1380,7 +1591,7 @@ function updateWebcamModalityUI(
 
 
     webcamProbabilityBars.innerHTML =
-      "<p class='sub-status'>No calibrated webcam prediction was available for this inference window.</p>";
+      "";
 
 
     return;
@@ -1388,28 +1599,21 @@ function updateWebcamModalityUI(
 
 
   const state =
-    imageResult.current_state
-    || imageResult.prediction
-    || "unknown";
-
-
-  const confidence =
-    Number(
-      imageResult.confidence
-      || 0
-    );
+    webcamResult.current_state ||
+    webcamResult.prediction ||
+    "unknown";
 
 
   const confidencePct =
-    Number.isFinite(
-      Number(
-        imageResult.confidence_percent
-      )
-    )
-      ? Number(
-          imageResult.confidence_percent
+    Number(
+      webcamResult.confidence_percent
+      ?? (
+        Number(
+          webcamResult.confidence || 0
         )
-      : confidence * 100;
+        * 100
+      )
+    );
 
 
   webcamPrediction.textContent =
@@ -1422,116 +1626,15 @@ function updateWebcamModalityUI(
 
   renderProbabilityBars(
     webcamProbabilityBars,
-    imageResult.probabilities
-    || {},
-    true
+    webcamResult.probabilities,
+    "webcam-fill"
   );
 }
 
 
-// =============================================================================
-// PROBABILITY BAR RENDERER
-// =============================================================================
-
-function renderProbabilityBars(
-  container,
-  probabilities,
-  webcamStyle = false
-) {
-
-  container.innerHTML =
-    "";
-
-
-  const entries =
-    Object.entries(
-      probabilities
-      || {}
-    )
-      .sort(
-        (a, b) =>
-          Number(b[1])
-          - Number(a[1])
-      );
-
-
-  if (
-    entries.length === 0
-  ) {
-
-    container.innerHTML =
-      "<p>No probability information available.</p>";
-
-    return;
-  }
-
-
-  entries.forEach(
-    ([label, probability]) => {
-
-      const numericProbability =
-        Number(probability);
-
-
-      const percentage =
-        (
-          numericProbability
-          * 100
-        ).toFixed(2);
-
-
-      const row =
-        document.createElement(
-          "div"
-        );
-
-
-      row.className =
-        "prob-row";
-
-
-      row.innerHTML = `
-        <div class="prob-label">
-          <span>${escapeHtml(label)}</span>
-          <span>${percentage}%</span>
-        </div>
-
-        <div class="track">
-          <div
-            class="fill ${webcamStyle ? "webcam-fill" : ""}"
-            data-width="${percentage}%"
-          ></div>
-        </div>
-      `;
-
-
-      container.appendChild(
-        row
-      );
-    }
-  );
-
-
-  requestAnimationFrame(
-    () => {
-
-      container
-        .querySelectorAll(".fill")
-        .forEach(
-          bar => {
-
-            bar.style.width =
-              bar.dataset.width;
-          }
-        );
-    }
-  );
-}
-
-
-// =============================================================================
-// MODALITY FORMATTER
-// =============================================================================
+// ============================================================
+// Active modality formatter
+// ============================================================
 
 function formatModalities(
   modalities
@@ -1551,39 +1654,21 @@ function formatModalities(
           Boolean(enabled)
       )
       .map(
-        ([name]) =>
-          name
+        ([name]) => name
       );
 
 
   return (
-    active.length > 0
+    active.length
       ? active.join(", ")
       : "none"
   );
 }
 
 
-// =============================================================================
-// BASIC HTML ESCAPING
-// =============================================================================
-
-function escapeHtml(
-  value
-) {
-
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-
-// =============================================================================
-// BUTTON EVENTS
-// =============================================================================
+// ============================================================
+// Event handlers
+// ============================================================
 
 startBtn.addEventListener(
   "click",
@@ -1597,15 +1682,24 @@ stopBtn.addEventListener(
 );
 
 
+resetTemporalBtn.addEventListener(
+  "click",
+  resetTemporalWindow
+);
+
+
 resetBtn.addEventListener(
   "click",
   resetSession
 );
 
 
-// =============================================================================
-// INITIAL STATE
-// =============================================================================
+// ============================================================
+// Initialisation
+// ============================================================
+
+resetPredictionDisplay();
 
 checkModelStatus();
+
 updateReadiness();

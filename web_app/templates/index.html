@@ -45,7 +45,8 @@
       </p>
 
       <span>
-        Keystroke · Text · Audio · Webcam Fusion
+        Keystroke · Text · Audio · Webcam ·
+        Temporal Probability Fusion
       </span>
 
     </section>
@@ -71,6 +72,7 @@
           <b>Checking</b>
         </div>
 
+
         <div
           class="ready-item"
           id="webcamModelReady"
@@ -78,6 +80,7 @@
           <span>Webcam AI</span>
           <b>Checking</b>
         </div>
+
 
         <div
           class="ready-item"
@@ -87,6 +90,7 @@
           <b>Missing</b>
         </div>
 
+
         <div
           class="ready-item"
           id="keyReady"
@@ -95,6 +99,7 @@
           <b>Missing</b>
         </div>
 
+
         <div
           class="ready-item"
           id="audioReady"
@@ -102,6 +107,7 @@
           <span>Audio</span>
           <b>Optional</b>
         </div>
+
 
         <div
           class="ready-item"
@@ -113,9 +119,11 @@
 
       </div>
 
+
       <p id="modelStatusText">
         Checking model status...
       </p>
+
 
       <p
         id="webcamModelStatusText"
@@ -123,6 +131,31 @@
       >
         Checking webcam-calibrated classifier...
       </p>
+
+
+      <div class="temporal-status-banner">
+
+        <div>
+          <span>
+            Temporal Fusion
+          </span>
+
+          <strong>
+            Rolling probability averaging
+          </strong>
+        </div>
+
+        <div>
+          <span>
+            Window
+          </span>
+
+          <strong id="temporalWindowStatus">
+            0 / 5
+          </strong>
+        </div>
+
+      </div>
 
     </section>
 
@@ -135,7 +168,10 @@
 
       <div class="modality-grid">
 
+
+        <!-- ===================================================== -->
         <!-- TEXT + KEYSTROKES -->
+        <!-- ===================================================== -->
 
         <div
           class="modality-card"
@@ -154,10 +190,12 @@
 
           </div>
 
+
           <textarea
             id="textInput"
             placeholder="Type naturally here..."
           ></textarea>
+
 
           <div class="metric-grid">
 
@@ -176,7 +214,9 @@
         </div>
 
 
+        <!-- ===================================================== -->
         <!-- WEBCAM -->
+        <!-- ===================================================== -->
 
         <div
           class="modality-card"
@@ -195,6 +235,7 @@
 
           </div>
 
+
           <video
             id="webcam"
             autoplay
@@ -202,23 +243,29 @@
             playsinline
           ></video>
 
+
           <canvas
             id="frameCanvas"
             class="hidden"
           ></canvas>
 
+
           <p id="webcamStatus">
             Webcam inactive.
           </p>
 
+
           <p class="calibration-note">
-            Live frames use the webcam-calibrated image classifier.
+            Current webcam frames are additionally evaluated
+            by the webcam-calibrated image classifier.
           </p>
 
         </div>
 
 
+        <!-- ===================================================== -->
         <!-- AUDIO -->
+        <!-- ===================================================== -->
 
         <div
           class="modality-card"
@@ -237,6 +284,7 @@
 
           </div>
 
+
           <p id="audioStatus">
             Microphone inactive.
           </p>
@@ -244,7 +292,9 @@
         </div>
 
 
+        <!-- ===================================================== -->
         <!-- SESSION CONTROLS -->
+        <!-- ===================================================== -->
 
         <div class="modality-card">
 
@@ -252,12 +302,14 @@
             Session Controls
           </h2>
 
+
           <button
             id="startBtn"
             class="control-btn"
           >
             Start Live Session
           </button>
+
 
           <button
             id="stopBtn"
@@ -267,12 +319,22 @@
             Stop Session
           </button>
 
+
+          <button
+            id="resetTemporalBtn"
+            class="control-btn temporal"
+          >
+            Reset Temporal Window
+          </button>
+
+
           <button
             id="resetBtn"
             class="control-btn neutral"
           >
             Reset Session
           </button>
+
 
           <p id="sessionStatus">
             Session not started.
@@ -295,6 +357,7 @@
         Final Multimodal Behavioural State
       </h2>
 
+
       <p id="status">
         Awaiting live session...
       </p>
@@ -303,8 +366,9 @@
       <div class="state-display">
 
         <span class="state-caption">
-          Final Fusion Prediction
+          Temporally Aggregated Fusion Prediction
         </span>
+
 
         <div
           id="prediction"
@@ -317,12 +381,13 @@
         <div class="confidence-block">
 
           <span>
-            Fusion Confidence
+            Aggregated Fusion Confidence
           </span>
 
           <strong id="confidencePercent">
             —
           </strong>
+
 
           <div class="confidence-track">
 
@@ -348,7 +413,90 @@
 
         </div>
 
+
+        <div class="temporal-result-info">
+
+          <div>
+
+            <span>
+              Temporal Samples
+            </span>
+
+            <strong id="temporalSamples">
+              0
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Rolling Window
+            </span>
+
+            <strong id="temporalWindow">
+              5
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Aggregation
+            </span>
+
+            <strong>
+              Mean Probability
+            </strong>
+
+          </div>
+
+        </div>
+
       </div>
+
+
+      <!-- ======================================================= -->
+      <!-- RAW CURRENT FUSION PREDICTION -->
+      <!-- ======================================================= -->
+
+      <section class="raw-result-card">
+
+        <span class="small-caption">
+          Current Unsmooothed Fusion Observation
+        </span>
+
+        <div class="raw-result-grid">
+
+          <div>
+            <span>Raw State</span>
+
+            <strong id="rawPrediction">
+              —
+            </strong>
+          </div>
+
+
+          <div>
+            <span>Raw Confidence</span>
+
+            <strong id="rawConfidence">
+              —
+            </strong>
+          </div>
+
+        </div>
+
+        <p>
+          This is the latest individual fusion observation.
+          The final result above is calculated from the recent
+          rolling probability window.
+        </p>
+
+      </section>
 
 
       <!-- ======================================================= -->
@@ -360,6 +508,7 @@
         <div class="webcam-result-heading">
 
           <div>
+
             <span class="small-caption">
               Webcam-Calibrated Image Modality
             </span>
@@ -367,7 +516,9 @@
             <strong id="webcamPrediction">
               —
             </strong>
+
           </div>
+
 
           <div class="webcam-confidence">
 
@@ -382,6 +533,7 @@
           </div>
 
         </div>
+
 
         <div
           id="webcamProbabilityBars"
@@ -405,6 +557,7 @@
         <div class="technical-grid">
 
           <div>
+
             <span>
               Second-highest class
             </span>
@@ -412,10 +565,12 @@
             <strong id="secondaryState">
               —
             </strong>
+
           </div>
 
 
           <div>
+
             <span>
               Confidence gap
             </span>
@@ -423,10 +578,12 @@
             <strong id="confidenceGap">
               —
             </strong>
+
           </div>
 
 
           <div>
+
             <span>
               Feature dimension
             </span>
@@ -434,10 +591,12 @@
             <strong id="featureDimension">
               —
             </strong>
+
           </div>
 
 
           <div>
+
             <span>
               Device
             </span>
@@ -445,10 +604,12 @@
             <strong id="deviceInfo">
               —
             </strong>
+
           </div>
 
 
           <div>
+
             <span>
               Webcam Calibration
             </span>
@@ -456,10 +617,12 @@
             <strong id="webcamCalibrationUsed">
               —
             </strong>
+
           </div>
 
 
           <div>
+
             <span>
               Active Modalities
             </span>
@@ -467,16 +630,63 @@
             <strong id="activeModalities">
               —
             </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Raw Top Class
+            </span>
+
+            <strong id="technicalRawState">
+              —
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Temporal Samples
+            </span>
+
+            <strong id="technicalTemporalSamples">
+              —
+            </strong>
+
+          </div>
+
+
+          <div>
+
+            <span>
+              Session ID
+            </span>
+
+            <strong id="sessionIdDisplay">
+              —
+            </strong>
+
           </div>
 
         </div>
 
 
         <h3>
-          Final Fusion Probability Distribution
+          Temporally Aggregated Fusion Probability Distribution
         </h3>
 
         <div id="probabilities"></div>
+
+
+        <h3>
+          Current Raw Fusion Probability Distribution
+        </h3>
+
+        <div id="rawProbabilities"></div>
 
       </details>
 

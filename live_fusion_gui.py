@@ -1,29 +1,4 @@
-# === live_fusion_gui.py ===
-#
-# SenseFuzeAI
-# Live Session-Aligned Multimodal Behavioural Fusion GUI
-#
-# =============================================================================
-# MODALITIES
-# =============================================================================
-#
-# 1. Keystroke dynamics
-# 2. MPNet text embeddings
-# 3. Librosa + WavLM audio features
-# 4. CLIP image embeddings
-# 5. Webcam-calibrated image probabilities
-#
-# The final fusion classifier is loaded from:
-#
-#     models/fusion_demo/fusion_pipeline.joblib
-#
-# The webcam-calibrated image classifier is loaded separately from:
-#
-#     models/image_demo/image_pipeline_webcam_calibrated.joblib
-#
-# The original image artifact is NOT replaced.
-#
-# =============================================================================
+# live_fusion_gui.py
 
 from __future__ import annotations
 
@@ -31,10 +6,10 @@ import json
 import statistics
 import threading
 import time
-import tkinter as tk
+from collections import deque
 from pathlib import Path
 from tkinter import filedialog, messagebox
-from typing import Any
+import tkinter as tk
 
 import cv2
 import joblib
@@ -55,100 +30,59 @@ from transformers import (
 )
 
 
-# =============================================================================
-# TORCH
-# =============================================================================
+# ============================================================
+# Torch configuration
+# ============================================================
 
 torch.set_num_threads(2)
 
 
-# =============================================================================
-# PROJECT ROOT
-# =============================================================================
+# ============================================================
+# Paths
+# ============================================================
 
-ROOT_DIR = Path(__file__).resolve().parent
-
-
-# =============================================================================
-# FINAL FUSION MODEL
-# =============================================================================
+FUSION_MODEL_DIR = Path("models/fusion_demo")
 
 FUSION_MODEL_PATH = (
-    ROOT_DIR
-    / "models"
-    / "fusion_demo"
-    / "fusion_pipeline.joblib"
+    FUSION_MODEL_DIR / "fusion_pipeline.joblib"
 )
 
 FUSION_FEATURE_COLUMNS_PATH = (
-    ROOT_DIR
-    / "models"
-    / "fusion_demo"
-    / "feature_columns.json"
+    FUSION_MODEL_DIR / "feature_columns.json"
+)
+
+TEXT_MODEL_PATH = Path(
+    "models/all-mpnet-base-v2"
+)
+
+WAVLM_MODEL_PATH = Path(
+    "models/wavlm-base-plus"
+)
+
+CLIP_MODEL_PATH = Path(
+    "models/clip-vit-large-patch14"
 )
 
 
-# =============================================================================
-# PRETRAINED MODELS
-# =============================================================================
+# Image-only artifacts are retained separately.
+# They are NOT substituted for the fusion model.
+IMAGE_MODEL_DIR = Path("models/image_demo")
 
-TEXT_MODEL_PATH = (
-    ROOT_DIR
-    / "models"
-    / "all-mpnet-base-v2"
+ORIGINAL_IMAGE_MODEL_PATH = (
+    IMAGE_MODEL_DIR / "image_pipeline.joblib"
 )
 
-WAVLM_MODEL_PATH = (
-    ROOT_DIR
-    / "models"
-    / "wavlm-base-plus"
-)
-
-CLIP_MODEL_PATH = (
-    ROOT_DIR
-    / "models"
-    / "clip-vit-large-patch14"
-)
-
-
-# =============================================================================
-# WEBCAM-CALIBRATED IMAGE CLASSIFIER
-# =============================================================================
-
-WEBCAM_IMAGE_MODEL_PATH = (
-    ROOT_DIR
-    / "models"
-    / "image_demo"
+WEBCAM_CALIBRATED_IMAGE_MODEL_PATH = (
+    IMAGE_MODEL_DIR
     / "image_pipeline_webcam_calibrated.joblib"
 )
 
-WEBCAM_IMAGE_FEATURE_COLUMNS_PATH = (
-    ROOT_DIR
-    / "models"
-    / "image_demo"
-    / "feature_columns.json"
-)
 
+# ============================================================
+# Behavioural classes
+# ============================================================
 
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-TARGET_SR = 16000
-MAX_AUDIO_SECONDS = 20
-MIC_RECORD_SECONDS = 10
-
-MIN_KEYDOWNS = 20
-MIN_TEXT_CHARS = 20
-
-WEBCAM_FEATURE_INTERVAL_SEC = 2.0
-
-DISPLAY_SIZE = (
-    320,
-    220,
-)
-
-CLASSES = [
+LABELS = [
     "focused",
     "distracted",
     "fatigued",
@@ -156,9 +90,44 @@ CLASSES = [
 ]
 
 
-# =============================================================================
-# GENERAL UTILITIES
-# =============================================================================
+# ============================================================
+# Audio configuration
+# ============================================================
+
+TARGET_SR = 16000
+MAX_AUDIO_SECONDS = 20
+MIC_RECORD_SECONDS = 10
+
+
+# ============================================================
+# Input requirements
+# ============================================================
+
+MIN_KEYDOWNS = 20
+MIN_TEXT_CHARS = 20
+
+
+# ============================================================
+# Live prediction configuration
+# ============================================================
+
+LIVE_FUSION_ENABLED = True
+
+# How often the system attempts a multimodal prediction.
+LIVE_FUSION_INTERVAL_MS = 2500
+
+# Rolling temporal fusion-output history.
+TEMPORAL_PROBABILITY_WINDOW = 5
+
+# Webcam / uploaded-video CLIP extraction interval.
+VISUAL_FEATURE_INTERVAL_SEC = 1.5
+
+DISPLAY_SIZE = (360, 240)
+
+
+# ============================================================
+# Utility functions
+# ============================================================
 
 def get_device() -> torch.device:
     return torch.device(
@@ -168,67 +137,7 @@ def get_device() -> torch.device:
     )
 
 
-def confidence_level(
-    gap: float,
-) -> str:
-    if gap >= 0.35:
-        return "High"
-
-    if gap >= 0.15:
-        return "Medium"
-
-    return "Low"
-
-
-def safe_mean(
-    values: list[float],
-) -> float:
-    return (
-        statistics.mean(values)
-        if values
-        else 0.0
-    )
-
-
-def safe_std(
-    values: list[float],
-) -> float:
-    return (
-        statistics.stdev(values)
-        if len(values) >= 2
-        else 0.0
-    )
-
-
-def clean_float(
-    value: Any,
-) -> float:
-    try:
-        value = float(value)
-
-        if np.isfinite(value):
-            return value
-
-    except Exception:
-        pass
-
-    return 0.0
-
-
-def normalise_label(
-    value: Any,
-) -> str:
-    return (
-        str(value)
-        .strip()
-        .lower()
-    )
-
-
-def normalise_key(
-    event,
-) -> str:
-
+def normalise_key(event) -> str:
     if event.keysym == "BackSpace":
         return "backspace"
 
@@ -244,89 +153,186 @@ def normalise_key(
     return event.keysym.lower()
 
 
-def get_model_classes(
-    model: Any,
-) -> list[str]:
-
-    classes = getattr(
-        model,
-        "classes_",
-        None,
+def safe_mean(values) -> float:
+    return (
+        statistics.mean(values)
+        if values
+        else 0.0
     )
 
-    if classes is not None:
-        return [
-            normalise_label(label)
-            for label
-            in classes
-        ]
 
-    if hasattr(
-        model,
-        "named_steps",
-    ):
-        for step in reversed(
-            list(
-                model.named_steps.values()
-            )
-        ):
-            classes = getattr(
-                step,
-                "classes_",
-                None,
-            )
-
-            if classes is not None:
-                return [
-                    normalise_label(label)
-                    for label
-                    in classes
-                ]
-
-    return []
-
-
-def softmax(
-    values: np.ndarray,
-) -> np.ndarray:
-
-    values = np.asarray(
-        values,
-        dtype=float,
+def safe_std(values) -> float:
+    return (
+        statistics.stdev(values)
+        if len(values) >= 2
+        else 0.0
     )
 
-    values -= np.max(
-        values
-    )
 
-    exp_values = np.exp(
-        values
-    )
+def confidence_level(gap: float) -> str:
+    if gap >= 0.35:
+        return "High"
 
-    total = np.sum(
-        exp_values
-    )
+    if gap >= 0.15:
+        return "Medium"
+
+    return "Low"
+
+
+def normalise_probability_dict(
+    probabilities: dict[str, float],
+) -> dict[str, float]:
+    """
+    Ensure the probability dictionary contains all four classes
+    and sums approximately to one.
+    """
+
+    output = {
+        label: float(
+            probabilities.get(label, 0.0)
+        )
+        for label in LABELS
+    }
+
+    total = sum(output.values())
 
     if total <= 0:
-        return (
-            np.ones_like(exp_values)
-            / len(exp_values)
-        )
+        return {
+            label: 1.0 / len(LABELS)
+            for label in LABELS
+        }
 
-    return exp_values / total
+    return {
+        label: value / total
+        for label, value in output.items()
+    }
 
 
-# =============================================================================
-# MAIN GUI CLASS
-# =============================================================================
+# ============================================================
+# CLIP helpers
+# ============================================================
+
+def extract_clip_embedding(
+    image: Image.Image,
+    model: CLIPModel,
+    processor: CLIPProcessor,
+    device: torch.device,
+) -> np.ndarray:
+
+    image = image.convert("RGB")
+
+    inputs = processor(
+        images=image,
+        return_tensors="pt",
+    )
+
+    pixel_values = inputs[
+        "pixel_values"
+    ].to(device)
+
+    with torch.inference_mode():
+
+        try:
+            output = model.get_image_features(
+                pixel_values=pixel_values
+            )
+
+            if isinstance(
+                output,
+                torch.Tensor,
+            ):
+                image_features = output
+
+            elif hasattr(
+                output,
+                "image_embeds",
+            ):
+                image_features = (
+                    output.image_embeds
+                )
+
+            elif hasattr(
+                output,
+                "pooler_output",
+            ):
+                image_features = (
+                    output.pooler_output
+                )
+
+            elif hasattr(
+                output,
+                "last_hidden_state",
+            ):
+                image_features = (
+                    output
+                    .last_hidden_state
+                    .mean(dim=1)
+                )
+
+            else:
+                raise TypeError(
+                    "Unsupported CLIP output "
+                    f"type: {type(output)}"
+                )
+
+        except Exception:
+
+            output = model.vision_model(
+                pixel_values=pixel_values
+            )
+
+            if (
+                hasattr(
+                    output,
+                    "pooler_output",
+                )
+                and output.pooler_output
+                is not None
+            ):
+                image_features = (
+                    output.pooler_output
+                )
+
+            elif hasattr(
+                output,
+                "last_hidden_state",
+            ):
+                image_features = (
+                    output
+                    .last_hidden_state
+                    .mean(dim=1)
+                )
+
+            else:
+                raise TypeError(
+                    "Unsupported CLIP vision "
+                    f"output type: {type(output)}"
+                )
+
+    image_features = F.normalize(
+        image_features,
+        p=2,
+        dim=-1,
+    )
+
+    return (
+        image_features
+        .squeeze(0)
+        .cpu()
+        .numpy()
+    )
+
+
+# ============================================================
+# Main application
+# ============================================================
 
 class FusionDemoApp:
 
     def __init__(
         self,
         root: tk.Tk,
-    ) -> None:
-
+    ):
         self.root = root
 
         self.root.title(
@@ -334,35 +340,53 @@ class FusionDemoApp:
         )
 
         self.root.geometry(
-            "1180x860"
+            "1280x860"
         )
 
         self.root.minsize(
-            980,
-            760,
+            1000,
+            740,
         )
 
         self.root.configure(
             bg="#07111f"
         )
 
-        # ---------------------------------------------------------------------
-        # Validate required artifacts
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Validate core artifacts
+        # ----------------------------------------------------
 
-        self.validate_paths()
+        required_paths = [
+            FUSION_MODEL_PATH,
+            FUSION_FEATURE_COLUMNS_PATH,
+            TEXT_MODEL_PATH,
+            WAVLM_MODEL_PATH,
+            CLIP_MODEL_PATH,
+        ]
 
-        # ---------------------------------------------------------------------
+        missing = [
+            str(path)
+            for path in required_paths
+            if not path.exists()
+        ]
+
+        if missing:
+            raise FileNotFoundError(
+                "Missing required artifacts:\n"
+                + "\n".join(missing)
+            )
+
+        # ----------------------------------------------------
         # Device
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
         self.device = get_device()
 
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
         # Fusion model
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
-        self.fusion_model = joblib.load(
+        self.pipeline = joblib.load(
             FUSION_MODEL_PATH
         )
 
@@ -370,19 +394,23 @@ class FusionDemoApp:
             "r",
             encoding="utf-8",
         ) as f:
-            self.fusion_feature_columns = json.load(f)
+            self.fusion_feature_columns = (
+                json.load(f)
+            )
 
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
         # Text model
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
-        self.text_model = SentenceTransformer(
-            str(TEXT_MODEL_PATH)
+        self.text_model = (
+            SentenceTransformer(
+                str(TEXT_MODEL_PATH)
+            )
         )
 
-        # ---------------------------------------------------------------------
-        # WavLM
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Audio model
+        # ----------------------------------------------------
 
         self.wavlm_extractor = (
             Wav2Vec2FeatureExtractor
@@ -396,212 +424,147 @@ class FusionDemoApp:
             .from_pretrained(
                 str(WAVLM_MODEL_PATH)
             )
-            .to(
-                self.device
-            )
+            .to(self.device)
         )
 
         self.wavlm_model.eval()
 
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
         # CLIP
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
         self.clip_processor = (
-            CLIPProcessor
-            .from_pretrained(
+            CLIPProcessor.from_pretrained(
                 str(CLIP_MODEL_PATH)
             )
         )
 
         self.clip_model = (
-            CLIPModel
-            .from_pretrained(
+            CLIPModel.from_pretrained(
                 str(CLIP_MODEL_PATH)
             )
-            .to(
-                self.device
-            )
+            .to(self.device)
         )
 
         self.clip_model.eval()
 
-        # ---------------------------------------------------------------------
-        # Webcam calibrated classifier
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Optional image-only classifiers
+        # ----------------------------------------------------
 
-        self.webcam_image_model = None
-        self.webcam_image_feature_columns: list[str] = []
+        self.original_image_pipeline = None
+        self.webcam_image_pipeline = None
 
-        self.load_webcam_calibration_model()
-
-        # ---------------------------------------------------------------------
-        # Keystrokes
-        # ---------------------------------------------------------------------
-
-        self.keystroke_events: list[
-            dict[str, Any]
-        ] = []
-
-        self.active_keys: set[str] = set()
-
-        # ---------------------------------------------------------------------
-        # Audio state
-        # ---------------------------------------------------------------------
-
-        self.audio_features_cache: dict[
-            str,
-            float,
-        ] | None = None
-
-        self.audio_source_name: str | None = None
-
-        # ---------------------------------------------------------------------
-        # Image state
-        # ---------------------------------------------------------------------
-
-        self.image_features_cache: dict[
-            str,
-            float,
-        ] | None = None
-
-        self.image_source_name: str | None = None
-
-        self.current_frame: Image.Image | None = None
-
-        self.preview_image = None
-
-        # ---------------------------------------------------------------------
-        # Webcam
-        # ---------------------------------------------------------------------
-
-        self.capture = None
-
-        self.running_webcam = False
-
-        self.last_webcam_feature_time = 0.0
-
-        self.image_processing = False
-
-        # ---------------------------------------------------------------------
-        # Fusion processing
-        # ---------------------------------------------------------------------
-
-        self.fusion_processing = False
-
-        # ---------------------------------------------------------------------
-        # UI
-        # ---------------------------------------------------------------------
-
-        self.build_ui()
-
-        self.update_readiness()
-
-
-    # =========================================================================
-    # PATH VALIDATION
-    # =========================================================================
-
-    def validate_paths(
-        self,
-    ) -> None:
-
-        required_paths = [
-            FUSION_MODEL_PATH,
-            FUSION_FEATURE_COLUMNS_PATH,
-            TEXT_MODEL_PATH,
-            WAVLM_MODEL_PATH,
-            CLIP_MODEL_PATH,
-        ]
-
-        missing = [
-            path
-            for path
-            in required_paths
-            if not path.exists()
-        ]
-
-        if missing:
-            raise FileNotFoundError(
-                "Missing required model files:\n\n"
-                + "\n".join(
-                    str(path)
-                    for path
-                    in missing
+        if ORIGINAL_IMAGE_MODEL_PATH.exists():
+            self.original_image_pipeline = (
+                joblib.load(
+                    ORIGINAL_IMAGE_MODEL_PATH
                 )
             )
 
-
-    # =========================================================================
-    # CALIBRATED IMAGE MODEL
-    # =========================================================================
-
-    def load_webcam_calibration_model(
-        self,
-    ) -> None:
-
-        webcam_required = any(
-            column.startswith(
-                "image_webcam_"
+        if (
+            WEBCAM_CALIBRATED_IMAGE_MODEL_PATH
+            .exists()
+        ):
+            self.webcam_image_pipeline = (
+                joblib.load(
+                    WEBCAM_CALIBRATED_IMAGE_MODEL_PATH
+                )
             )
-            for column
-            in self.fusion_feature_columns
+
+        # ----------------------------------------------------
+        # Keystroke state
+        # ----------------------------------------------------
+
+        self.keystroke_events = []
+        self.active_keys = set()
+
+        # ----------------------------------------------------
+        # Audio state
+        # ----------------------------------------------------
+
+        self.audio_features_cache = None
+        self.audio_source_name = None
+
+        # ----------------------------------------------------
+        # Visual state
+        # ----------------------------------------------------
+
+        self.image_features_cache = None
+
+        self.image_source_name = None
+
+        # none | image | video | webcam
+        self.image_source_type = "none"
+
+        self.current_frame = None
+        self.preview_image = None
+
+        self.capture = None
+        self.running_visual_stream = False
+
+        self.last_visual_feature_time = 0.0
+
+        self.visual_processing_busy = False
+
+        # ----------------------------------------------------
+        # Prediction concurrency
+        # ----------------------------------------------------
+
+        self.fusion_prediction_busy = False
+
+        # ----------------------------------------------------
+        # Temporal fusion probability history
+        # ----------------------------------------------------
+
+        self.probability_history = deque(
+            maxlen=TEMPORAL_PROBABILITY_WINDOW
         )
 
-        if not webcam_required:
-            return
+        # ----------------------------------------------------
+        # Build GUI
+        # ----------------------------------------------------
 
-        if not WEBCAM_IMAGE_MODEL_PATH.exists():
-            raise FileNotFoundError(
-                "Fusion model expects calibrated webcam image features, "
-                "but the calibrated model is missing:\n"
-                f"{WEBCAM_IMAGE_MODEL_PATH}"
+        self.build_ui()
+
+        # ----------------------------------------------------
+        # Start live fusion scheduler
+        # ----------------------------------------------------
+
+        if LIVE_FUSION_ENABLED:
+            self.root.after(
+                LIVE_FUSION_INTERVAL_MS,
+                self.live_fusion_tick,
             )
 
-        if not WEBCAM_IMAGE_FEATURE_COLUMNS_PATH.exists():
-            raise FileNotFoundError(
-                "Calibrated image feature schema missing:\n"
-                f"{WEBCAM_IMAGE_FEATURE_COLUMNS_PATH}"
-            )
-
-        self.webcam_image_model = joblib.load(
-            WEBCAM_IMAGE_MODEL_PATH
-        )
-
-        with WEBCAM_IMAGE_FEATURE_COLUMNS_PATH.open(
-            "r",
-            encoding="utf-8",
-        ) as f:
-            self.webcam_image_feature_columns = json.load(f)
-
-
-    # =========================================================================
+    # ========================================================
     # UI
-    # =========================================================================
+    # ========================================================
 
-    def build_ui(
-        self,
-    ) -> None:
+    def build_ui(self) -> None:
 
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
         # Header
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
         tk.Label(
             self.root,
-            text="SenseFuzeAI Live Multimodal Fusion System",
+            text=(
+                "SenseFuzeAI Live "
+                "Multimodal Fusion System"
+            ),
             font=("Arial", 22, "bold"),
             fg="#74f7ff",
             bg="#07111f",
         ).pack(
-            pady=(12, 3)
+            pady=(12, 4)
         )
 
         tk.Label(
             self.root,
             text=(
-                "Keystroke · Text · Audio · CLIP Vision · "
-                "Webcam-Calibrated Image Fusion"
+                "Keystroke · Text · Audio · "
+                "CLIP Vision · Temporal Probability Fusion"
             ),
             font=("Arial", 11),
             fg="white",
@@ -610,110 +573,104 @@ class FusionDemoApp:
             pady=(0, 8)
         )
 
-        # ---------------------------------------------------------------------
-        # Readiness panel
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Readiness bar
+        # ----------------------------------------------------
 
-        readiness_frame = tk.Frame(
+        status_frame = tk.Frame(
             self.root,
             bg="#10203a",
-            padx=12,
+            padx=14,
             pady=10,
         )
 
-        readiness_frame.pack(
+        status_frame.pack(
             fill="x",
             padx=18,
             pady=6,
         )
 
-        self.fusion_ready_label = tk.Label(
-            readiness_frame,
+        self.fusion_status_label = tk.Label(
+            status_frame,
             text="Fusion Model: Loaded",
             font=("Arial", 10, "bold"),
             fg="#66ffd6",
             bg="#10203a",
         )
 
-        self.fusion_ready_label.grid(
-            row=0,
-            column=0,
+        self.fusion_status_label.pack(
+            side="left",
             padx=10,
         )
 
         self.text_ready_label = tk.Label(
-            readiness_frame,
-            text="Text: Missing",
+            status_frame,
+            text=f"Text: 0/{MIN_TEXT_CHARS}",
             font=("Arial", 10, "bold"),
             fg="#ffb3b3",
             bg="#10203a",
         )
 
-        self.text_ready_label.grid(
-            row=0,
-            column=1,
+        self.text_ready_label.pack(
+            side="left",
             padx=10,
         )
 
         self.key_ready_label = tk.Label(
-            readiness_frame,
-            text="Keystroke: Missing",
+            status_frame,
+            text=f"Keystroke: 0/{MIN_KEYDOWNS}",
             font=("Arial", 10, "bold"),
             fg="#ffb3b3",
             bg="#10203a",
         )
 
-        self.key_ready_label.grid(
-            row=0,
-            column=2,
+        self.key_ready_label.pack(
+            side="left",
             padx=10,
         )
 
         self.audio_ready_label = tk.Label(
-            readiness_frame,
+            status_frame,
             text="Audio: Missing",
             font=("Arial", 10, "bold"),
             fg="#ffb3b3",
             bg="#10203a",
         )
 
-        self.audio_ready_label.grid(
-            row=0,
-            column=3,
+        self.audio_ready_label.pack(
+            side="left",
             padx=10,
         )
 
         self.image_ready_label = tk.Label(
-            readiness_frame,
+            status_frame,
             text="Image: Missing",
             font=("Arial", 10, "bold"),
             fg="#ffb3b3",
             bg="#10203a",
         )
 
-        self.image_ready_label.grid(
-            row=0,
-            column=4,
+        self.image_ready_label.pack(
+            side="left",
             padx=10,
         )
 
         self.device_label = tk.Label(
-            readiness_frame,
+            status_frame,
             text=f"Device: {self.device}",
             font=("Arial", 10, "bold"),
             fg="#74f7ff",
             bg="#10203a",
         )
 
-        self.device_label.grid(
-            row=0,
-            column=5,
+        self.device_label.pack(
+            side="left",
             padx=10,
         )
 
-        # ---------------------------------------------------------------------
-        # Main input area
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Main two-column area
+        # ----------------------------------------------------
 
         main_frame = tk.Frame(
             self.root,
@@ -724,7 +681,22 @@ class FusionDemoApp:
             fill="both",
             expand=True,
             padx=18,
-            pady=5,
+            pady=8,
+        )
+
+        main_frame.grid_columnconfigure(
+            0,
+            weight=3,
+        )
+
+        main_frame.grid_columnconfigure(
+            1,
+            weight=2,
+        )
+
+        main_frame.grid_rowconfigure(
+            0,
+            weight=1,
         )
 
         left_frame = tk.Frame(
@@ -732,10 +704,10 @@ class FusionDemoApp:
             bg="#07111f",
         )
 
-        left_frame.pack(
-            side="left",
-            fill="both",
-            expand=True,
+        left_frame.grid(
+            row=0,
+            column=0,
+            sticky="nsew",
             padx=(0, 8),
         )
 
@@ -744,16 +716,16 @@ class FusionDemoApp:
             bg="#07111f",
         )
 
-        right_frame.pack(
-            side="left",
-            fill="both",
-            expand=True,
+        right_frame.grid(
+            row=0,
+            column=1,
+            sticky="nsew",
             padx=(8, 0),
         )
 
-        # ---------------------------------------------------------------------
-        # Text + keystroke
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Text / keystroke
+        # ----------------------------------------------------
 
         text_frame = tk.LabelFrame(
             left_frame,
@@ -761,21 +733,20 @@ class FusionDemoApp:
             font=("Arial", 11, "bold"),
             fg="#74f7ff",
             bg="#07111f",
-            padx=8,
+            padx=10,
             pady=8,
         )
 
         text_frame.pack(
             fill="both",
             expand=True,
-            pady=5,
+            pady=(0, 8),
         )
 
         self.text_box = tk.Text(
             text_frame,
-            height=10,
-            width=60,
-            font=("Arial", 11),
+            height=11,
+            font=("Arial", 12),
             bg="#0b1220",
             fg="white",
             insertbackground="white",
@@ -801,9 +772,9 @@ class FusionDemoApp:
             self.on_text_modified,
         )
 
-        # ---------------------------------------------------------------------
-        # Audio controls
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Audio
+        # ----------------------------------------------------
 
         audio_frame = tk.LabelFrame(
             left_frame,
@@ -811,20 +782,21 @@ class FusionDemoApp:
             font=("Arial", 11, "bold"),
             fg="#74f7ff",
             bg="#07111f",
-            padx=8,
+            padx=10,
             pady=8,
         )
 
         audio_frame.pack(
             fill="x",
-            pady=5,
+            pady=(8, 0),
         )
 
         tk.Button(
             audio_frame,
             text="Choose Audio File",
-            command=self.choose_audio_file_threaded,
+            command=self.choose_audio_file,
             width=20,
+            font=("Arial", 10, "bold"),
         ).grid(
             row=0,
             column=0,
@@ -838,6 +810,7 @@ class FusionDemoApp:
             width=20,
             bg="#00a884",
             fg="white",
+            font=("Arial", 10, "bold"),
         ).grid(
             row=0,
             column=1,
@@ -849,39 +822,41 @@ class FusionDemoApp:
             text="Audio not loaded.",
             fg="#ffb3b3",
             bg="#07111f",
+            wraplength=550,
         )
 
         self.audio_label.grid(
             row=1,
             column=0,
             columnspan=2,
-            pady=6,
-        )
-
-        # ---------------------------------------------------------------------
-        # Image controls
-        # ---------------------------------------------------------------------
-
-        image_frame = tk.LabelFrame(
-            right_frame,
-            text="Image / Webcam Input",
-            font=("Arial", 11, "bold"),
-            fg="#74f7ff",
-            bg="#07111f",
-            padx=8,
             pady=8,
         )
 
-        image_frame.pack(
+        # ----------------------------------------------------
+        # Visual controls
+        # ----------------------------------------------------
+
+        visual_frame = tk.LabelFrame(
+            right_frame,
+            text="Image / Video / Webcam Input",
+            font=("Arial", 11, "bold"),
+            fg="#74f7ff",
+            bg="#07111f",
+            padx=10,
+            pady=8,
+        )
+
+        visual_frame.pack(
             fill="x",
-            pady=5,
+            pady=(0, 8),
         )
 
         tk.Button(
-            image_frame,
+            visual_frame,
             text="Choose Image",
-            command=self.choose_image_file_threaded,
-            width=15,
+            command=self.choose_image_file,
+            width=14,
+            font=("Arial", 9, "bold"),
         ).grid(
             row=0,
             column=0,
@@ -889,12 +864,13 @@ class FusionDemoApp:
         )
 
         tk.Button(
-            image_frame,
-            text="Start Webcam",
-            command=self.start_webcam,
-            width=15,
-            bg="#00a884",
+            visual_frame,
+            text="Choose Video",
+            command=self.choose_video_file,
+            width=14,
+            bg="#6c5ce7",
             fg="white",
+            font=("Arial", 9, "bold"),
         ).grid(
             row=0,
             column=1,
@@ -902,31 +878,51 @@ class FusionDemoApp:
         )
 
         tk.Button(
-            image_frame,
-            text="Stop Webcam",
-            command=self.stop_webcam,
-            width=15,
-            bg="#c0392b",
+            visual_frame,
+            text="Start Webcam",
+            command=self.start_webcam,
+            width=14,
+            bg="#00a884",
             fg="white",
+            font=("Arial", 9, "bold"),
         ).grid(
             row=0,
             column=2,
             padx=4,
         )
 
+        tk.Button(
+            visual_frame,
+            text="Stop",
+            command=self.stop_visual_stream,
+            width=10,
+            bg="#c0392b",
+            fg="white",
+            font=("Arial", 9, "bold"),
+        ).grid(
+            row=0,
+            column=3,
+            padx=4,
+        )
+
         self.image_label = tk.Label(
-            image_frame,
-            text="Image not loaded.",
+            visual_frame,
+            text="Visual input not loaded.",
             fg="#ffb3b3",
             bg="#07111f",
+            wraplength=450,
         )
 
         self.image_label.grid(
             row=1,
             column=0,
-            columnspan=3,
-            pady=6,
+            columnspan=4,
+            pady=8,
         )
+
+        # ----------------------------------------------------
+        # Preview
+        # ----------------------------------------------------
 
         self.preview_label = tk.Label(
             right_frame,
@@ -934,23 +930,23 @@ class FusionDemoApp:
         )
 
         self.preview_label.pack(
-            pady=8,
+            pady=6
         )
 
-        # ---------------------------------------------------------------------
-        # Main result panel
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Result
+        # ----------------------------------------------------
 
         result_frame = tk.Frame(
             right_frame,
             bg="#10203a",
             padx=14,
-            pady=12,
+            pady=14,
         )
 
         result_frame.pack(
             fill="x",
-            pady=5,
+            pady=8,
         )
 
         tk.Label(
@@ -961,7 +957,7 @@ class FusionDemoApp:
             bg="#10203a",
         ).pack()
 
-        self.state_label = tk.Label(
+        self.result_label = tk.Label(
             result_frame,
             text="—",
             font=("Arial", 34, "bold"),
@@ -969,19 +965,21 @@ class FusionDemoApp:
             bg="#10203a",
         )
 
-        self.state_label.pack(
-            pady=3,
+        self.result_label.pack(
+            pady=(6, 2)
         )
 
         self.confidence_label = tk.Label(
             result_frame,
             text="Confidence: —",
-            font=("Arial", 16, "bold"),
+            font=("Arial", 17, "bold"),
             fg="white",
             bg="#10203a",
         )
 
-        self.confidence_label.pack()
+        self.confidence_label.pack(
+            pady=2
+        )
 
         self.confidence_level_label = tk.Label(
             result_frame,
@@ -992,12 +990,27 @@ class FusionDemoApp:
         )
 
         self.confidence_level_label.pack(
-            pady=2,
+            pady=2
         )
 
-        # ---------------------------------------------------------------------
+        self.temporal_label = tk.Label(
+            result_frame,
+            text=(
+                "Temporal window: "
+                f"0/{TEMPORAL_PROBABILITY_WINDOW}"
+            ),
+            font=("Arial", 10),
+            fg="#cbd6ff",
+            bg="#10203a",
+        )
+
+        self.temporal_label.pack(
+            pady=(4, 0)
+        )
+
+        # ----------------------------------------------------
         # Controls
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
         control_frame = tk.Frame(
             self.root,
@@ -1005,17 +1018,17 @@ class FusionDemoApp:
         )
 
         control_frame.pack(
-            pady=6,
+            pady=5
         )
 
         tk.Button(
             control_frame,
             text="Run Fusion Prediction",
             command=self.predict_fusion_threaded,
+            width=26,
             font=("Arial", 12, "bold"),
             bg="#2E86C1",
             fg="white",
-            width=24,
         ).grid(
             row=0,
             column=0,
@@ -1024,54 +1037,83 @@ class FusionDemoApp:
 
         tk.Button(
             control_frame,
-            text="Reset Session",
-            command=self.reset,
-            font=("Arial", 11, "bold"),
-            bg="#4a5568",
+            text="Reset Temporal Window",
+            command=self.reset_temporal_history,
+            width=22,
+            font=("Arial", 10, "bold"),
+            bg="#6c5ce7",
             fg="white",
-            width=18,
         ).grid(
             row=0,
             column=1,
             padx=8,
         )
 
+        tk.Button(
+            control_frame,
+            text="Reset Session",
+            command=self.reset,
+            width=18,
+            font=("Arial", 10, "bold"),
+            bg="#4a5568",
+            fg="white",
+        ).grid(
+            row=0,
+            column=2,
+            padx=8,
+        )
+
+        # ----------------------------------------------------
+        # Status
+        # ----------------------------------------------------
+
         self.status_label = tk.Label(
             self.root,
             text="System ready.",
-            font=("Arial", 10),
             fg="#cbd6ff",
             bg="#07111f",
+            font=("Arial", 10),
         )
 
         self.status_label.pack(
-            pady=3,
+            pady=4
         )
 
-        # ---------------------------------------------------------------------
-        # Technical information
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
+        # Technical details
+        # ----------------------------------------------------
 
         technical_frame = tk.LabelFrame(
             self.root,
             text="Technical Details",
-            font=("Arial", 10, "bold"),
+            font=("Arial", 11, "bold"),
             fg="#74f7ff",
             bg="#07111f",
-            padx=8,
-            pady=6,
+            padx=10,
+            pady=8,
         )
 
         technical_frame.pack(
             fill="both",
-            expand=False,
+            expand=True,
             padx=18,
             pady=(4, 10),
         )
 
-        self.prob_text = tk.Text(
+        detail_inner = tk.Frame(
             technical_frame,
-            height=5,
+            bg="#07111f",
+        )
+
+        detail_inner.pack(
+            fill="both",
+            expand=True,
+        )
+
+        self.prob_text = tk.Text(
+            detail_inner,
+            height=7,
+            width=72,
             font=("Consolas", 9),
             bg="#0b1220",
             fg="#dbeafe",
@@ -1081,12 +1123,13 @@ class FusionDemoApp:
             side="left",
             fill="both",
             expand=True,
-            padx=(0, 4),
+            padx=(0, 5),
         )
 
         self.info_text = tk.Text(
-            technical_frame,
-            height=5,
+            detail_inner,
+            height=7,
+            width=72,
             font=("Consolas", 9),
             bg="#0b1220",
             fg="#dbeafe",
@@ -1096,72 +1139,46 @@ class FusionDemoApp:
             side="left",
             fill="both",
             expand=True,
-            padx=(4, 0),
+            padx=(5, 0),
         )
 
+    # ========================================================
+    # Readiness
+    # ========================================================
 
-    # =========================================================================
-    # READINESS
-    # =========================================================================
-
-    def update_readiness(
-        self,
-    ) -> None:
+    def update_readiness(self) -> None:
 
         text = self.text_box.get(
             "1.0",
             tk.END,
         ).strip()
 
-        keydowns = sum(
-            1
-            for event
-            in self.keystroke_events
-            if event.get("type") == "down"
-        )
+        text_count = len(text)
 
-        text_ready = (
-            len(text)
-            >= MIN_TEXT_CHARS
-        )
-
-        key_ready = (
-            keydowns
-            >= MIN_KEYDOWNS
-        )
-
-        audio_ready = (
-            self.audio_features_cache
-            is not None
-        )
-
-        image_ready = (
-            self.image_features_cache
-            is not None
-        )
+        keydown_count = self.count_keydowns()
 
         self.text_ready_label.config(
             text=(
-                "Text: Ready"
-                if text_ready
-                else f"Text: {len(text)}/{MIN_TEXT_CHARS}"
+                f"Text: {text_count}/"
+                f"{MIN_TEXT_CHARS}"
             ),
             fg=(
                 "#66ffd6"
-                if text_ready
+                if text_count
+                >= MIN_TEXT_CHARS
                 else "#ffb3b3"
             ),
         )
 
         self.key_ready_label.config(
             text=(
-                "Keystroke: Ready"
-                if key_ready
-                else f"Keystroke: {keydowns}/{MIN_KEYDOWNS}"
+                f"Keystroke: {keydown_count}/"
+                f"{MIN_KEYDOWNS}"
             ),
             fg=(
                 "#66ffd6"
-                if key_ready
+                if keydown_count
+                >= MIN_KEYDOWNS
                 else "#ffb3b3"
             ),
         )
@@ -1169,12 +1186,14 @@ class FusionDemoApp:
         self.audio_ready_label.config(
             text=(
                 "Audio: Ready"
-                if audio_ready
+                if self.audio_features_cache
+                is not None
                 else "Audio: Missing"
             ),
             fg=(
                 "#66ffd6"
-                if audio_ready
+                if self.audio_features_cache
+                is not None
                 else "#ffb3b3"
             ),
         )
@@ -1182,33 +1201,53 @@ class FusionDemoApp:
         self.image_ready_label.config(
             text=(
                 "Image: Ready"
-                if image_ready
+                if self.image_features_cache
+                is not None
                 else "Image: Missing"
             ),
             fg=(
                 "#66ffd6"
-                if image_ready
+                if self.image_features_cache
+                is not None
                 else "#ffb3b3"
             ),
         )
 
+    def fusion_inputs_ready(self) -> bool:
 
-    # =========================================================================
-    # TEXT / KEYSTROKE
-    # =========================================================================
+        text = self.text_box.get(
+            "1.0",
+            tk.END,
+        ).strip()
+
+        return (
+            len(text) >= MIN_TEXT_CHARS
+            and self.count_keydowns()
+            >= MIN_KEYDOWNS
+            and self.audio_features_cache
+            is not None
+            and self.image_features_cache
+            is not None
+        )
+
+    # ========================================================
+    # Text events
+    # ========================================================
 
     def on_text_modified(
         self,
         _event,
     ) -> None:
 
-        if self.text_box.edit_modified():
-            self.text_box.edit_modified(
-                False
-            )
+        self.text_box.edit_modified(
+            False
+        )
 
-            self.update_readiness()
+        self.update_readiness()
 
+    # ========================================================
+    # Keystrokes
+    # ========================================================
 
     def on_key_press(
         self,
@@ -1230,13 +1269,16 @@ class FusionDemoApp:
             {
                 "type": "down",
                 "key": key,
-                "timestamp_perf": time.perf_counter(),
-                "timestamp_epoch": time.time(),
+                "timestamp_perf": (
+                    time.perf_counter()
+                ),
+                "timestamp_epoch": (
+                    time.time()
+                ),
             }
         )
 
         self.update_readiness()
-
 
     def on_key_release(
         self,
@@ -1255,49 +1297,51 @@ class FusionDemoApp:
             {
                 "type": "up",
                 "key": key,
-                "timestamp_perf": time.perf_counter(),
-                "timestamp_epoch": time.time(),
+                "timestamp_perf": (
+                    time.perf_counter()
+                ),
+                "timestamp_epoch": (
+                    time.time()
+                ),
             }
         )
 
         self.update_readiness()
 
+    def count_keydowns(self) -> int:
+        return sum(
+            1
+            for event
+            in self.keystroke_events
+            if event.get("type")
+            == "down"
+        )
 
-    # =========================================================================
-    # KEYSTROKE FEATURES
-    # =========================================================================
+    # ========================================================
+    # Keystroke feature extraction
+    # ========================================================
 
     def extract_keystroke_features(
         self,
+        typed_text: str,
+        events: list[dict],
     ) -> dict[str, float]:
-
-        typed_text = self.text_box.get(
-            "1.0",
-            tk.END,
-        ).strip()
 
         downs = [
             event
-            for event
-            in self.keystroke_events
-            if event.get("type") == "down"
+            for event in events
+            if event.get("type")
+            == "down"
         ]
 
         down_times = [
-            float(
-                event[
-                    "timestamp_perf"
-                ]
-            )
-            for event
-            in downs
+            event["timestamp_perf"]
+            for event in downs
             if "timestamp_perf"
             in event
         ]
 
-        if len(
-            down_times
-        ) < 2:
+        if len(down_times) < 2:
             raise ValueError(
                 "Not enough keystroke events."
             )
@@ -1308,30 +1352,24 @@ class FusionDemoApp:
 
         if keydown_count < MIN_KEYDOWNS:
             raise ValueError(
-                f"Need at least {MIN_KEYDOWNS} key presses."
+                f"Need at least "
+                f"{MIN_KEYDOWNS} key presses."
             )
 
         delays = [
-            down_times[index]
-            - down_times[index - 1]
-
-            for index
-            in range(
+            down_times[i]
+            - down_times[i - 1]
+            for i in range(
                 1,
                 len(down_times),
             )
         ]
 
-        hold_times: list[
-            float
-        ] = []
+        hold_times = []
 
-        unmatched_downs: dict[
-            str,
-            list[float],
-        ] = {}
+        unmatched_downs = {}
 
-        for event in self.keystroke_events:
+        for event in events:
 
             key = event.get(
                 "key"
@@ -1351,10 +1389,6 @@ class FusionDemoApp:
             ):
                 continue
 
-            timestamp = float(
-                timestamp
-            )
-
             if event_type == "down":
 
                 unmatched_downs.setdefault(
@@ -1367,17 +1401,13 @@ class FusionDemoApp:
             elif event_type == "up":
 
                 if (
-                    key
-                    in unmatched_downs
-                    and unmatched_downs[
-                        key
-                    ]
+                    key in unmatched_downs
+                    and unmatched_downs[key]
                 ):
                     down_time = (
                         unmatched_downs[
                             key
-                        ]
-                        .pop(0)
+                        ].pop(0)
                     )
 
                     hold_times.append(
@@ -1396,11 +1426,8 @@ class FusionDemoApp:
 
         correction_count = sum(
             1
-            for event
-            in downs
-            if event.get(
-                "key"
-            )
+            for event in downs
+            if event.get("key")
             in {
                 "backspace",
                 "delete",
@@ -1408,24 +1435,21 @@ class FusionDemoApp:
         )
 
         pauses_1000 = [
-            value
-            for value
-            in delays
-            if value >= 1.0
+            delay
+            for delay in delays
+            if delay >= 1.0
         ]
 
         pauses_2000 = [
-            value
-            for value
-            in delays
-            if value >= 2.0
+            delay
+            for delay in delays
+            if delay >= 2.0
         ]
 
         pauses_5000 = [
-            value
-            for value
-            in delays
-            if value >= 5.0
+            delay
+            for delay in delays
+            if delay >= 5.0
         ]
 
         delay_mean = safe_mean(
@@ -1438,197 +1462,170 @@ class FusionDemoApp:
 
         rhythm_consistency = (
             1.0
-            / (
-                1.0
-                + delay_std
-            )
+            / (1.0 + delay_std)
             if delay_std > 0
             else 1.0
         )
 
-        raw_features = {
-            "total_duration_sec":
+        return {
+            "total_duration_sec": round(
                 total_duration,
+                4,
+            ),
 
-            "keydown_count":
-                keydown_count,
+            "keydown_count": (
+                keydown_count
+            ),
 
-            "word_count":
-                word_count,
+            "word_count": (
+                word_count
+            ),
 
-            "typing_speed_kps":
+            "typing_speed_kps": round(
+                keydown_count
+                / total_duration,
+                4,
+            )
+            if total_duration > 0
+            else 0.0,
+
+            "typing_speed_wpm": round(
                 (
-                    keydown_count
+                    word_count
                     / total_duration
-                    if total_duration > 0
-                    else 0.0
-                ),
+                )
+                * 60,
+                4,
+            )
+            if total_duration > 0
+            else 0.0,
 
-            "typing_speed_wpm":
-                (
-                    (
-                        word_count
-                        / total_duration
-                    )
-                    * 60
-                    if total_duration > 0
-                    else 0.0
-                ),
-
-            "delay_mean":
+            "delay_mean": round(
                 delay_mean,
+                4,
+            ),
 
-            "delay_std":
+            "delay_std": round(
                 delay_std,
+                4,
+            ),
 
-            "delay_min":
-                min(delays)
-                if delays
-                else 0.0,
+            "delay_min": round(
+                min(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
-            "delay_max":
-                max(delays)
-                if delays
-                else 0.0,
+            "delay_max": round(
+                max(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
-            "hold_mean":
+            "hold_mean": round(
                 safe_mean(
                     hold_times
                 ),
+                4,
+            ),
 
-            "hold_std":
+            "hold_std": round(
                 safe_std(
                     hold_times
                 ),
+                4,
+            ),
 
-            "pause_count_1000":
-                len(
-                    pauses_1000
-                ),
+            "pause_count_1000": (
+                len(pauses_1000)
+            ),
 
-            "pause_count_2000":
-                len(
-                    pauses_2000
-                ),
+            "pause_count_2000": (
+                len(pauses_2000)
+            ),
 
-            "pause_count_5000":
-                len(
-                    pauses_5000
-                ),
+            "pause_count_5000": (
+                len(pauses_5000)
+            ),
 
-            "pause_ratio_1000":
-                (
-                    len(
-                        pauses_1000
-                    )
-                    / len(
-                        delays
-                    )
-                    if delays
-                    else 0.0
-                ),
+            "pause_ratio_1000": round(
+                len(pauses_1000)
+                / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
-            "pause_ratio_2000":
-                (
-                    len(
-                        pauses_2000
-                    )
-                    / len(
-                        delays
-                    )
-                    if delays
-                    else 0.0
-                ),
+            "pause_ratio_2000": round(
+                len(pauses_2000)
+                / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
-            "mental_block_ratio_5000":
-                (
-                    len(
-                        pauses_5000
-                    )
-                    / len(
-                        delays
-                    )
-                    if delays
-                    else 0.0
-                ),
+            "mental_block_ratio_5000": (
+                round(
+                    len(pauses_5000)
+                    / len(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
 
-            "correction_count":
-                correction_count,
+            "correction_count": (
+                correction_count
+            ),
 
-            "correction_ratio":
-                (
-                    correction_count
-                    / keydown_count
-                    if keydown_count
-                    else 0.0
-                ),
+            "correction_ratio": round(
+                correction_count
+                / keydown_count,
+                4,
+            )
+            if keydown_count
+            else 0.0,
 
-            "rhythm_consistency":
+            "rhythm_consistency": round(
                 rhythm_consistency,
+                4,
+            ),
 
-            "burstiness_proxy":
-                (
-                    delay_std
-                    / delay_mean
-                    if delay_mean > 0
-                    else 0.0
-                ),
+            "burstiness_proxy": round(
+                delay_std
+                / delay_mean,
+                4,
+            )
+            if delay_mean > 0
+            else 0.0,
 
-            "fits_starts_index":
-                (
-                    len(
-                        pauses_1000
-                    )
-                    / len(
-                        delays
-                    )
-                    if delays
-                    else 0.0
-                ),
+            "fits_starts_index": round(
+                len(pauses_1000)
+                / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
         }
 
-        output: dict[
-            str,
-            float,
-        ] = {}
-
-        for key, value in raw_features.items():
-
-            clean_value = clean_float(
-                value
-            )
-
-            # Original key
-            output[
-                key
-            ] = clean_value
-
-            # Fusion-training schema key
-            output[
-                f"keystroke_{key}"
-            ] = clean_value
-
-        return output
-
-
-    # =========================================================================
-    # TEXT FEATURES
-    # =========================================================================
+    # ========================================================
+    # Text features
+    # ========================================================
 
     def extract_text_features(
         self,
+        text: str,
     ) -> dict[str, float]:
 
-        text = self.text_box.get(
-            "1.0",
-            tk.END,
-        ).strip()
-
-        if len(
-            text
-        ) < MIN_TEXT_CHARS:
+        if (
+            len(text)
+            < MIN_TEXT_CHARS
+        ):
             raise ValueError(
-                f"Need at least {MIN_TEXT_CHARS} text characters."
+                f"Need at least "
+                f"{MIN_TEXT_CHARS} text characters."
             )
 
         embedding = self.text_model.encode(
@@ -1639,29 +1636,21 @@ class FusionDemoApp:
         )[0]
 
         return {
-            f"text_mpnet_emb_{index}":
-            clean_float(
-                value
+            f"text_mpnet_emb_{i}": (
+                float(value)
             )
-
-            for index, value
-            in enumerate(
-                embedding
-            )
+            for i, value
+            in enumerate(embedding)
         }
 
-
-    # =========================================================================
-    # AUDIO
-    # =========================================================================
+    # ========================================================
+    # Audio
+    # ========================================================
 
     def load_audio_waveform(
         self,
         audio_path: Path,
-    ) -> tuple[
-        np.ndarray,
-        int,
-    ]:
+    ):
 
         waveform, sr = librosa.load(
             audio_path,
@@ -1673,52 +1662,50 @@ class FusionDemoApp:
             np.float32
         )
 
-        if len(
-            waveform
-        ) == 0:
+        if len(waveform) == 0:
             raise ValueError(
                 "Audio waveform is empty."
             )
 
-        waveform = waveform[
-            : TARGET_SR
+        max_samples = (
+            TARGET_SR
             * MAX_AUDIO_SECONDS
-        ]
-
-        return (
-            waveform,
-            sr,
         )
 
+        waveform = waveform[
+            :max_samples
+        ]
+
+        return waveform, sr
 
     def extract_audio_features_from_waveform(
         self,
-        waveform: np.ndarray,
-        sr: int,
+        waveform,
+        sr,
     ) -> dict[str, float]:
 
-        waveform = np.asarray(
-            waveform,
-            dtype=np.float32,
-        )
+        if len(waveform) == 0:
+            raise ValueError(
+                "Audio waveform is empty."
+            )
 
-        waveform = waveform[
-            : TARGET_SR
-            * MAX_AUDIO_SECONDS
-        ]
-
-        duration = librosa.get_duration(
-            y=waveform,
-            sr=sr,
+        duration = (
+            librosa.get_duration(
+                y=waveform,
+                sr=sr,
+            )
         )
 
         rms = librosa.feature.rms(
             y=waveform
         )[0]
 
-        zcr = librosa.feature.zero_crossing_rate(
-            waveform
-        )[0]
+        zcr = (
+            librosa.feature
+            .zero_crossing_rate(
+                waveform
+            )[0]
+        )
 
         mfcc = librosa.feature.mfcc(
             y=waveform,
@@ -1765,7 +1752,6 @@ class FusionDemoApp:
                     magnitudes > 0
                 ]
             )
-
         else:
             threshold = 0.0
 
@@ -1773,119 +1759,132 @@ class FusionDemoApp:
             magnitudes > threshold
         ]
 
-        pitch_values = pitch_values[
-            pitch_values > 0
-        ]
+        pitch_values = (
+            pitch_values[
+                pitch_values > 0
+            ]
+        )
 
         features = {
-            "audio_duration":
-                duration,
+            "audio_duration": float(
+                duration
+            ),
 
-            "audio_rms_mean":
-                np.mean(rms),
+            "audio_rms_mean": float(
+                np.mean(rms)
+            ),
 
-            "audio_rms_std":
-                np.std(rms),
+            "audio_rms_std": float(
+                np.std(rms)
+            ),
 
-            "audio_zcr_mean":
-                np.mean(zcr),
+            "audio_zcr_mean": float(
+                np.mean(zcr)
+            ),
 
-            "audio_zcr_std":
-                np.std(zcr),
+            "audio_zcr_std": float(
+                np.std(zcr)
+            ),
 
             "audio_spectral_centroid_mean":
-                np.mean(
-                    spectral_centroid
+                float(
+                    np.mean(
+                        spectral_centroid
+                    )
                 ),
 
             "audio_spectral_centroid_std":
-                np.std(
-                    spectral_centroid
+                float(
+                    np.std(
+                        spectral_centroid
+                    )
                 ),
 
             "audio_spectral_bandwidth_mean":
-                np.mean(
-                    spectral_bandwidth
+                float(
+                    np.mean(
+                        spectral_bandwidth
+                    )
                 ),
 
             "audio_spectral_bandwidth_std":
-                np.std(
-                    spectral_bandwidth
+                float(
+                    np.std(
+                        spectral_bandwidth
+                    )
                 ),
 
             "audio_spectral_rolloff_mean":
-                np.mean(
-                    spectral_rolloff
+                float(
+                    np.mean(
+                        spectral_rolloff
+                    )
                 ),
 
             "audio_spectral_rolloff_std":
-                np.std(
-                    spectral_rolloff
+                float(
+                    np.std(
+                        spectral_rolloff
+                    )
                 ),
 
-            "audio_pitch_mean":
-                (
+            "audio_pitch_mean": (
+                float(
                     np.mean(
                         pitch_values
                     )
-                    if len(
-                        pitch_values
-                    )
-                    else 0.0
-                ),
+                )
+                if len(pitch_values)
+                else 0.0
+            ),
 
-            "audio_pitch_std":
-                (
+            "audio_pitch_std": (
+                float(
                     np.std(
                         pitch_values
                     )
-                    if len(
-                        pitch_values
-                    )
-                    else 0.0
-                ),
+                )
+                if len(pitch_values)
+                else 0.0
+            ),
 
-            "audio_pitch_min":
-                (
+            "audio_pitch_min": (
+                float(
                     np.min(
                         pitch_values
                     )
-                    if len(
-                        pitch_values
-                    )
-                    else 0.0
-                ),
+                )
+                if len(pitch_values)
+                else 0.0
+            ),
 
-            "audio_pitch_max":
-                (
+            "audio_pitch_max": (
+                float(
                     np.max(
                         pitch_values
                     )
-                    if len(
-                        pitch_values
-                    )
-                    else 0.0
-                ),
+                )
+                if len(pitch_values)
+                else 0.0
+            ),
         }
 
-        for index in range(
-            13
-        ):
+        for i in range(13):
 
             features[
-                f"audio_mfcc_{index}_mean"
-            ] = np.mean(
-                mfcc[
-                    index
-                ]
+                f"audio_mfcc_{i}_mean"
+            ] = float(
+                np.mean(
+                    mfcc[i]
+                )
             )
 
             features[
-                f"audio_mfcc_{index}_std"
-            ] = np.std(
-                mfcc[
-                    index
-                ]
+                f"audio_mfcc_{i}_std"
+            ] = float(
+                np.std(
+                    mfcc[i]
+                )
             )
 
         inputs = self.wavlm_extractor(
@@ -1904,7 +1903,6 @@ class FusionDemoApp:
         }
 
         with torch.inference_mode():
-
             outputs = self.wavlm_model(
                 **inputs
             )
@@ -1912,9 +1910,7 @@ class FusionDemoApp:
         embedding = (
             outputs
             .last_hidden_state
-            .mean(
-                dim=1
-            )
+            .mean(dim=1)
             .squeeze(0)
         )
 
@@ -1926,139 +1922,139 @@ class FusionDemoApp:
 
         embedding = (
             embedding
-            .detach()
             .cpu()
             .numpy()
         )
 
-        for index, value in enumerate(
+        for i, value in enumerate(
             embedding
         ):
-
             features[
-                f"audio_wavlm_emb_{index}"
-            ] = value
+                f"audio_wavlm_emb_{i}"
+            ] = float(value)
 
-        return {
-            key: clean_float(
+        cleaned = {}
+
+        for key, value in features.items():
+
+            value = float(value)
+
+            cleaned[key] = (
                 value
+                if np.isfinite(value)
+                else 0.0
             )
-            for key, value
-            in features.items()
-        }
 
+        return cleaned
 
-    def choose_audio_file_threaded(
+    def choose_audio_file(
         self,
     ) -> None:
 
-        file_path = filedialog.askopenfilename(
-            title="Select audio file",
-            filetypes=[
-                (
-                    "Audio files",
-                    "*.wav *.mp3 *.m4a *.flac *.ogg *.aac",
-                ),
-                (
-                    "All files",
-                    "*.*",
-                ),
-            ],
+        file_path = (
+            filedialog.askopenfilename(
+                title="Select audio file",
+                filetypes=[
+                    (
+                        "Audio files",
+                        "*.wav *.mp3 *.m4a "
+                        "*.flac *.ogg *.aac",
+                    ),
+                    (
+                        "All files",
+                        "*.*",
+                    ),
+                ],
+            )
         )
 
         if not file_path:
             return
 
-        threading.Thread(
-            target=self.load_audio_file_worker,
-            args=(
-                Path(
-                    file_path
-                ),
-            ),
-            daemon=True,
-        ).start()
+        self.status_label.config(
+            text=(
+                "Extracting audio features..."
+            )
+        )
 
-
-    def load_audio_file_worker(
-        self,
-        path: Path,
-    ) -> None:
+        self.root.update_idletasks()
 
         try:
 
-            self.set_status(
-                "Extracting audio features..."
-            )
-
             waveform, sr = (
                 self.load_audio_waveform(
-                    path
+                    Path(file_path)
                 )
             )
 
-            features = (
+            self.audio_features_cache = (
                 self.extract_audio_features_from_waveform(
                     waveform,
                     sr,
                 )
             )
 
-            self.audio_features_cache = (
-                features
-            )
-
             self.audio_source_name = (
-                path.name
+                Path(file_path).name
             )
 
-            self.root.after(
-                0,
-                lambda: self.audio_label.config(
-                    text=(
-                        f"Audio loaded: "
-                        f"{path.name}"
-                    ),
-                    fg="#66ffd6",
+            self.audio_label.config(
+                text=(
+                    "Audio loaded: "
+                    f"{self.audio_source_name}"
                 ),
+                fg="#66ffd6",
             )
 
-            self.set_status(
-                "Audio features ready."
+            self.status_label.config(
+                text="Audio features ready."
             )
 
-            self.root.after(
-                0,
-                self.update_readiness,
+            self.reset_temporal_history(
+                silent=True
             )
+
+            self.update_readiness()
 
         except Exception as exc:
 
-            self.show_error(
+            messagebox.showerror(
                 "Audio Error",
-                exc,
+                str(exc),
             )
 
+            self.status_label.config(
+                text=(
+                    "Audio feature extraction "
+                    "failed."
+                )
+            )
 
     def record_microphone_threaded(
         self,
     ) -> None:
 
         threading.Thread(
-            target=self.record_microphone_worker,
+            target=self.record_microphone,
             daemon=True,
         ).start()
 
-
-    def record_microphone_worker(
+    def record_microphone(
         self,
     ) -> None:
 
         try:
 
-            self.set_status(
-                f"Recording microphone for "
-                f"{MIC_RECORD_SECONDS} seconds..."
+            self.root.after(
+                0,
+                lambda:
+                self.status_label.config(
+                    text=(
+                        "Recording microphone for "
+                        f"{MIC_RECORD_SECONDS} "
+                        "seconds..."
+                    )
+                ),
             )
 
             recording = sd.rec(
@@ -2081,17 +2077,6 @@ class FusionDemoApp:
                 )
             )
 
-            if len(
-                waveform
-            ) == 0:
-                raise ValueError(
-                    "No microphone audio captured."
-                )
-
-            self.set_status(
-                "Extracting microphone audio features..."
-            )
-
             features = (
                 self.extract_audio_features_from_waveform(
                     waveform,
@@ -2109,7 +2094,8 @@ class FusionDemoApp:
 
             self.root.after(
                 0,
-                lambda: self.audio_label.config(
+                lambda:
+                self.audio_label.config(
                     text=(
                         "Audio loaded: "
                         "microphone recording"
@@ -2118,8 +2104,23 @@ class FusionDemoApp:
                 ),
             )
 
-            self.set_status(
-                "Microphone audio ready."
+            self.root.after(
+                0,
+                lambda:
+                self.status_label.config(
+                    text=(
+                        "Microphone audio "
+                        "features ready."
+                    )
+                ),
+            )
+
+            self.root.after(
+                0,
+                lambda:
+                self.reset_temporal_history(
+                    silent=True
+                ),
             )
 
             self.root.after(
@@ -2129,514 +2130,253 @@ class FusionDemoApp:
 
         except Exception as exc:
 
-            self.show_error(
-                "Microphone Error",
-                exc,
-            )
+            error_message = str(exc)
 
-
-    # =========================================================================
-    # IMAGE / CLIP
-    # =========================================================================
-
-    def extract_clip_embedding(
-        self,
-        image: Image.Image,
-    ) -> np.ndarray:
-
-        image = image.convert(
-            "RGB"
-        )
-
-        inputs = self.clip_processor(
-            images=image,
-            return_tensors="pt",
-        )
-
-        pixel_values = (
-            inputs[
-                "pixel_values"
-            ]
-            .to(
-                self.device
-            )
-        )
-
-        with torch.inference_mode():
-
-            try:
-
-                output = (
-                    self.clip_model
-                    .get_image_features(
-                        pixel_values=pixel_values
-                    )
-                )
-
-                if isinstance(
-                    output,
-                    torch.Tensor,
-                ):
-                    image_features = (
-                        output
-                    )
-
-                elif hasattr(
-                    output,
-                    "image_embeds",
-                ):
-                    image_features = (
-                        output.image_embeds
-                    )
-
-                elif hasattr(
-                    output,
-                    "pooler_output",
-                ):
-                    image_features = (
-                        output.pooler_output
-                    )
-
-                elif hasattr(
-                    output,
-                    "last_hidden_state",
-                ):
-                    image_features = (
-                        output
-                        .last_hidden_state
-                        .mean(
-                            dim=1
-                        )
-                    )
-
-                else:
-                    raise TypeError(
-                        "Unsupported CLIP output type: "
-                        f"{type(output)}"
-                    )
-
-            except Exception:
-
-                output = (
-                    self.clip_model
-                    .vision_model(
-                        pixel_values=pixel_values
-                    )
-                )
-
-                if hasattr(
-                    output,
-                    "pooler_output",
-                ):
-                    image_features = (
-                        output.pooler_output
-                    )
-
-                elif hasattr(
-                    output,
-                    "last_hidden_state",
-                ):
-                    image_features = (
-                        output
-                        .last_hidden_state
-                        .mean(
-                            dim=1
-                        )
-                    )
-
-                else:
-                    raise TypeError(
-                        "Unsupported CLIP vision output."
-                    )
-
-        image_features = F.normalize(
-            image_features,
-            p=2,
-            dim=-1,
-        )
-
-        return (
-            image_features
-            .squeeze(0)
-            .detach()
-            .cpu()
-            .numpy()
-        )
-
-
-    # =========================================================================
-    # CALIBRATED IMAGE PROBABILITIES
-    # =========================================================================
-
-    def extract_webcam_calibrated_features(
-        self,
-        clip_features: dict[
-            str,
-            float,
-        ],
-    ) -> dict[str, float]:
-
-        if self.webcam_image_model is None:
-            return {}
-
-        missing = [
-            column
-            for column
-            in self.webcam_image_feature_columns
-            if column
-            not in clip_features
-        ]
-
-        if missing:
-            raise ValueError(
-                "Calibrated image feature mismatch.\n"
-                f"Missing columns: {missing[:20]}"
-            )
-
-        row = {
-            column: clean_float(
-                clip_features[
-                    column
-                ]
-            )
-            for column
-            in self.webcam_image_feature_columns
-        }
-
-        x = pd.DataFrame(
-            [row],
-            columns=self.webcam_image_feature_columns,
-        )
-
-        classes = get_model_classes(
-            self.webcam_image_model
-        )
-
-        probabilities_lookup = {
-            label: 0.0
-            for label
-            in CLASSES
-        }
-
-        if hasattr(
-            self.webcam_image_model,
-            "predict_proba",
-        ):
-
-            probabilities = (
-                self.webcam_image_model
-                .predict_proba(
-                    x
-                )[0]
-            )
-
-            for label, probability in zip(
-                classes,
-                probabilities,
-            ):
-
-                if label in CLASSES:
-
-                    probabilities_lookup[
-                        label
-                    ] = clean_float(
-                        probability
-                    )
-
-        elif hasattr(
-            self.webcam_image_model,
-            "decision_function",
-        ):
-
-            scores = np.asarray(
-                self.webcam_image_model
-                .decision_function(
-                    x
-                )
-            )
-
-            if scores.ndim > 1:
-                scores = scores[
-                    0
-                ]
-
-            probabilities = softmax(
-                scores
-            )
-
-            for label, probability in zip(
-                classes,
-                probabilities,
-            ):
-
-                if label in CLASSES:
-
-                    probabilities_lookup[
-                        label
-                    ] = clean_float(
-                        probability
-                    )
-
-        else:
-
-            prediction = normalise_label(
-                self.webcam_image_model
-                .predict(
-                    x
-                )[0]
-            )
-
-            if prediction in CLASSES:
-
-                probabilities_lookup[
-                    prediction
-                ] = 1.0
-
-        # ---------------------------------------------------------------------
-        # Defensive normalization
-        # ---------------------------------------------------------------------
-
-        values = np.asarray(
-            [
-                probabilities_lookup[
-                    label
-                ]
-                for label
-                in CLASSES
-            ],
-            dtype=float,
-        )
-
-        total = values.sum()
-
-        if total > 0:
-            values /= total
-
-        else:
-            values[:] = (
-                1.0
-                / len(
-                    CLASSES
-                )
-            )
-
-        probabilities_lookup = {
-            label: float(
-                probability
-            )
-            for label, probability
-            in zip(
-                CLASSES,
-                values,
-            )
-        }
-
-        ranked = sorted(
-            probabilities_lookup.items(),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-
-        top_probability = (
-            ranked[0][1]
-        )
-
-        second_probability = (
-            ranked[1][1]
-        )
-
-        return {
-            "image_webcam_focused_prob":
-                probabilities_lookup[
-                    "focused"
-                ],
-
-            "image_webcam_distracted_prob":
-                probabilities_lookup[
-                    "distracted"
-                ],
-
-            "image_webcam_fatigued_prob":
-                probabilities_lookup[
-                    "fatigued"
-                ],
-
-            "image_webcam_overloaded_prob":
-                probabilities_lookup[
-                    "overloaded"
-                ],
-
-            "image_webcam_top_probability":
-                top_probability,
-
-            "image_webcam_confidence_gap":
-                (
-                    top_probability
-                    - second_probability
+            self.root.after(
+                0,
+                lambda msg=error_message:
+                messagebox.showerror(
+                    "Microphone Error",
+                    msg,
                 ),
-        }
+            )
 
+    # ========================================================
+    # Image features
+    # ========================================================
 
     def extract_image_features_from_pil(
         self,
         image: Image.Image,
     ) -> dict[str, float]:
 
-        embedding = (
-            self.extract_clip_embedding(
-                image
-            )
-        )
-
-        clip_features = {
-            f"image_clip_emb_{index}":
-            clean_float(
-                value
-            )
-
-            for index, value
-            in enumerate(
-                embedding
-            )
-        }
-
-        calibrated_features = (
-            self.extract_webcam_calibrated_features(
-                clip_features
-            )
+        embedding = extract_clip_embedding(
+            image=image,
+            model=self.clip_model,
+            processor=self.clip_processor,
+            device=self.device,
         )
 
         return {
-            **clip_features,
-            **calibrated_features,
+            f"image_clip_emb_{i}": (
+                float(value)
+            )
+            for i, value
+            in enumerate(embedding)
         }
 
+    def show_preview(
+        self,
+        image: Image.Image,
+    ) -> None:
 
-    # =========================================================================
-    # IMAGE FILE
-    # =========================================================================
+        display = image.copy()
 
-    def choose_image_file_threaded(
+        display.thumbnail(
+            DISPLAY_SIZE,
+            Image.Resampling.LANCZOS,
+        )
+
+        self.preview_image = (
+            ImageTk.PhotoImage(
+                display
+            )
+        )
+
+        self.preview_label.config(
+            image=self.preview_image
+        )
+
+    # ========================================================
+    # Static image
+    # ========================================================
+
+    def choose_image_file(
         self,
     ) -> None:
 
-        self.stop_webcam()
+        self.stop_visual_stream(
+            update_status=False
+        )
 
-        file_path = filedialog.askopenfilename(
-            title="Select image file",
-            filetypes=[
-                (
-                    "Image files",
-                    "*.jpg *.jpeg *.png *.webp",
-                ),
-                (
-                    "All files",
-                    "*.*",
-                ),
-            ],
+        file_path = (
+            filedialog.askopenfilename(
+                title="Select image file",
+                filetypes=[
+                    (
+                        "Image files",
+                        "*.jpg *.jpeg "
+                        "*.png *.webp",
+                    ),
+                    (
+                        "All files",
+                        "*.*",
+                    ),
+                ],
+            )
         )
 
         if not file_path:
             return
 
-        threading.Thread(
-            target=self.load_image_worker,
-            args=(
-                Path(
-                    file_path
-                ),
-            ),
-            daemon=True,
-        ).start()
-
-
-    def load_image_worker(
-        self,
-        path: Path,
-    ) -> None:
-
         try:
 
-            self.set_status(
-                "Extracting image features..."
+            image = (
+                Image.open(
+                    file_path
+                )
+                .convert("RGB")
             )
 
-            image = Image.open(
-                path
-            ).convert(
-                "RGB"
+            self.current_frame = (
+                image.copy()
             )
 
-            features = (
+            self.image_features_cache = (
                 self.extract_image_features_from_pil(
                     image
                 )
             )
 
-            self.current_frame = (
-                image
-            )
-
-            self.image_features_cache = (
-                features
+            self.image_source_type = (
+                "image"
             )
 
             self.image_source_name = (
-                path.name
+                Path(file_path).name
             )
 
-            self.root.after(
-                0,
-                lambda: self.show_preview(
-                    image
+            self.show_preview(
+                image
+            )
+
+            self.image_label.config(
+                text=(
+                    "Image loaded: "
+                    f"{self.image_source_name}"
                 ),
+                fg="#66ffd6",
             )
 
-            self.root.after(
-                0,
-                lambda: self.image_label.config(
-                    text=(
-                        f"Image loaded: "
-                        f"{path.name}"
-                    ),
-                    fg="#66ffd6",
-                ),
+            self.status_label.config(
+                text="Image features ready."
             )
 
-            self.set_status(
-                "Image features ready."
+            self.reset_temporal_history(
+                silent=True
             )
 
-            self.root.after(
-                0,
-                self.update_readiness,
-            )
+            self.update_readiness()
 
         except Exception as exc:
 
-            self.show_error(
+            messagebox.showerror(
                 "Image Error",
-                exc,
+                str(exc),
             )
 
+    # ========================================================
+    # Uploaded video
+    # ========================================================
 
-    # =========================================================================
-    # WEBCAM
-    # =========================================================================
+    def choose_video_file(
+        self,
+    ) -> None:
+
+        self.stop_visual_stream(
+            update_status=False
+        )
+
+        file_path = (
+            filedialog.askopenfilename(
+                title="Select video file",
+                filetypes=[
+                    (
+                        "Video files",
+                        "*.mp4 *.avi *.mov "
+                        "*.mkv *.webm",
+                    ),
+                    (
+                        "All files",
+                        "*.*",
+                    ),
+                ],
+            )
+        )
+
+        if not file_path:
+            return
+
+        capture = cv2.VideoCapture(
+            str(file_path)
+        )
+
+        if not capture.isOpened():
+
+            capture.release()
+
+            messagebox.showerror(
+                "Video Error",
+                "Could not open selected video.",
+            )
+
+            return
+
+        self.capture = capture
+
+        self.running_visual_stream = True
+
+        self.image_source_type = (
+            "video"
+        )
+
+        self.image_source_name = (
+            Path(file_path).name
+        )
+
+        self.last_visual_feature_time = (
+            0.0
+        )
+
+        self.image_label.config(
+            text=(
+                "Video running: "
+                f"{self.image_source_name}"
+            ),
+            fg="#66ffd6",
+        )
+
+        self.status_label.config(
+            text=(
+                "Uploaded video running."
+            )
+        )
+
+        self.reset_temporal_history(
+            silent=True
+        )
+
+        self.visual_stream_loop()
+
+    # ========================================================
+    # Webcam
+    # ========================================================
 
     def start_webcam(
         self,
     ) -> None:
 
-        self.stop_webcam()
+        self.stop_visual_stream(
+            update_status=False
+        )
 
-        self.capture = cv2.VideoCapture(
+        capture = cv2.VideoCapture(
             0
         )
 
-        if not self.capture.isOpened():
+        if not capture.isOpened():
 
-            self.capture = None
+            capture.release()
 
             messagebox.showerror(
                 "Webcam Error",
@@ -2645,37 +2385,57 @@ class FusionDemoApp:
 
             return
 
-        self.running_webcam = True
+        capture.set(
+            cv2.CAP_PROP_FRAME_WIDTH,
+            640,
+        )
+
+        capture.set(
+            cv2.CAP_PROP_FRAME_HEIGHT,
+            480,
+        )
+
+        self.capture = capture
+
+        self.running_visual_stream = True
+
+        self.image_source_type = (
+            "webcam"
+        )
 
         self.image_source_name = (
             "webcam"
         )
 
-        self.last_webcam_feature_time = (
+        self.last_visual_feature_time = (
             0.0
         )
 
         self.image_label.config(
-            text="Webcam active.",
+            text="Live webcam running.",
             fg="#66ffd6",
         )
 
         self.status_label.config(
-            text=(
-                "Webcam running. "
-                "Calibrated visual features updating."
-            )
+            text="Webcam running."
         )
 
-        self.webcam_loop()
+        self.reset_temporal_history(
+            silent=True
+        )
 
+        self.visual_stream_loop()
 
-    def webcam_loop(
+    # ========================================================
+    # Video / webcam loop
+    # ========================================================
+
+    def visual_stream_loop(
         self,
     ) -> None:
 
         if (
-            not self.running_webcam
+            not self.running_visual_stream
             or self.capture is None
         ):
             return
@@ -2686,11 +2446,27 @@ class FusionDemoApp:
 
         if not ret:
 
-            self.stop_webcam()
+            if (
+                self.image_source_type
+                == "video"
+            ):
 
-            self.status_label.config(
-                text="Webcam frame capture failed."
-            )
+                self.running_visual_stream = (
+                    False
+                )
+
+                self.capture.release()
+                self.capture = None
+
+                self.status_label.config(
+                    text=(
+                        "Uploaded video finished."
+                    )
+                )
+
+                return
+
+            self.stop_visual_stream()
 
             return
 
@@ -2704,7 +2480,7 @@ class FusionDemoApp:
         )
 
         self.current_frame = (
-            image
+            image.copy()
         )
 
         self.show_preview(
@@ -2715,48 +2491,46 @@ class FusionDemoApp:
 
         if (
             now
-            - self.last_webcam_feature_time
-            >= WEBCAM_FEATURE_INTERVAL_SEC
-            and not self.image_processing
+            - self.last_visual_feature_time
+            >= VISUAL_FEATURE_INTERVAL_SEC
         ):
 
-            self.last_webcam_feature_time = (
+            self.last_visual_feature_time = (
                 now
             )
 
-            frame_copy = image.copy()
+            frame_snapshot = (
+                image.copy()
+            )
 
             threading.Thread(
-                target=self.update_webcam_features_worker,
-                args=(
-                    frame_copy,
-                ),
+                target=self.update_visual_features,
+                args=(frame_snapshot,),
                 daemon=True,
             ).start()
 
         self.root.after(
             30,
-            self.webcam_loop,
+            self.visual_stream_loop,
         )
 
-
-    def update_webcam_features_worker(
+    def update_visual_features(
         self,
-        image: Image.Image,
+        frame_snapshot: Image.Image,
     ) -> None:
 
-        if self.image_processing:
+        if self.visual_processing_busy:
             return
 
         try:
 
-            self.image_processing = (
+            self.visual_processing_busy = (
                 True
             )
 
             features = (
                 self.extract_image_features_from_pil(
-                    image
+                    frame_snapshot
                 )
             )
 
@@ -2764,213 +2538,324 @@ class FusionDemoApp:
                 features
             )
 
-            self.image_source_name = (
-                "webcam"
-            )
-
-            self.root.after(
-                0,
-                lambda: self.image_label.config(
-                    text=(
-                        "Webcam calibrated "
-                        "image features ready."
-                    ),
-                    fg="#66ffd6",
-                ),
-            )
-
             self.root.after(
                 0,
                 self.update_readiness,
             )
 
-        except Exception as exc:
-
-            self.set_status(
-                f"Webcam feature extraction failed: "
-                f"{exc}"
-            )
+        except Exception:
+            pass
 
         finally:
-
-            self.image_processing = (
+            self.visual_processing_busy = (
                 False
             )
 
-
-    def stop_webcam(
+    def stop_visual_stream(
         self,
+        update_status: bool = True,
     ) -> None:
 
-        self.running_webcam = (
+        self.running_visual_stream = (
             False
         )
 
         if self.capture is not None:
 
             self.capture.release()
+            self.capture = None
 
-            self.capture = (
-                None
+        if (
+            update_status
+            and self.image_source_type
+            in {
+                "video",
+                "webcam",
+            }
+        ):
+            self.status_label.config(
+                text=(
+                    "Video/webcam stopped."
+                )
             )
 
-
-    def show_preview(
-        self,
-        image: Image.Image,
-    ) -> None:
-
-        display = image.copy()
-
-        display.thumbnail(
-            DISPLAY_SIZE
-        )
-
-        self.preview_image = (
-            ImageTk.PhotoImage(
-                display
-            )
-        )
-
-        self.preview_label.config(
-            image=self.preview_image
-        )
-
-
-    # =========================================================================
-    # BUILD FINAL FUSION VECTOR
-    # =========================================================================
+    # ========================================================
+    # Fusion vector
+    # ========================================================
 
     def build_fusion_vector(
         self,
-    ) -> tuple[
-        pd.DataFrame,
-        dict[str, Any],
-    ]:
+        typed_text: str,
+        keystroke_events: list[dict],
+        audio_features: dict,
+        image_features: dict,
+    ):
 
-        features: dict[
-            str,
-            Any,
-        ] = {}
+        features = {}
 
-        # ---------------------------------------------------------------------
-        # Required live modalities
-        # ---------------------------------------------------------------------
-
-        keystroke_features = (
-            self.extract_keystroke_features()
+        features.update(
+            self.extract_keystroke_features(
+                typed_text,
+                keystroke_events,
+            )
         )
 
-        text_features = (
-            self.extract_text_features()
+        features.update(
+            self.extract_text_features(
+                typed_text
+            )
         )
 
-        if self.audio_features_cache is None:
-
+        if audio_features is None:
             raise ValueError(
-                "Audio features are missing. "
-                "Choose an audio file or record microphone."
+                "Audio features are missing."
             )
 
-        if self.image_features_cache is None:
-
+        if image_features is None:
             raise ValueError(
-                "Image features are missing. "
-                "Choose an image or start webcam."
+                "Image features are missing."
             )
 
         features.update(
-            keystroke_features
+            audio_features
         )
 
         features.update(
-            text_features
+            image_features
         )
-
-        features.update(
-            self.audio_features_cache
-        )
-
-        features.update(
-            self.image_features_cache
-        )
-
-        # ---------------------------------------------------------------------
-        # Validate exact trained schema
-        # ---------------------------------------------------------------------
 
         missing = [
             column
             for column
             in self.fusion_feature_columns
-            if column
-            not in features
+            if column not in features
         ]
 
         if missing:
-
             raise ValueError(
                 "Fusion feature mismatch.\n\n"
-                f"Expected features: "
-                f"{len(self.fusion_feature_columns)}\n"
-                f"Available runtime features: "
-                f"{len(features)}\n"
-                f"Missing count: "
-                f"{len(missing)}\n\n"
-                f"Missing examples:\n"
+                f"Missing columns: "
                 f"{missing[:30]}"
             )
 
-        row = {
-            column: clean_float(
-                features[
-                    column
-                ]
-            )
-            for column
-            in self.fusion_feature_columns
-        }
-
         x = pd.DataFrame(
-            [row],
-            columns=self.fusion_feature_columns,
+            [
+                [
+                    features[column]
+                    for column
+                    in self.fusion_feature_columns
+                ]
+            ],
+            columns=(
+                self.fusion_feature_columns
+            ),
         )
 
-        return (
-            x,
-            features,
-        )
+        return x, features
 
+    # ========================================================
+    # Temporal probability aggregation
+    # ========================================================
 
-    # =========================================================================
-    # FUSION PREDICTION
-    # =========================================================================
-
-    def predict_fusion_threaded(
+    def add_probability_observation(
         self,
+        probabilities: dict[str, float],
     ) -> None:
 
-        if self.fusion_processing:
-            return
+        probabilities = (
+            normalise_probability_dict(
+                probabilities
+            )
+        )
 
-        threading.Thread(
-            target=self.predict_fusion_worker,
-            daemon=True,
-        ).start()
+        self.probability_history.append(
+            probabilities
+        )
 
+    def aggregate_probability_history(
+        self,
+    ) -> dict[str, float]:
 
-    def predict_fusion_worker(
+        if not self.probability_history:
+
+            return {
+                label: 1.0
+                / len(LABELS)
+                for label in LABELS
+            }
+
+        aggregate = {}
+
+        for label in LABELS:
+
+            values = [
+                observation.get(
+                    label,
+                    0.0,
+                )
+                for observation
+                in self.probability_history
+            ]
+
+            aggregate[label] = float(
+                np.mean(values)
+            )
+
+        return normalise_probability_dict(
+            aggregate
+        )
+
+    def reset_temporal_history(
+        self,
+        silent: bool = False,
+    ) -> None:
+
+        self.probability_history.clear()
+
+        self.temporal_label.config(
+            text=(
+                "Temporal window: "
+                f"0/{TEMPORAL_PROBABILITY_WINDOW}"
+            )
+        )
+
+        if not silent:
+            self.status_label.config(
+                text=(
+                    "Temporal probability "
+                    "history cleared."
+                )
+            )
+
+    # ========================================================
+    # Fusion prediction scheduling
+    # ========================================================
+
+    def live_fusion_tick(
         self,
     ) -> None:
 
         try:
 
-            self.fusion_processing = (
+            self.update_readiness()
+
+            if (
+                LIVE_FUSION_ENABLED
+                and self.fusion_inputs_ready()
+                and not self.fusion_prediction_busy
+            ):
+                self.predict_fusion_threaded(
+                    mode="Live"
+                )
+
+        finally:
+
+            self.root.after(
+                LIVE_FUSION_INTERVAL_MS,
+                self.live_fusion_tick,
+            )
+
+    # ========================================================
+    # Prediction
+    # ========================================================
+
+    def predict_fusion_threaded(
+        self,
+        mode: str = "Manual",
+    ) -> None:
+
+        if self.fusion_prediction_busy:
+            return
+
+        # ----------------------------------------------------
+        # Snapshot all GUI/runtime state on main thread
+        # ----------------------------------------------------
+
+        typed_text = self.text_box.get(
+            "1.0",
+            tk.END,
+        ).strip()
+
+        keystroke_snapshot = [
+            dict(event)
+            for event
+            in self.keystroke_events
+        ]
+
+        audio_snapshot = (
+            dict(
+                self.audio_features_cache
+            )
+            if self.audio_features_cache
+            is not None
+            else None
+        )
+
+        image_snapshot = (
+            dict(
+                self.image_features_cache
+            )
+            if self.image_features_cache
+            is not None
+            else None
+        )
+
+        audio_source = (
+            self.audio_source_name
+        )
+
+        image_source = (
+            self.image_source_name
+        )
+
+        image_source_type = (
+            self.image_source_type
+        )
+
+        thread = threading.Thread(
+            target=self.predict_fusion,
+            args=(
+                mode,
+                typed_text,
+                keystroke_snapshot,
+                audio_snapshot,
+                image_snapshot,
+                audio_source,
+                image_source,
+                image_source_type,
+            ),
+            daemon=True,
+        )
+
+        thread.start()
+
+    def predict_fusion(
+        self,
+        mode: str,
+        typed_text: str,
+        keystroke_events: list[dict],
+        audio_features: dict | None,
+        image_features: dict | None,
+        audio_source: str | None,
+        image_source: str | None,
+        image_source_type: str,
+    ) -> None:
+
+        try:
+
+            self.fusion_prediction_busy = (
                 True
             )
 
-            self.set_status(
-                "Building multimodal fusion vector..."
+            self.root.after(
+                0,
+                lambda:
+                self.status_label.config(
+                    text=(
+                        "Building multimodal "
+                        "fusion vector..."
+                    )
+                ),
             )
 
             start_time = (
@@ -2978,165 +2863,121 @@ class FusionDemoApp:
             )
 
             x, features = (
-                self.build_fusion_vector()
+                self.build_fusion_vector(
+                    typed_text=typed_text,
+                    keystroke_events=(
+                        keystroke_events
+                    ),
+                    audio_features=(
+                        audio_features
+                    ),
+                    image_features=(
+                        image_features
+                    ),
+                )
             )
 
-            prediction = (
-                self.fusion_model
-                .predict(
+            # ------------------------------------------------
+            # Raw fusion model prediction
+            # ------------------------------------------------
+
+            raw_prediction = (
+                self.pipeline.predict(
                     x
                 )[0]
             )
 
-            # -----------------------------------------------------------------
-            # Final fusion probabilities
-            # -----------------------------------------------------------------
-
-            probabilities_lookup = {
-                label: 0.0
-                for label
-                in CLASSES
-            }
-
-            classes = get_model_classes(
-                self.fusion_model
-            )
-
-            if hasattr(
-                self.fusion_model,
+            if not hasattr(
+                self.pipeline,
                 "predict_proba",
             ):
-
-                probabilities = (
-                    self.fusion_model
-                    .predict_proba(
-                        x
-                    )[0]
+                raise TypeError(
+                    "Fusion model does not expose "
+                    "predict_proba()."
                 )
 
-                for label, probability in zip(
-                    classes,
-                    probabilities,
-                ):
-
-                    if label in CLASSES:
-
-                        probabilities_lookup[
-                            label
-                        ] = clean_float(
-                            probability
-                        )
-
-            elif hasattr(
-                self.fusion_model,
-                "decision_function",
-            ):
-
-                scores = np.asarray(
-                    self.fusion_model
-                    .decision_function(
-                        x
-                    )
-                )
-
-                if scores.ndim > 1:
-                    scores = scores[
-                        0
-                    ]
-
-                probabilities = softmax(
-                    scores
-                )
-
-                for label, probability in zip(
-                    classes,
-                    probabilities,
-                ):
-
-                    if label in CLASSES:
-
-                        probabilities_lookup[
-                            label
-                        ] = clean_float(
-                            probability
-                        )
-
-            else:
-
-                predicted_label = normalise_label(
-                    prediction
-                )
-
-                if predicted_label in CLASSES:
-
-                    probabilities_lookup[
-                        predicted_label
-                    ] = 1.0
-
-            # -----------------------------------------------------------------
-            # Normalize
-            # -----------------------------------------------------------------
-
-            values = np.asarray(
-                [
-                    probabilities_lookup[
-                        label
-                    ]
-                    for label
-                    in CLASSES
-                ],
-                dtype=float,
+            raw_probabilities = (
+                self.pipeline.predict_proba(
+                    x
+                )[0]
             )
 
-            total = values.sum()
+            classes = [
+                str(label)
+                for label
+                in self.pipeline.classes_
+            ]
 
-            if total > 0:
-                values /= total
-
-            else:
-                values[:] = (
-                    1.0
-                    / len(
-                        CLASSES
-                    )
-                )
-
-            probabilities_lookup = {
-                label: float(
-                    probability
-                )
+            raw_probability_dict = {
+                label: float(probability)
                 for label, probability
                 in zip(
-                    CLASSES,
-                    values,
+                    classes,
+                    raw_probabilities,
                 )
             }
 
-            ranked = sorted(
-                probabilities_lookup.items(),
+            raw_probability_dict = (
+                normalise_probability_dict(
+                    raw_probability_dict
+                )
+            )
+
+            raw_ranked = sorted(
+                raw_probability_dict.items(),
                 key=lambda item: item[1],
                 reverse=True,
             )
 
-            current_state = (
-                ranked[0][0]
+            raw_top_class = (
+                raw_ranked[0][0]
             )
 
-            confidence = (
-                ranked[0][1]
+            raw_top_probability = (
+                raw_ranked[0][1]
+            )
+
+            # ------------------------------------------------
+            # Temporal smoothing
+            # ------------------------------------------------
+
+            self.add_probability_observation(
+                raw_probability_dict
+            )
+
+            aggregated_probabilities = (
+                self.aggregate_probability_history()
+            )
+
+            aggregated_ranked = sorted(
+                aggregated_probabilities.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+
+            final_class = (
+                aggregated_ranked[0][0]
+            )
+
+            final_probability = float(
+                aggregated_ranked[0][1]
             )
 
             second_class = (
-                ranked[1][0]
+                aggregated_ranked[1][0]
             )
 
-            second_probability = (
-                ranked[1][1]
+            second_probability = float(
+                aggregated_ranked[1][1]
             )
 
-            gap = (
-                confidence
+            confidence_gap = (
+                final_probability
                 - second_probability
+            )
+
+            level = confidence_level(
+                confidence_gap
             )
 
             runtime = (
@@ -3144,113 +2985,103 @@ class FusionDemoApp:
                 - start_time
             )
 
-            # -----------------------------------------------------------------
-            # Image calibration diagnostic
-            # -----------------------------------------------------------------
-
-            webcam_probs = {
-                label:
-                features.get(
-                    f"image_webcam_{label}_prob",
-                    None,
-                )
-                for label
-                in CLASSES
-            }
-
-            webcam_ranked = [
-                (
-                    label,
-                    value,
-                )
-                for label, value
-                in webcam_probs.items()
-                if value is not None
-            ]
-
-            webcam_ranked.sort(
-                key=lambda item: item[1],
-                reverse=True,
-            )
-
-            webcam_state = (
-                webcam_ranked[0][0]
-                if webcam_ranked
-                else "N/A"
-            )
-
             result = {
-                "prediction":
-                    str(
-                        prediction
-                    ),
+                "mode": mode,
 
-                "current_state":
-                    current_state,
+                "raw_prediction": str(
+                    raw_prediction
+                ),
 
-                "confidence":
-                    confidence,
+                "raw_top_class": (
+                    raw_top_class
+                ),
 
-                "confidence_percent":
-                    confidence * 100,
+                "raw_top_probability": (
+                    raw_top_probability
+                ),
 
-                "confidence_level":
-                    confidence_level(
-                        gap
-                    ),
+                "raw_probabilities": (
+                    raw_probability_dict
+                ),
 
-                "second_class":
-                    second_class,
+                "current_state": (
+                    final_class
+                ),
 
-                "second_probability":
-                    second_probability,
+                "confidence": (
+                    final_probability
+                ),
 
-                "confidence_gap":
-                    gap,
+                "confidence_percent": (
+                    final_probability
+                    * 100.0
+                ),
 
-                "probabilities":
-                    probabilities_lookup,
+                "confidence_level": (
+                    level
+                ),
 
-                "feature_dimension":
-                    int(
-                        x.shape[1]
-                    ),
+                "second_class": (
+                    second_class
+                ),
 
-                "runtime_seconds":
-                    runtime,
+                "second_probability": (
+                    second_probability
+                ),
 
-                "device":
-                    str(
-                        self.device
-                    ),
+                "confidence_gap": (
+                    confidence_gap
+                ),
 
-                "audio_source":
-                    self.audio_source_name,
+                "probabilities": (
+                    aggregated_probabilities
+                ),
 
-                "image_source":
-                    self.image_source_name,
+                "temporal_samples": (
+                    len(
+                        self.probability_history
+                    )
+                ),
 
-                "webcam_calibration_enabled":
-                    (
-                        self.webcam_image_model
-                        is not None
-                    ),
+                "temporal_window": (
+                    TEMPORAL_PROBABILITY_WINDOW
+                ),
 
-                "webcam_state":
-                    webcam_state,
+                "feature_dimension": int(
+                    x.shape[1]
+                ),
 
-                "webcam_probabilities":
-                    webcam_probs,
-
-                "webcam_top_probability":
+                "keydown_count": (
                     features.get(
-                        "image_webcam_top_probability"
-                    ),
+                        "keydown_count"
+                    )
+                ),
 
-                "webcam_confidence_gap":
+                "word_count": (
                     features.get(
-                        "image_webcam_confidence_gap"
-                    ),
+                        "word_count"
+                    )
+                ),
+
+                "audio_source": (
+                    audio_source
+                ),
+
+                "image_source": (
+                    image_source
+                ),
+
+                "image_source_type": (
+                    image_source_type
+                ),
+
+                "runtime_seconds": (
+                    runtime
+                ),
+
+                "device": str(
+                    self.device
+                ),
             }
 
             self.root.after(
@@ -3261,48 +3092,71 @@ class FusionDemoApp:
                 ),
             )
 
-            self.set_status(
-                "Fusion prediction complete."
+            self.root.after(
+                0,
+                lambda:
+                self.status_label.config(
+                    text=(
+                        f"{mode} fusion "
+                        "prediction complete."
+                    )
+                ),
             )
 
         except Exception as exc:
 
-            self.show_error(
-                "Fusion Prediction Error",
-                exc,
+            error_message = str(exc)
+
+            self.root.after(
+                0,
+                lambda msg=error_message:
+                messagebox.showerror(
+                    "Fusion Prediction Error",
+                    msg,
+                ),
+            )
+
+            self.root.after(
+                0,
+                lambda:
+                self.status_label.config(
+                    text=(
+                        "Fusion prediction "
+                        "failed."
+                    )
+                ),
             )
 
         finally:
 
-            self.fusion_processing = (
+            self.fusion_prediction_busy = (
                 False
             )
 
-
-    # =========================================================================
-    # RESULT UI
-    # =========================================================================
+    # ========================================================
+    # Prediction display
+    # ========================================================
 
     def update_prediction_ui(
         self,
-        result: dict[
-            str,
-            Any,
-        ],
+        result: dict,
     ) -> None:
 
-        self.state_label.config(
+        # ----------------------------------------------------
+        # Final temporally aggregated result
+        # ----------------------------------------------------
+
+        self.result_label.config(
             text=(
                 result[
                     "current_state"
-                ]
-                .upper()
+                ].upper()
             )
         )
 
         self.confidence_label.config(
             text=(
-                f"Confidence: "
+                "Confidence: "
                 f"{result['confidence_percent']:.2f}%"
             )
         )
@@ -3312,14 +3166,9 @@ class FusionDemoApp:
         ]
 
         colour = {
-            "High":
-                "#66ffd6",
-
-            "Medium":
-                "#ffd166",
-
-            "Low":
-                "#ff6b8a",
+            "High": "#66ffd6",
+            "Medium": "#ffd166",
+            "Low": "#ff6b8a",
         }.get(
             level,
             "#cbd6ff",
@@ -3327,41 +3176,76 @@ class FusionDemoApp:
 
         self.confidence_level_label.config(
             text=(
-                f"Prediction Confidence: "
+                "Prediction Confidence: "
                 f"{level}"
             ),
             fg=colour,
         )
 
-        # ---------------------------------------------------------------------
-        # Final fusion probabilities
-        # ---------------------------------------------------------------------
+        self.temporal_label.config(
+            text=(
+                "Temporal window: "
+                f"{result['temporal_samples']}/"
+                f"{result['temporal_window']}"
+            )
+        )
+
+        # ----------------------------------------------------
+        # Aggregated probability distribution
+        # ----------------------------------------------------
 
         prob_lines = [
-            "FINAL FUSION PROBABILITIES",
+            "TEMPORALLY AGGREGATED "
+            "FUSION PROBABILITIES:",
             "",
         ]
 
-        for label, probability in sorted(
+        ranked = sorted(
             result[
                 "probabilities"
             ].items(),
             key=lambda item: item[1],
             reverse=True,
-        ):
+        )
+
+        for label, probability in ranked:
+
+            bar_length = int(
+                probability * 30
+            )
 
             bar = (
                 "█"
-                * int(
-                    probability
-                    * 28
-                )
+                * bar_length
             )
 
             prob_lines.append(
                 f"{label:12s}: "
-                f"{probability * 100:6.2f}% "
+                f"{probability * 100:6.2f}%  "
                 f"{bar}"
+            )
+
+        prob_lines.extend(
+            [
+                "",
+                "CURRENT RAW FUSION OUTPUT:",
+                "",
+            ]
+        )
+
+        raw_ranked = sorted(
+            result[
+                "raw_probabilities"
+            ].items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+
+        for label, probability in raw_ranked:
+
+            prob_lines.append(
+                f"{label:12s}: "
+                f"{probability * 100:6.2f}%"
             )
 
         self.prob_text.delete(
@@ -3376,59 +3260,104 @@ class FusionDemoApp:
             ),
         )
 
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
         # Diagnostics
-        # ---------------------------------------------------------------------
+        # ----------------------------------------------------
 
         info_lines = [
-            "FUSION DIAGNOSTICS",
+            "Multimodal fusion diagnostics:",
             "",
+
             (
-                f"Current state          : "
+                f"Mode                    : "
+                f"{result['mode']}"
+            ),
+
+            (
+                f"Final displayed state   : "
                 f"{result['current_state']}"
             ),
+
             (
-                f"Confidence             : "
+                f"Aggregated confidence   : "
                 f"{result['confidence_percent']:.2f}%"
             ),
+
             (
-                f"Second class           : "
+                f"Confidence level        : "
+                f"{result['confidence_level']}"
+            ),
+
+            (
+                f"Second class            : "
                 f"{result['second_class']}"
             ),
+
             (
-                f"Confidence gap         : "
+                f"Confidence gap          : "
                 f"{result['confidence_gap']:.4f}"
             ),
+
+            "",
             (
-                f"Feature dimension      : "
-                f"{result['feature_dimension']}"
+                f"Raw current top class   : "
+                f"{result['raw_top_class']}"
             ),
+
             (
-                f"Audio source           : "
+                f"Raw current probability : "
+                f"{result['raw_top_probability'] * 100:.2f}%"
+            ),
+
+            "",
+            (
+                f"Temporal samples        : "
+                f"{result['temporal_samples']}"
+            ),
+
+            (
+                f"Temporal max window     : "
+                f"{result['temporal_window']}"
+            ),
+
+            "",
+            (
+                f"Keystroke keydowns      : "
+                f"{result['keydown_count']}"
+            ),
+
+            (
+                f"Text word count         : "
+                f"{result['word_count']}"
+            ),
+
+            (
+                f"Audio source            : "
                 f"{result['audio_source']}"
             ),
+
             (
-                f"Image source           : "
+                f"Visual source type      : "
+                f"{result['image_source_type']}"
+            ),
+
+            (
+                f"Visual source           : "
                 f"{result['image_source']}"
             ),
+
             (
-                f"Image calibration      : "
-                f"{result['webcam_calibration_enabled']}"
+                f"Fusion feature dimension: "
+                f"{result['feature_dimension']}"
             ),
+
             (
-                f"Calibrated image state : "
-                f"{result['webcam_state']}"
-            ),
-            (
-                f"Image calibration gap  : "
-                f"{result['webcam_confidence_gap']}"
-            ),
-            (
-                f"Runtime                : "
+                f"Runtime                 : "
                 f"{result['runtime_seconds']:.4f} sec"
             ),
+
             (
-                f"Device                 : "
+                f"Device                  : "
                 f"{result['device']}"
             ),
         ]
@@ -3445,98 +3374,44 @@ class FusionDemoApp:
             ),
         )
 
-
-    # =========================================================================
-    # THREAD-SAFE UI HELPERS
-    # =========================================================================
-
-    def set_status(
-        self,
-        text: str,
-    ) -> None:
-
-        self.root.after(
-            0,
-            lambda:
-            self.status_label.config(
-                text=text
-            ),
-        )
-
-
-    def show_error(
-        self,
-        title: str,
-        error: Exception,
-    ) -> None:
-
-        self.root.after(
-            0,
-            lambda:
-            messagebox.showerror(
-                title,
-                str(
-                    error
-                ),
-            ),
-        )
-
-        self.set_status(
-            f"{title}: {error}"
-        )
-
-
-    # =========================================================================
-    # RESET
-    # =========================================================================
+    # ========================================================
+    # Reset
+    # ========================================================
 
     def reset(
         self,
     ) -> None:
 
-        self.stop_webcam()
-
-        sd.stop()
-
-        self.keystroke_events = (
-            []
+        self.stop_visual_stream(
+            update_status=False
         )
 
-        self.active_keys = (
-            set()
-        )
+        # Keystroke
+        self.keystroke_events = []
+        self.active_keys = set()
 
-        self.audio_features_cache = (
-            None
-        )
+        # Audio
+        self.audio_features_cache = None
+        self.audio_source_name = None
 
-        self.audio_source_name = (
-            None
-        )
+        # Visual
+        self.image_features_cache = None
+        self.image_source_name = None
+        self.image_source_type = "none"
 
-        self.image_features_cache = (
-            None
-        )
+        self.current_frame = None
+        self.preview_image = None
 
-        self.image_source_name = (
-            None
-        )
+        # Temporal
+        self.probability_history.clear()
 
-        self.current_frame = (
-            None
-        )
+        # Prediction
+        self.fusion_prediction_busy = False
 
-        self.preview_image = (
-            None
-        )
-
+        # UI
         self.text_box.delete(
             "1.0",
             tk.END,
-        )
-
-        self.preview_label.config(
-            image=""
         )
 
         self.audio_label.config(
@@ -3545,13 +3420,16 @@ class FusionDemoApp:
         )
 
         self.image_label.config(
-            text="Image not loaded.",
+            text="Visual input not loaded.",
             fg="#ffb3b3",
         )
 
-        self.state_label.config(
-            text="—",
-            fg="#74f7ff",
+        self.preview_label.config(
+            image=""
+        )
+
+        self.result_label.config(
+            text="—"
         )
 
         self.confidence_label.config(
@@ -3561,6 +3439,13 @@ class FusionDemoApp:
         self.confidence_level_label.config(
             text="Prediction Confidence: —",
             fg="#cbd6ff",
+        )
+
+        self.temporal_label.config(
+            text=(
+                "Temporal window: "
+                f"0/{TEMPORAL_PROBABILITY_WINDOW}"
+            )
         )
 
         self.prob_text.delete(
@@ -3574,15 +3459,15 @@ class FusionDemoApp:
         )
 
         self.status_label.config(
-            text="Session reset."
+            text="System reset."
         )
 
         self.update_readiness()
 
 
-# =============================================================================
-# MAIN
-# =============================================================================
+# ============================================================
+# Entry point
+# ============================================================
 
 def main() -> None:
 
@@ -3594,9 +3479,9 @@ def main() -> None:
 
     def on_close() -> None:
 
-        app.stop_webcam()
-
-        sd.stop()
+        app.stop_visual_stream(
+            update_status=False
+        )
 
         root.destroy()
 
