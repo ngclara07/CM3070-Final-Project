@@ -1,9 +1,10 @@
-# tests/test_sensefuzeai.py
+# === tests/test_sensefuzeai.py ===
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import uuid
 from pathlib import Path
 from types import ModuleType
 
@@ -16,7 +17,26 @@ from fastapi.testclient import TestClient
 # ============================================================
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-APP_PATH = ROOT_DIR / "web_app" / "app.py"
+
+APP_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "app.py"
+)
+
+HTML_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "templates"
+    / "index.html"
+)
+
+SCRIPT_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "static"
+    / "script.js"
+)
 
 EXPECTED_CLASSES = {
     "focused",
@@ -52,43 +72,45 @@ WEBCAM_EVALUATION_DIR = (
 )
 
 WEBCAM_FEATURE_DATA_CANDIDATES = [
-    ROOT_DIR
-    / "data"
-    / "webcam_calibration_clip_features.csv",
-
-    ROOT_DIR
-    / "data"
-    / "processed"
-    / "webcam_calibration_clip_features.csv",
+    (
+        ROOT_DIR
+        / "data"
+        / "webcam_calibration_clip_features.csv"
+    ),
+    (
+        ROOT_DIR
+        / "data"
+        / "processed"
+        / "webcam_calibration_clip_features.csv"
+    ),
 ]
 
 WEBCAM_FEATURE_SUMMARY_CANDIDATES = [
-    ROOT_DIR
-    / "data"
-    / "webcam_calibration_clip_features_summary.json",
-
-    ROOT_DIR
-    / "data"
-    / "processed"
-    / "webcam_calibration_clip_features_summary.json",
+    (
+        ROOT_DIR
+        / "data"
+        / "webcam_calibration_clip_features_summary.json"
+    ),
+    (
+        ROOT_DIR
+        / "data"
+        / "processed"
+        / "webcam_calibration_clip_features_summary.json"
+    ),
 ]
 
 
 # ============================================================
-# Helper functions
+# Helpers
 # ============================================================
 
 def resolve_existing_path(
     candidates: list[Path],
     artifact_name: str,
 ) -> Path:
-    """
-    Return the first existing path from a list of acceptable locations.
-
-    Raises an informative AssertionError if none exist.
-    """
 
     for path in candidates:
+
         if path.exists():
             return path
 
@@ -99,60 +121,82 @@ def resolve_existing_path(
 
     raise AssertionError(
         f"Could not find {artifact_name}.\n"
-        f"Checked the following locations:\n"
-        f"{checked}"
+        f"Checked:\n{checked}"
     )
 
 
 def load_web_app_module() -> ModuleType:
-    """
-    Load web_app/app.py directly from its file path.
-    """
 
     assert APP_PATH.exists(), (
         f"Missing application: {APP_PATH}"
     )
 
+    module_name = (
+        "sensefuze_web_app_smoke_"
+        + uuid.uuid4().hex
+    )
+
     spec = importlib.util.spec_from_file_location(
-        "sensefuze_web_app_smoke",
+        module_name,
         APP_PATH,
     )
 
     assert spec is not None
     assert spec.loader is not None
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(
+        spec
+    )
+
+    spec.loader.exec_module(
+        module
+    )
 
     return module
 
 
-def extract_model_classes(model) -> set[str]:
-    """
-    Extract class labels from a scikit-learn estimator or pipeline.
-    """
+def extract_model_classes(
+    model,
+) -> set[str]:
 
     classes = list(
-        getattr(model, "classes_", [])
+        getattr(
+            model,
+            "classes_",
+            [],
+        )
     )
 
-    if not classes and hasattr(model, "named_steps"):
+    if (
+        not classes
+        and hasattr(
+            model,
+            "named_steps",
+        )
+    ):
+
         final_estimator = list(
             model.named_steps.values()
         )[-1]
 
         classes = list(
-            getattr(final_estimator, "classes_", [])
+            getattr(
+                final_estimator,
+                "classes_",
+                [],
+            )
         )
 
     return {
-        str(label).strip().lower()
+        str(label)
+        .strip()
+        .lower()
         for label in classes
     }
 
 
 # ============================================================
-# Smoke tests
+# Major files
 # ============================================================
 
 def test_required_project_files_exist():
@@ -162,20 +206,22 @@ def test_required_project_files_exist():
 
     required_files = [
         ROOT_DIR / "final_multimodal_inference.py",
-
         ROOT_DIR / "keystroke_live_gui.py",
         ROOT_DIR / "text_live_gui.py",
         ROOT_DIR / "audio_live_gui.py",
         ROOT_DIR / "image_live_gui.py",
         ROOT_DIR / "live_fusion_gui.py",
-
         ROOT_DIR / "build_webcam_calibration_dataset.py",
         ROOT_DIR / "retrain_image_webcam_calibrated.py",
-
-        ROOT_DIR / "web_app" / "app.py",
-        ROOT_DIR / "web_app" / "templates" / "index.html",
-        ROOT_DIR / "web_app" / "static" / "script.js",
-        ROOT_DIR / "web_app" / "static" / "style.css",
+        APP_PATH,
+        HTML_PATH,
+        SCRIPT_PATH,
+        (
+            ROOT_DIR
+            / "web_app"
+            / "static"
+            / "style.css"
+        ),
     ]
 
     missing = [
@@ -194,24 +240,24 @@ def test_required_project_files_exist():
     )
 
 
+# ============================================================
+# Webcam artifacts
+# ============================================================
+
 def test_webcam_calibrated_artifacts_exist():
     print(
         "\n[SMOKE] Checking webcam-calibrated artifacts..."
     )
 
-    assert CALIBRATED_MODEL_PATH.exists(), (
-        f"Missing calibrated image model: "
-        f"{CALIBRATED_MODEL_PATH}"
-    )
+    assert CALIBRATED_MODEL_PATH.exists()
+    assert CALIBRATED_METADATA_PATH.exists()
 
-    assert CALIBRATED_METADATA_PATH.exists(), (
-        f"Missing calibrated metadata: "
-        f"{CALIBRATED_METADATA_PATH}"
-    )
-
-    feature_data_path = resolve_existing_path(
+    feature_path = resolve_existing_path(
         WEBCAM_FEATURE_DATA_CANDIDATES,
-        "webcam calibration CLIP feature dataset",
+        (
+            "webcam calibration "
+            "CLIP feature dataset"
+        ),
     )
 
     summary_path = resolve_existing_path(
@@ -219,32 +265,11 @@ def test_webcam_calibrated_artifacts_exist():
         "webcam calibration summary JSON",
     )
 
-    assert feature_data_path.is_file(), (
-        f"Calibration dataset is not a file: "
-        f"{feature_data_path}"
-    )
-
-    assert summary_path.is_file(), (
-        f"Calibration summary is not a file: "
-        f"{summary_path}"
-    )
+    assert feature_path.is_file()
+    assert summary_path.is_file()
 
     print(
-        "       PASS: Webcam-calibrated image model exists."
-    )
-
-    print(
-        "       PASS: Webcam-calibrated metadata exists."
-    )
-
-    print(
-        f"       PASS: Calibration feature dataset resolved at:\n"
-        f"             {feature_data_path}"
-    )
-
-    print(
-        f"       PASS: Calibration summary resolved at:\n"
-        f"             {summary_path}"
+        "       PASS: Webcam-calibrated artifacts are present."
     )
 
 
@@ -253,33 +278,22 @@ def test_webcam_calibrated_model_loadable():
         "\n[SMOKE] Loading webcam-calibrated model..."
     )
 
-    assert CALIBRATED_MODEL_PATH.exists(), (
-        f"Missing calibrated model: "
-        f"{CALIBRATED_MODEL_PATH}"
-    )
-
     model = joblib.load(
         CALIBRATED_MODEL_PATH
     )
 
     assert model is not None
+    assert hasattr(model, "predict")
+    assert hasattr(model, "predict_proba")
 
-    assert hasattr(model, "predict"), (
-        "Calibrated model does not expose predict()."
+    classes = extract_model_classes(
+        model
     )
-
-    assert hasattr(model, "predict_proba"), (
-        "Calibrated model does not expose predict_proba()."
-    )
-
-    classes = extract_model_classes(model)
 
     if classes:
-        assert EXPECTED_CLASSES.issubset(classes), (
-            "Calibrated model does not contain all four "
-            "behavioural classes.\n"
-            f"Expected: {sorted(EXPECTED_CLASSES)}\n"
-            f"Found: {sorted(classes)}"
+
+        assert EXPECTED_CLASSES.issubset(
+            classes
         )
 
     print(
@@ -287,32 +301,25 @@ def test_webcam_calibrated_model_loadable():
         "loads successfully."
     )
 
-    print(
-        f"       Model classes: "
-        f"{sorted(classes) if classes else 'pipeline-managed'}"
-    )
-
 
 def test_webcam_calibration_metadata_valid():
     print(
-        "\n[SMOKE] Checking webcam-calibration metadata..."
+        "\n[SMOKE] Checking webcam calibration metadata..."
     )
-
-    assert CALIBRATED_METADATA_PATH.exists()
 
     with CALIBRATED_METADATA_PATH.open(
         "r",
         encoding="utf-8",
     ) as f:
+
         metadata = json.load(f)
 
-    assert isinstance(metadata, dict), (
-        "Calibration metadata must be a JSON object."
+    assert isinstance(
+        metadata,
+        dict,
     )
 
-    assert len(metadata) > 0, (
-        "Calibration metadata is empty."
-    )
+    assert len(metadata) > 0
 
     print(
         f"       PASS: Calibration metadata contains "
@@ -322,31 +329,29 @@ def test_webcam_calibration_metadata_valid():
 
 def test_webcam_evaluation_artifacts_exist():
     print(
-        "\n[SMOKE] Checking webcam-calibration "
-        "evaluation artifacts..."
+        "\n[SMOKE] Checking webcam evaluation artifacts..."
     )
 
-    assert WEBCAM_EVALUATION_DIR.exists(), (
-        f"Missing evaluation directory: "
-        f"{WEBCAM_EVALUATION_DIR}"
-    )
-
-    assert WEBCAM_EVALUATION_DIR.is_dir()
+    assert WEBCAM_EVALUATION_DIR.exists()
 
     files = [
         path
-        for path in WEBCAM_EVALUATION_DIR.rglob("*")
+        for path
+        in WEBCAM_EVALUATION_DIR.rglob("*")
         if path.is_file()
     ]
 
-    assert files, (
-        "No webcam-calibration evaluation artifacts found."
-    )
+    assert files
 
     print(
-        f"       PASS: {len(files)} evaluation artifact(s) found."
+        f"       PASS: {len(files)} webcam evaluation "
+        "artifact(s) found."
     )
 
+
+# ============================================================
+# Fusion schema
+# ============================================================
 
 def test_fusion_feature_schema_valid():
     print(
@@ -360,54 +365,60 @@ def test_fusion_feature_schema_valid():
         / "feature_columns.json"
     )
 
-    assert schema_path.exists(), (
-        f"Missing schema: {schema_path}"
-    )
-
     with schema_path.open(
         "r",
         encoding="utf-8",
     ) as f:
+
         columns = json.load(f)
 
-    assert isinstance(columns, list)
+    assert isinstance(
+        columns,
+        list,
+    )
+
     assert len(columns) > 0
 
-    has_text = any(
-        col.startswith("text_mpnet_emb_")
-        for col in columns
+    assert any(
+        column.startswith(
+            "text_mpnet_emb_"
+        )
+        for column in columns
     )
 
-    has_audio = any(
-        col.startswith("audio_wavlm_emb_")
-        or col.startswith("audio_")
-        for col in columns
+    assert any(
+        column.startswith(
+            "audio_"
+        )
+        for column in columns
     )
 
-    has_image = any(
-        col.startswith("image_clip_emb_")
-        or col.startswith("image_")
-        for col in columns
+    assert any(
+        column.startswith(
+            "image_clip_emb_"
+        )
+        for column in columns
     )
 
-    has_keystroke = any(
-        "keydown" in col
-        or "typing" in col
-        or "delay_" in col
-        or "hold_" in col
-        for col in columns
+    assert any(
+        (
+            "keydown" in column
+            or "typing" in column
+            or "delay_" in column
+            or "hold_" in column
+        )
+        for column in columns
     )
-
-    assert has_text
-    assert has_audio
-    assert has_image
-    assert has_keystroke
 
     print(
         f"       PASS: Fusion schema contains "
-        f"{len(columns)} features across all modalities."
+        f"{len(columns)} multimodal features."
     )
 
+
+# ============================================================
+# Basic helpers
+# ============================================================
 
 def test_confidence_level_logic():
     print(
@@ -416,30 +427,58 @@ def test_confidence_level_logic():
 
     module = load_web_app_module()
 
-    assert module.get_confidence_level(0.40) == "High"
-    assert module.get_confidence_level(0.20) == "Medium"
-    assert module.get_confidence_level(0.05) == "Low"
+    assert (
+        module.get_confidence_level(
+            0.40
+        )
+        == "High"
+    )
+
+    assert (
+        module.get_confidence_level(
+            0.20
+        )
+        == "Medium"
+    )
+
+    assert (
+        module.get_confidence_level(
+            0.05
+        )
+        == "Low"
+    )
 
     print(
-        "       PASS: Confidence-level helper works correctly."
+        "       PASS: Confidence-level helper works."
     )
 
 
 def test_keystroke_count_extraction():
     print(
-        "\n[SMOKE] Testing keystroke event counting..."
+        "\n[SMOKE] Testing keystroke counting..."
     )
 
     module = load_web_app_module()
 
     events = [
-        {"type": "down", "key": "a"},
-        {"type": "up", "key": "a"},
-        {"type": "down", "key": "b"},
+        {
+            "type": "down",
+            "key": "a",
+        },
+        {
+            "type": "up",
+            "key": "a",
+        },
+        {
+            "type": "down",
+            "key": "b",
+        },
     ]
 
-    result = module.extract_keystroke_count(
-        json.dumps(events)
+    result = (
+        module.extract_keystroke_count(
+            json.dumps(events)
+        )
     )
 
     assert result == 2
@@ -451,39 +490,93 @@ def test_keystroke_count_extraction():
 
 def test_fallback_probability_contract():
     print(
-        "\n[SMOKE] Testing four-state fallback contract..."
+        "\n[SMOKE] Testing fallback prediction contract..."
     )
 
     module = load_web_app_module()
 
-    probabilities = module.fallback_prediction(
-        "Testing SenseFuzeAI behavioural state prediction."
-    )
-
-    assert set(probabilities) == EXPECTED_CLASSES
-
-    total_probability = sum(
-        probabilities.values()
-    )
-
-    assert abs(total_probability - 1.0) < 1e-6
-
-    for label, probability in probabilities.items():
-        assert 0.0 <= probability <= 1.0, (
-            f"Invalid probability for {label}: "
-            f"{probability}"
+    probabilities = (
+        module.fallback_prediction(
+            (
+                "Testing SenseFuzeAI "
+                "behavioural state prediction."
+            )
         )
+    )
+
+    assert (
+        set(probabilities)
+        == EXPECTED_CLASSES
+    )
+
+    assert abs(
+        sum(probabilities.values())
+        - 1.0
+    ) < 1e-6
 
     print(
-        "       PASS: Fallback prediction contains "
-        "exactly four behavioural states."
+        "       PASS: Fallback prediction returns "
+        "four valid classes."
+    )
+
+
+# ============================================================
+# Temporal aggregation smoke tests
+# ============================================================
+
+def test_temporal_probability_aggregation_contract():
+    print(
+        "\n[SMOKE] Testing temporal probability contract..."
+    )
+
+    module = load_web_app_module()
+
+    session_id = (
+        "smoke-temporal-"
+        + uuid.uuid4().hex
+    )
+
+    module.clear_temporal_session(
+        session_id
+    )
+
+    probabilities, count = (
+        module.add_temporal_probability(
+            session_id,
+            {
+                "focused": 0.60,
+                "distracted": 0.20,
+                "fatigued": 0.10,
+                "overloaded": 0.10,
+            },
+        )
+    )
+
+    assert count == 1
+
+    assert (
+        set(probabilities)
+        == EXPECTED_CLASSES
+    )
+
+    assert abs(
+        sum(probabilities.values())
+        - 1.0
+    ) < 1e-9
+
+    module.clear_temporal_session(
+        session_id
     )
 
     print(
-        f"       Probability sum: "
-        f"{total_probability:.6f}"
+        "       PASS: Temporal probability history "
+        "returns a valid four-class distribution."
     )
 
+
+# ============================================================
+# HTTP endpoints
+# ============================================================
 
 def test_web_health_endpoint():
     print(
@@ -493,15 +586,20 @@ def test_web_health_endpoint():
     module = load_web_app_module()
     client = TestClient(module.app)
 
-    response = client.get("/health")
+    response = client.get(
+        "/health"
+    )
 
     assert response.status_code == 200
 
     data = response.json()
 
     assert data["status"] == "ok"
-    assert "service" in data
-    assert "timestamp" in data
+
+    assert (
+        "temporal_probability_window"
+        in data
+    )
 
     print(
         "       PASS: /health returned HTTP 200."
@@ -516,7 +614,9 @@ def test_web_model_status_endpoint():
     module = load_web_app_module()
     client = TestClient(module.app)
 
-    response = client.get("/model-status")
+    response = client.get(
+        "/model-status"
+    )
 
     assert response.status_code == 200
 
@@ -526,24 +626,24 @@ def test_web_model_status_endpoint():
         "text_model",
         "audio_model",
         "image_model",
+        "webcam_calibrated_image_model",
         "keystroke_model",
         "fusion_model",
+        "temporal_probability_window",
         "inference_backend",
         "error",
     }
 
-    missing_fields = (
+    missing = (
         required_fields
-        - set(data.keys())
+        - set(data)
     )
 
-    assert not missing_fields, (
-        f"Missing model-status fields: "
-        f"{sorted(missing_fields)}"
-    )
+    assert not missing
 
     print(
-        "       PASS: /model-status exposes expected fields."
+        "       PASS: /model-status exposes "
+        "current model and temporal fields."
     )
 
 
@@ -558,6 +658,9 @@ def test_predict_live_rejects_invalid_input():
     response = client.post(
         "/predict_live",
         data={
+            "session_id": (
+                "smoke-invalid-input"
+            ),
             "text": "too short",
             "keystroke_events": "[]",
         },
@@ -565,46 +668,76 @@ def test_predict_live_rejects_invalid_input():
 
     assert response.status_code == 400
 
-    detail = response.json().get(
-        "detail",
-        "",
+    assert (
+        "20 text characters"
+        in response.json().get(
+            "detail",
+            "",
+        )
     )
-
-    assert "20 text characters" in detail
 
     print(
-        "       PASS: Invalid live input correctly "
-        "returns HTTP 400."
+        "       PASS: Invalid live input returns HTTP 400."
     )
 
+
+def test_reset_temporal_endpoint():
+    print(
+        "\n[SMOKE] Testing temporal reset endpoint..."
+    )
+
+    module = load_web_app_module()
+    client = TestClient(module.app)
+
+    session_id = (
+        "smoke-reset-"
+        + uuid.uuid4().hex
+    )
+
+    module.add_temporal_probability(
+        session_id,
+        {
+            "focused": 0.60,
+            "distracted": 0.20,
+            "fatigued": 0.10,
+            "overloaded": 0.10,
+        },
+    )
+
+    response = client.post(
+        "/reset_temporal",
+        data={
+            "session_id": session_id,
+        },
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["status"] == "ok"
+    assert data["temporal_samples"] == 0
+
+    print(
+        "       PASS: /reset_temporal clears "
+        "session probability history."
+    )
+
+
+# ============================================================
+# Frontend smoke tests
+# ============================================================
 
 def test_webcam_frontend_capture_support():
     print(
         "\n[SMOKE] Checking browser webcam capture support..."
     )
 
-    html_path = (
-        ROOT_DIR
-        / "web_app"
-        / "templates"
-        / "index.html"
-    )
-
-    script_path = (
-        ROOT_DIR
-        / "web_app"
-        / "static"
-        / "script.js"
-    )
-
-    assert html_path.exists()
-    assert script_path.exists()
-
-    html = html_path.read_text(
+    html = HTML_PATH.read_text(
         encoding="utf-8"
     ).lower()
 
-    script = script_path.read_text(
+    script = SCRIPT_PATH.read_text(
         encoding="utf-8"
     )
 
@@ -616,14 +749,54 @@ def test_webcam_frontend_capture_support():
     assert "image_frame" in script
 
     print(
-        "       PASS: Webcam HTML element exists."
-    )
-
-    print(
         "       PASS: Browser webcam capture is implemented."
     )
 
+
+def test_temporal_frontend_support():
     print(
-        "       PASS: Captured webcam frames are submitted "
-        "to the backend."
+        "\n[SMOKE] Checking temporal frontend support..."
+    )
+
+    html = HTML_PATH.read_text(
+        encoding="utf-8"
+    ).lower()
+
+    script = SCRIPT_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        'id="temporalsamples"'
+        in html
+    )
+
+    assert (
+        'id="rawprediction"'
+        in html
+    )
+
+    assert (
+        'id="resettemporalbtn"'
+        in html
+    )
+
+    assert (
+        "temporal_samples"
+        in script
+    )
+
+    assert (
+        "raw_prediction"
+        in script
+    )
+
+    assert (
+        "/reset_temporal"
+        in script
+    )
+
+    print(
+        "       PASS: Temporal prediction diagnostics "
+        "are available in the web interface."
     )

@@ -1,9 +1,10 @@
-# tests/test_02_integration.py
+# === tests/test_02_integration.py ===
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import uuid
 from pathlib import Path
 from types import ModuleType
 
@@ -17,24 +18,55 @@ import pandas as pd
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
-INFERENCE_PATH = ROOT_DIR / "final_multimodal_inference.py"
+INFERENCE_PATH = (
+    ROOT_DIR
+    / "final_multimodal_inference.py"
+)
 
-IMAGE_MODEL_DIR = ROOT_DIR / "models" / "image_demo"
+WEB_APP_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "app.py"
+)
+
+IMAGE_MODEL_DIR = (
+    ROOT_DIR
+    / "models"
+    / "image_demo"
+)
 
 ORIGINAL_IMAGE_MODEL_PATH = (
-    IMAGE_MODEL_DIR / "image_pipeline.joblib"
+    IMAGE_MODEL_DIR
+    / "image_pipeline.joblib"
 )
 
 CALIBRATED_IMAGE_MODEL_PATH = (
-    IMAGE_MODEL_DIR / "image_pipeline_webcam_calibrated.joblib"
+    IMAGE_MODEL_DIR
+    / "image_pipeline_webcam_calibrated.joblib"
 )
 
 CALIBRATED_METADATA_PATH = (
-    IMAGE_MODEL_DIR / "webcam_calibrated_metadata.json"
+    IMAGE_MODEL_DIR
+    / "webcam_calibrated_metadata.json"
 )
 
 IMAGE_FEATURE_SCHEMA_PATH = (
-    IMAGE_MODEL_DIR / "feature_columns.json"
+    IMAGE_MODEL_DIR
+    / "feature_columns.json"
+)
+
+FUSION_MODEL_PATH = (
+    ROOT_DIR
+    / "models"
+    / "fusion_demo"
+    / "fusion_pipeline.joblib"
+)
+
+FUSION_SCHEMA_PATH = (
+    ROOT_DIR
+    / "models"
+    / "fusion_demo"
+    / "feature_columns.json"
 )
 
 WEBCAM_EVALUATION_DIR = (
@@ -49,36 +81,32 @@ WEBCAM_EVALUATION_DIR = (
 # Calibration artifact candidates
 # ============================================================
 
-# Support both possible output layouts:
-#
-#   data/webcam_calibration_clip_features.csv
-#
-# or
-#
-#   data/processed/webcam_calibration_clip_features.csv
-#
-# This makes the tests consistent with either calibration-script layout.
-
 WEBCAM_FEATURE_DATA_CANDIDATES = [
-    ROOT_DIR
-    / "data"
-    / "webcam_calibration_clip_features.csv",
-
-    ROOT_DIR
-    / "data"
-    / "processed"
-    / "webcam_calibration_clip_features.csv",
+    (
+        ROOT_DIR
+        / "data"
+        / "webcam_calibration_clip_features.csv"
+    ),
+    (
+        ROOT_DIR
+        / "data"
+        / "processed"
+        / "webcam_calibration_clip_features.csv"
+    ),
 ]
 
 WEBCAM_FEATURE_SUMMARY_CANDIDATES = [
-    ROOT_DIR
-    / "data"
-    / "webcam_calibration_clip_features_summary.json",
-
-    ROOT_DIR
-    / "data"
-    / "processed"
-    / "webcam_calibration_clip_features_summary.json",
+    (
+        ROOT_DIR
+        / "data"
+        / "webcam_calibration_clip_features_summary.json"
+    ),
+    (
+        ROOT_DIR
+        / "data"
+        / "processed"
+        / "webcam_calibration_clip_features_summary.json"
+    ),
 ]
 
 
@@ -91,7 +119,7 @@ EXPECTED_CLASSES = {
 
 
 # ============================================================
-# Utility helpers
+# Helpers
 # ============================================================
 
 def resolve_existing_path(
@@ -99,12 +127,11 @@ def resolve_existing_path(
     artifact_name: str,
 ) -> Path:
     """
-    Return the first existing path from a list of valid artifact locations.
-
-    Raises an informative assertion error if the artifact cannot be found.
+    Return the first existing artifact path.
     """
 
     for path in candidates:
+
         if path.exists():
             return path
 
@@ -115,109 +142,135 @@ def resolve_existing_path(
 
     raise AssertionError(
         f"Could not find {artifact_name}.\n"
-        f"Checked the following locations:\n"
+        f"Checked:\n"
         f"{candidate_text}"
     )
 
 
 def load_inference_module() -> ModuleType:
     """
-    Load final_multimodal_inference.py directly from its file path.
+    Import final_multimodal_inference.py directly.
     """
 
     assert INFERENCE_PATH.exists(), (
         f"Missing file: {INFERENCE_PATH}"
     )
 
+    module_name = (
+        "sensefuze_final_inference_"
+        + uuid.uuid4().hex
+    )
+
     spec = importlib.util.spec_from_file_location(
-        "sensefuze_final_multimodal_inference",
+        module_name,
         INFERENCE_PATH,
     )
 
     assert spec is not None
     assert spec.loader is not None
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = importlib.util.module_from_spec(
+        spec
+    )
+
+    spec.loader.exec_module(
+        module
+    )
 
     return module
 
 
-def extract_model_classes(model) -> set[str]:
+def extract_model_classes(
+    model,
+) -> set[str]:
     """
-    Extract behavioural classes from a scikit-learn model or pipeline.
+    Extract behavioural classes from a scikit-learn
+    estimator or Pipeline.
     """
 
     classes = list(
-        getattr(model, "classes_", [])
+        getattr(
+            model,
+            "classes_",
+            [],
+        )
     )
 
-    if not classes and hasattr(model, "named_steps"):
+    if (
+        not classes
+        and hasattr(
+            model,
+            "named_steps",
+        )
+    ):
+
         final_estimator = list(
             model.named_steps.values()
         )[-1]
 
         classes = list(
-            getattr(final_estimator, "classes_", [])
+            getattr(
+                final_estimator,
+                "classes_",
+                [],
+            )
         )
 
     return {
-        str(label).strip().lower()
+        str(label)
+        .strip()
+        .lower()
         for label in classes
     }
 
 
 # ============================================================
-# Model artifact integration tests
+# Required model artifacts
 # ============================================================
 
 def test_required_model_artifacts_exist():
     print(
-        "\n[INTEGRATION] "
-        "Checking required model artifacts..."
+        "\n[INTEGRATION] Checking required model artifacts..."
     )
 
     required_paths = [
-        ROOT_DIR
-        / "models"
-        / "keystroke_demo"
-        / "keystroke_pipeline.joblib",
-
-        ROOT_DIR
-        / "models"
-        / "text_demo"
-        / "text_pipeline.joblib",
-
-        ROOT_DIR
-        / "models"
-        / "audio_demo"
-        / "audio_pipeline.joblib",
-
+        (
+            ROOT_DIR
+            / "models"
+            / "keystroke_demo"
+            / "keystroke_pipeline.joblib"
+        ),
+        (
+            ROOT_DIR
+            / "models"
+            / "text_demo"
+            / "text_pipeline.joblib"
+        ),
+        (
+            ROOT_DIR
+            / "models"
+            / "audio_demo"
+            / "audio_pipeline.joblib"
+        ),
         ORIGINAL_IMAGE_MODEL_PATH,
-
         CALIBRATED_IMAGE_MODEL_PATH,
-
-        ROOT_DIR
-        / "models"
-        / "fusion_demo"
-        / "fusion_pipeline.joblib",
-
-        ROOT_DIR
-        / "models"
-        / "fusion_demo"
-        / "feature_columns.json",
-
-        ROOT_DIR
-        / "models"
-        / "all-mpnet-base-v2",
-
-        ROOT_DIR
-        / "models"
-        / "wavlm-base-plus",
-
-        ROOT_DIR
-        / "models"
-        / "clip-vit-large-patch14",
+        FUSION_MODEL_PATH,
+        FUSION_SCHEMA_PATH,
+        (
+            ROOT_DIR
+            / "models"
+            / "all-mpnet-base-v2"
+        ),
+        (
+            ROOT_DIR
+            / "models"
+            / "wavlm-base-plus"
+        ),
+        (
+            ROOT_DIR
+            / "models"
+            / "clip-vit-large-patch14"
+        ),
     ]
 
     missing = [
@@ -235,6 +288,10 @@ def test_required_model_artifacts_exist():
         "model artifacts/directories found."
     )
 
+
+# ============================================================
+# Image model preservation + calibration
+# ============================================================
 
 def test_original_and_calibrated_image_models_are_both_preserved():
     print(
@@ -262,8 +319,8 @@ def test_original_and_calibrated_image_models_are_both_preserved():
     )
 
     print(
-        "       PASS: Separate webcam-calibrated "
-        "image model exists."
+        "       PASS: Webcam-calibrated classifier "
+        "is stored separately."
     )
 
 
@@ -273,29 +330,31 @@ def test_webcam_calibrated_image_model_loadable():
         "image classifier..."
     )
 
-    assert CALIBRATED_IMAGE_MODEL_PATH.exists(), (
-        f"Missing calibrated model: "
-        f"{CALIBRATED_IMAGE_MODEL_PATH}"
-    )
-
     model = joblib.load(
         CALIBRATED_IMAGE_MODEL_PATH
     )
 
     assert model is not None
 
-    assert hasattr(model, "predict"), (
-        "Calibrated model does not implement predict()."
+    assert hasattr(
+        model,
+        "predict",
     )
 
-    assert hasattr(model, "predict_proba"), (
-        "Calibrated model does not implement predict_proba()."
+    assert hasattr(
+        model,
+        "predict_proba",
     )
 
-    classes = extract_model_classes(model)
+    classes = extract_model_classes(
+        model
+    )
 
     if classes:
-        assert EXPECTED_CLASSES.issubset(classes), (
+
+        assert EXPECTED_CLASSES.issubset(
+            classes
+        ), (
             "Calibrated model classes are incomplete.\n"
             f"Expected: {sorted(EXPECTED_CLASSES)}\n"
             f"Found: {sorted(classes)}"
@@ -307,16 +366,17 @@ def test_webcam_calibrated_image_model_loadable():
 
     print(
         "       Model classes:",
-        sorted(classes)
-        if classes
-        else "pipeline-managed",
+        (
+            sorted(classes)
+            if classes
+            else "pipeline-managed"
+        ),
     )
 
 
 def test_webcam_calibration_metadata_exists_and_valid():
     print(
-        "\n[INTEGRATION] Checking "
-        "webcam-calibration metadata..."
+        "\n[INTEGRATION] Checking webcam-calibration metadata..."
     )
 
     assert CALIBRATED_METADATA_PATH.exists(), (
@@ -328,51 +388,51 @@ def test_webcam_calibration_metadata_exists_and_valid():
         "r",
         encoding="utf-8",
     ) as f:
+
         metadata = json.load(f)
 
-    assert isinstance(metadata, dict), (
-        "Calibration metadata must be a JSON object."
+    assert isinstance(
+        metadata,
+        dict,
     )
 
-    assert len(metadata) > 0, (
-        "Calibration metadata is empty."
-    )
+    assert len(metadata) > 0
 
     print(
-        "       PASS: Webcam-calibrated metadata exists "
-        f"with {len(metadata)} metadata fields."
+        "       PASS: Webcam calibration metadata "
+        f"contains {len(metadata)} fields."
     )
 
 
 # ============================================================
-# Webcam calibration dataset tests
+# Calibration feature dataset
 # ============================================================
 
 def test_webcam_calibration_dataset_exists():
     print(
-        "\n[INTEGRATION] Checking "
-        "webcam-calibration feature dataset..."
+        "\n[INTEGRATION] Checking webcam-calibration "
+        "feature dataset..."
     )
 
     feature_path = resolve_existing_path(
         WEBCAM_FEATURE_DATA_CANDIDATES,
-        "webcam calibration CLIP feature dataset",
+        (
+            "webcam calibration CLIP "
+            "feature dataset"
+        ),
     )
 
     print(
         f"       Resolved dataset: {feature_path}"
     )
 
-    df = pd.read_csv(feature_path)
-
-    assert not df.empty, (
-        "Webcam calibration feature dataset is empty."
+    df = pd.read_csv(
+        feature_path
     )
 
-    assert "label" in df.columns, (
-        "Calibration dataset does not contain "
-        "the required 'label' column."
-    )
+    assert not df.empty
+
+    assert "label" in df.columns
 
     labels = set(
         df["label"]
@@ -383,7 +443,9 @@ def test_webcam_calibration_dataset_exists():
         .unique()
     )
 
-    assert EXPECTED_CLASSES.issubset(labels), (
+    assert EXPECTED_CLASSES.issubset(
+        labels
+    ), (
         "Calibration dataset does not contain "
         "all four behavioural classes.\n"
         f"Expected: {sorted(EXPECTED_CLASSES)}\n"
@@ -391,30 +453,28 @@ def test_webcam_calibration_dataset_exists():
     )
 
     clip_columns = [
-        col
-        for col in df.columns
-        if col.startswith("image_clip_emb_")
+        column
+        for column in df.columns
+        if column.startswith(
+            "image_clip_emb_"
+        )
     ]
 
-    assert len(clip_columns) > 0, (
-        "Calibration dataset contains no "
-        "image_clip_emb_* features."
-    )
-
-    # CLIP ViT-L/14 should normally produce 768 dimensions.
-    assert len(clip_columns) == 768, (
-        "Unexpected CLIP embedding dimension.\n"
-        f"Expected: 768\n"
+    assert len(
+        clip_columns
+    ) == 768, (
+        "Unexpected calibration CLIP "
+        "embedding dimension.\n"
+        "Expected: 768\n"
         f"Found: {len(clip_columns)}"
     )
 
     print(
-        f"       PASS: Calibration dataset rows = {len(df)}"
+        f"       PASS: Calibration rows = {len(df)}"
     )
 
     print(
-        f"       PASS: CLIP embedding features = "
-        f"{len(clip_columns)}"
+        "       PASS: CLIP embedding dimension = 768"
     )
 
     print(
@@ -425,8 +485,7 @@ def test_webcam_calibration_dataset_exists():
 
 def test_webcam_calibration_summary_exists():
     print(
-        "\n[INTEGRATION] Checking "
-        "webcam-calibration summary..."
+        "\n[INTEGRATION] Checking webcam-calibration summary..."
     )
 
     summary_path = resolve_existing_path(
@@ -442,25 +501,73 @@ def test_webcam_calibration_summary_exists():
         "r",
         encoding="utf-8",
     ) as f:
+
         summary = json.load(f)
 
-    assert isinstance(summary, dict), (
-        "Calibration summary must be a JSON object."
+    assert isinstance(
+        summary,
+        dict,
     )
 
-    assert len(summary) > 0, (
-        "Calibration summary JSON is empty."
-    )
+    assert len(summary) > 0
 
     print(
         "       PASS: Calibration summary JSON is valid."
     )
 
 
+def test_webcam_calibration_dataset_matches_image_feature_schema():
+    print(
+        "\n[INTEGRATION] Checking calibration dataset "
+        "against image feature schema..."
+    )
+
+    feature_path = resolve_existing_path(
+        WEBCAM_FEATURE_DATA_CANDIDATES,
+        (
+            "webcam calibration CLIP "
+            "feature dataset"
+        ),
+    )
+
+    with IMAGE_FEATURE_SCHEMA_PATH.open(
+        "r",
+        encoding="utf-8",
+    ) as f:
+
+        schema = json.load(f)
+
+    df = pd.read_csv(
+        feature_path,
+        nrows=1,
+    )
+
+    missing = [
+        column
+        for column in schema
+        if column not in df.columns
+    ]
+
+    assert not missing, (
+        "Calibration dataset is incompatible "
+        "with image feature schema.\n"
+        f"Missing columns: {missing[:20]}"
+    )
+
+    print(
+        f"       PASS: All {len(schema)} image-model "
+        "feature columns are present in calibration data."
+    )
+
+
+# ============================================================
+# Evaluation artifacts
+# ============================================================
+
 def test_webcam_evaluation_results_exist():
     print(
-        "\n[INTEGRATION] Checking webcam-calibration "
-        "evaluation directory..."
+        "\n[INTEGRATION] Checking webcam calibration "
+        "evaluation artifacts..."
     )
 
     assert WEBCAM_EVALUATION_DIR.exists(), (
@@ -468,20 +575,17 @@ def test_webcam_evaluation_results_exist():
         f"{WEBCAM_EVALUATION_DIR}"
     )
 
-    assert WEBCAM_EVALUATION_DIR.is_dir(), (
-        f"Expected directory but found something else: "
-        f"{WEBCAM_EVALUATION_DIR}"
-    )
+    assert WEBCAM_EVALUATION_DIR.is_dir()
 
     files = [
         path
-        for path in WEBCAM_EVALUATION_DIR.rglob("*")
+        for path
+        in WEBCAM_EVALUATION_DIR.rglob("*")
         if path.is_file()
     ]
 
     assert files, (
-        "No evaluation artifacts found in "
-        f"{WEBCAM_EVALUATION_DIR}"
+        "No webcam evaluation artifacts found."
     )
 
     print(
@@ -491,7 +595,7 @@ def test_webcam_evaluation_results_exist():
 
 
 # ============================================================
-# Fusion schema integration tests
+# Fusion feature integration
 # ============================================================
 
 def test_fusion_feature_schema_contains_all_modalities():
@@ -499,66 +603,65 @@ def test_fusion_feature_schema_contains_all_modalities():
         "\n[INTEGRATION] Checking fusion feature schema..."
     )
 
-    schema_path = (
-        ROOT_DIR
-        / "models"
-        / "fusion_demo"
-        / "feature_columns.json"
-    )
-
-    assert schema_path.exists(), (
-        f"Missing schema: {schema_path}"
-    )
-
-    with schema_path.open(
+    with FUSION_SCHEMA_PATH.open(
         "r",
         encoding="utf-8",
     ) as f:
+
         columns = json.load(f)
 
-    assert isinstance(columns, list)
+    assert isinstance(
+        columns,
+        list,
+    )
+
     assert len(columns) > 0
 
     has_text = any(
-        col.startswith("text_mpnet_emb_")
-        for col in columns
+        column.startswith(
+            "text_mpnet_emb_"
+        )
+        for column in columns
     )
 
     has_audio = any(
-        col.startswith("audio_wavlm_emb_")
-        or col.startswith("audio_")
-        for col in columns
+        (
+            column.startswith(
+                "audio_wavlm_emb_"
+            )
+            or column.startswith(
+                "audio_"
+            )
+        )
+        for column in columns
     )
 
     has_image = any(
-        col.startswith("image_clip_emb_")
-        or col.startswith("image_")
-        for col in columns
+        (
+            column.startswith(
+                "image_clip_emb_"
+            )
+            or column.startswith(
+                "image_"
+            )
+        )
+        for column in columns
     )
 
     has_keystroke = any(
-        "keydown" in col
-        or "typing" in col
-        or "delay_" in col
-        or "hold_" in col
-        for col in columns
+        (
+            "keydown" in column
+            or "typing" in column
+            or "delay_" in column
+            or "hold_" in column
+        )
+        for column in columns
     )
 
-    assert has_text, (
-        "Fusion schema contains no text features."
-    )
-
-    assert has_audio, (
-        "Fusion schema contains no audio features."
-    )
-
-    assert has_image, (
-        "Fusion schema contains no image features."
-    )
-
-    assert has_keystroke, (
-        "Fusion schema contains no keystroke features."
-    )
+    assert has_text
+    assert has_audio
+    assert has_image
+    assert has_keystroke
 
     print(
         f"       PASS: Fusion feature count = "
@@ -582,48 +685,43 @@ def test_fusion_feature_schema_contains_all_modalities():
     )
 
 
-def test_image_feature_schema_uses_clip_embeddings():
+def test_image_feature_schema_uses_768_clip_embeddings():
     print(
         "\n[INTEGRATION] Checking image feature schema..."
-    )
-
-    assert IMAGE_FEATURE_SCHEMA_PATH.exists(), (
-        f"Missing image feature schema: "
-        f"{IMAGE_FEATURE_SCHEMA_PATH}"
     )
 
     with IMAGE_FEATURE_SCHEMA_PATH.open(
         "r",
         encoding="utf-8",
     ) as f:
+
         columns = json.load(f)
 
-    assert isinstance(columns, list)
-    assert len(columns) > 0
-
     clip_columns = [
-        col
-        for col in columns
-        if col.startswith("image_clip_emb_")
+        column
+        for column in columns
+        if column.startswith(
+            "image_clip_emb_"
+        )
     ]
 
-    assert len(clip_columns) > 0
-
-    assert len(clip_columns) == 768, (
-        "Image feature schema does not match "
+    assert len(
+        clip_columns
+    ) == 768, (
+        "Image schema does not match "
         "CLIP ViT-L/14 output dimensionality.\n"
         f"Expected: 768\n"
         f"Found: {len(clip_columns)}"
     )
 
     print(
-        f"       PASS: Image model expects "
-        f"{len(clip_columns)} CLIP embedding dimensions."
+        "       PASS: Image model expects "
+        "768 CLIP embedding dimensions."
     )
 
 
 # ============================================================
-# Final inference integration tests
+# Final inference integration
 # ============================================================
 
 def test_final_inference_class_importable():
@@ -656,11 +754,18 @@ def test_final_inference_references_clip_model():
         "CLIP integration..."
     )
 
-    content = INFERENCE_PATH.read_text(
-        encoding="utf-8"
+    content = (
+        INFERENCE_PATH
+        .read_text(
+            encoding="utf-8"
+        )
     )
 
-    assert "clip-vit-large-patch14" in content
+    assert (
+        "clip-vit-large-patch14"
+        in content
+    )
+
     assert "CLIPModel" in content
     assert "CLIPProcessor" in content
     assert "image_clip_emb_" in content
@@ -668,4 +773,85 @@ def test_final_inference_references_clip_model():
     print(
         "       PASS: Final inference pipeline uses "
         "the expected pretrained CLIP visual encoder."
+    )
+
+
+# ============================================================
+# Web backend integration
+# ============================================================
+
+def test_web_backend_integrates_calibrated_webcam_classifier():
+    print(
+        "\n[INTEGRATION] Checking calibrated webcam "
+        "classifier integration in web backend..."
+    )
+
+    assert WEB_APP_PATH.exists()
+
+    content = WEB_APP_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "image_pipeline_webcam_calibrated.joblib"
+        in content
+    )
+
+    assert (
+        "run_webcam_calibrated_prediction"
+        in content
+    )
+
+    assert (
+        "webcam_prediction"
+        in content
+    )
+
+    assert (
+        "webcam_calibration_used"
+        in content
+    )
+
+    print(
+        "       PASS: Web backend references and executes "
+        "the separate webcam-calibrated classifier."
+    )
+
+
+def test_web_backend_integrates_temporal_probability_aggregation():
+    print(
+        "\n[INTEGRATION] Checking temporal probability "
+        "aggregation integration..."
+    )
+
+    content = WEB_APP_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    required_tokens = [
+        "TEMPORAL_PROBABILITY_WINDOW",
+        "SESSION_PROBABILITY_HISTORY",
+        "add_temporal_probability",
+        "rolling_mean_probability",
+        "reset_temporal",
+    ]
+
+    missing = [
+        token
+        for token in required_tokens
+        if token not in content
+    ]
+
+    assert not missing, (
+        "Web backend is missing temporal-fusion "
+        f"integration tokens: {missing}"
+    )
+
+    print(
+        "       PASS: Backend contains rolling "
+        "mean-probability temporal aggregation."
+    )
+
+    print(
+        "       PASS: Backend contains temporal-session reset."
     )

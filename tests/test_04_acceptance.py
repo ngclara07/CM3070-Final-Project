@@ -1,4 +1,4 @@
-# tests/test_04_acceptance.py
+# === tests/test_04_acceptance.py ===
 
 from __future__ import annotations
 
@@ -21,15 +21,45 @@ EXPECTED_CLASSES = {
 
 
 # ============================================================
-# Webcam calibration paths
+# Paths
 # ============================================================
 
+WEB_APP_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "app.py"
+)
+
+WEB_HTML_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "templates"
+    / "index.html"
+)
+
+WEB_SCRIPT_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "static"
+    / "script.js"
+)
+
+WEB_STYLE_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "static"
+    / "style.css"
+)
+
+
 WEBCAM_CALIBRATION_SCRIPT = (
-    ROOT_DIR / "build_webcam_calibration_dataset.py"
+    ROOT_DIR
+    / "build_webcam_calibration_dataset.py"
 )
 
 WEBCAM_RETRAIN_SCRIPT = (
-    ROOT_DIR / "retrain_image_webcam_calibrated.py"
+    ROOT_DIR
+    / "retrain_image_webcam_calibrated.py"
 )
 
 ORIGINAL_IMAGE_MODEL = (
@@ -61,39 +91,37 @@ WEBCAM_EVALUATION_DIR = (
 )
 
 
-# Support both valid storage layouts.
-#
-# Layout A:
-#   data/webcam_calibration_clip_features.csv
-#
-# Layout B:
-#   data/processed/webcam_calibration_clip_features.csv
-
 WEBCAM_FEATURE_DATA_CANDIDATES = [
-    ROOT_DIR
-    / "data"
-    / "webcam_calibration_clip_features.csv",
-
-    ROOT_DIR
-    / "data"
-    / "processed"
-    / "webcam_calibration_clip_features.csv",
+    (
+        ROOT_DIR
+        / "data"
+        / "webcam_calibration_clip_features.csv"
+    ),
+    (
+        ROOT_DIR
+        / "data"
+        / "processed"
+        / "webcam_calibration_clip_features.csv"
+    ),
 ]
 
 WEBCAM_FEATURE_SUMMARY_CANDIDATES = [
-    ROOT_DIR
-    / "data"
-    / "webcam_calibration_clip_features_summary.json",
-
-    ROOT_DIR
-    / "data"
-    / "processed"
-    / "webcam_calibration_clip_features_summary.json",
+    (
+        ROOT_DIR
+        / "data"
+        / "webcam_calibration_clip_features_summary.json"
+    ),
+    (
+        ROOT_DIR
+        / "data"
+        / "processed"
+        / "webcam_calibration_clip_features_summary.json"
+    ),
 ]
 
 
 # ============================================================
-# Utility helpers
+# Helper
 # ============================================================
 
 def resolve_existing_path(
@@ -101,29 +129,27 @@ def resolve_existing_path(
     artifact_name: str,
 ) -> Path:
     """
-    Return the first existing path from a list of acceptable locations.
-
-    Raises an informative AssertionError if no candidate exists.
+    Resolve an artifact from supported storage layouts.
     """
 
     for path in candidates:
+
         if path.exists():
             return path
 
-    searched_locations = "\n".join(
+    searched = "\n".join(
         f"  - {path}"
         for path in candidates
     )
 
     raise AssertionError(
         f"Could not find {artifact_name}.\n"
-        f"Checked:\n"
-        f"{searched_locations}"
+        f"Checked:\n{searched}"
     )
 
 
 # ============================================================
-# Acceptance tests
+# Core interface acceptance
 # ============================================================
 
 def test_project_contains_required_live_interfaces():
@@ -138,23 +164,10 @@ def test_project_contains_required_live_interfaces():
         ROOT_DIR / "image_live_gui.py",
         ROOT_DIR / "live_fusion_gui.py",
         ROOT_DIR / "final_multimodal_inference.py",
-
-        ROOT_DIR / "web_app" / "app.py",
-
-        ROOT_DIR
-        / "web_app"
-        / "templates"
-        / "index.html",
-
-        ROOT_DIR
-        / "web_app"
-        / "static"
-        / "script.js",
-
-        ROOT_DIR
-        / "web_app"
-        / "static"
-        / "style.css",
+        WEB_APP_PATH,
+        WEB_HTML_PATH,
+        WEB_SCRIPT_PATH,
+        WEB_STYLE_PATH,
     ]
 
     missing = [
@@ -173,23 +186,32 @@ def test_project_contains_required_live_interfaces():
     )
 
 
+# ============================================================
+# Pretrained models
+# ============================================================
+
 def test_project_uses_three_pretrained_multimodal_models():
     print(
-        "\n[ACCEPTANCE] Checking pretrained AI model directories..."
+        "\n[ACCEPTANCE] Checking pretrained "
+        "AI model directories..."
     )
 
     pretrained_models = [
-        ROOT_DIR
-        / "models"
-        / "all-mpnet-base-v2",
-
-        ROOT_DIR
-        / "models"
-        / "wavlm-base-plus",
-
-        ROOT_DIR
-        / "models"
-        / "clip-vit-large-patch14",
+        (
+            ROOT_DIR
+            / "models"
+            / "all-mpnet-base-v2"
+        ),
+        (
+            ROOT_DIR
+            / "models"
+            / "wavlm-base-plus"
+        ),
+        (
+            ROOT_DIR
+            / "models"
+            / "clip-vit-large-patch14"
+        ),
     ]
 
     missing = [
@@ -198,25 +220,31 @@ def test_project_uses_three_pretrained_multimodal_models():
         if not path.exists()
     ]
 
-    assert not missing, (
-        f"Missing pretrained model directories: {missing}"
+    assert not missing
+
+    print(
+        "       PASS: MPNet model available."
     )
 
-    print("       PASS: MPNet model available.")
-    print("       PASS: WavLM model available.")
-    print("       PASS: CLIP ViT-L/14 model available.")
+    print(
+        "       PASS: WavLM model available."
+    )
 
+    print(
+        "       PASS: CLIP ViT-L/14 model available."
+    )
+
+
+# ============================================================
+# Webcam calibration
+# ============================================================
 
 def test_project_contains_webcam_calibration_pipeline():
     print(
         "\n[ACCEPTANCE] Checking webcam-calibration pipeline..."
     )
 
-    # --------------------------------------------------------
-    # Mandatory scripts and model artifacts
-    # --------------------------------------------------------
-
-    required_fixed_paths = [
+    required = [
         WEBCAM_CALIBRATION_SCRIPT,
         WEBCAM_RETRAIN_SCRIPT,
         CALIBRATED_IMAGE_MODEL,
@@ -224,27 +252,23 @@ def test_project_contains_webcam_calibration_pipeline():
         WEBCAM_EVALUATION_DIR,
     ]
 
-    missing_fixed_paths = [
+    missing = [
         str(path)
-        for path in required_fixed_paths
+        for path in required
         if not path.exists()
     ]
 
-    assert not missing_fixed_paths, (
-        "Missing required webcam-calibration components:\n"
-        + "\n".join(
-            f"  - {path}"
-            for path in missing_fixed_paths
-        )
+    assert not missing, (
+        "Missing required webcam-calibration "
+        f"components: {missing}"
     )
 
-    # --------------------------------------------------------
-    # Resolve generated dataset artifacts
-    # --------------------------------------------------------
-
-    feature_data_path = resolve_existing_path(
+    feature_path = resolve_existing_path(
         WEBCAM_FEATURE_DATA_CANDIDATES,
-        "webcam calibration CLIP feature dataset",
+        (
+            "webcam calibration CLIP "
+            "feature dataset"
+        ),
     )
 
     summary_path = resolve_existing_path(
@@ -252,123 +276,80 @@ def test_project_contains_webcam_calibration_pipeline():
         "webcam calibration summary JSON",
     )
 
-    assert feature_data_path.is_file(), (
-        f"Calibration feature dataset is not a file: "
-        f"{feature_data_path}"
-    )
-
-    assert summary_path.is_file(), (
-        f"Calibration summary is not a file: "
-        f"{summary_path}"
-    )
-
-    assert WEBCAM_EVALUATION_DIR.is_dir(), (
-        f"Expected webcam evaluation directory: "
-        f"{WEBCAM_EVALUATION_DIR}"
-    )
+    assert feature_path.is_file()
+    assert summary_path.is_file()
 
     evaluation_files = [
         path
-        for path in WEBCAM_EVALUATION_DIR.rglob("*")
+        for path
+        in WEBCAM_EVALUATION_DIR.rglob("*")
         if path.is_file()
     ]
 
-    assert evaluation_files, (
-        "Webcam calibration evaluation directory contains "
-        "no evaluation artifacts."
-    )
+    assert evaluation_files
 
     print(
-        "       PASS: Webcam dataset construction script exists."
-    )
-
-    print(
-        "       PASS: Webcam-calibrated retraining script exists."
-    )
-
-    print(
-        "       PASS: Webcam-calibrated classifier exists."
-    )
-
-    print(
-        "       PASS: Webcam calibration metadata exists."
-    )
-
-    print(
-        f"       PASS: Calibration feature dataset resolved at:\n"
-        f"             {feature_data_path}"
-    )
-
-    print(
-        f"       PASS: Calibration summary resolved at:\n"
-        f"             {summary_path}"
-    )
-
-    print(
-        f"       PASS: {len(evaluation_files)} webcam "
-        "evaluation artifact(s) available."
+        "       PASS: Webcam calibration pipeline "
+        "and evaluation artifacts are present."
     )
 
 
 def test_original_image_model_preserved():
     print(
-        "\n[ACCEPTANCE] Checking original image model preservation..."
+        "\n[ACCEPTANCE] Checking original "
+        "image model preservation..."
     )
 
-    assert ORIGINAL_IMAGE_MODEL.exists(), (
-        f"Missing original image classifier: "
-        f"{ORIGINAL_IMAGE_MODEL}"
-    )
+    assert ORIGINAL_IMAGE_MODEL.exists()
+    assert CALIBRATED_IMAGE_MODEL.exists()
 
-    assert CALIBRATED_IMAGE_MODEL.exists(), (
-        f"Missing webcam-calibrated classifier: "
-        f"{CALIBRATED_IMAGE_MODEL}"
-    )
-
-    assert ORIGINAL_IMAGE_MODEL != CALIBRATED_IMAGE_MODEL
-
-    print(
-        "       PASS: Original image classifier remains untouched."
+    assert (
+        ORIGINAL_IMAGE_MODEL
+        != CALIBRATED_IMAGE_MODEL
     )
 
     print(
-        "       PASS: Webcam classifier is stored separately."
+        "       PASS: Original image model remains untouched."
+    )
+
+    print(
+        "       PASS: Webcam-calibrated model is separate."
     )
 
 
 def test_webcam_calibration_metadata_is_readable():
     print(
-        "\n[ACCEPTANCE] Checking webcam-calibration metadata readability..."
-    )
-
-    assert CALIBRATED_METADATA.exists(), (
-        f"Missing calibrated metadata: "
-        f"{CALIBRATED_METADATA}"
+        "\n[ACCEPTANCE] Checking webcam calibration metadata..."
     )
 
     with CALIBRATED_METADATA.open(
         "r",
         encoding="utf-8",
     ) as f:
+
         metadata = json.load(f)
 
-    assert isinstance(metadata, dict), (
-        "Webcam calibration metadata must be a JSON object."
+    assert isinstance(
+        metadata,
+        dict,
     )
 
-    assert len(metadata) > 0, (
-        "Webcam calibration metadata is empty."
-    )
+    assert len(metadata) > 0
 
     print(
-        f"       PASS: Webcam calibration metadata contains "
-        f"{len(metadata)} fields."
+        f"       PASS: Webcam calibration metadata "
+        f"contains {len(metadata)} fields."
     )
 
+
+# ============================================================
+# Fusion model acceptance
+# ============================================================
 
 def test_project_contains_multimodal_fusion_model():
     print(
-        "\n[ACCEPTANCE] Checking final multimodal fusion artifact..."
+        "\n[ACCEPTANCE] Checking final "
+        "multimodal fusion artifact..."
     )
 
     fusion_model = (
@@ -385,21 +366,21 @@ def test_project_contains_multimodal_fusion_model():
         / "feature_columns.json"
     )
 
-    assert fusion_model.exists(), (
-        f"Missing fusion model: {fusion_model}"
-    )
-
-    assert feature_schema.exists(), (
-        f"Missing fusion feature schema: {feature_schema}"
-    )
+    assert fusion_model.exists()
+    assert feature_schema.exists()
 
     with feature_schema.open(
         "r",
         encoding="utf-8",
     ) as f:
+
         columns = json.load(f)
 
-    assert isinstance(columns, list)
+    assert isinstance(
+        columns,
+        list,
+    )
+
     assert len(columns) > 0
 
     print(
@@ -412,44 +393,52 @@ def test_project_contains_multimodal_fusion_model():
     )
 
 
-def test_final_output_design_supported_in_web_script():
+# ============================================================
+# Final output acceptance
+# ============================================================
+
+def test_final_output_design_supported_in_web_application():
     print(
-        "\n[ACCEPTANCE] Checking final user-facing "
-        "prediction design..."
+        "\n[ACCEPTANCE] Checking final "
+        "user-facing prediction design..."
     )
 
-    script_path = (
-        ROOT_DIR
-        / "web_app"
-        / "static"
-        / "script.js"
-    )
+    html = WEB_HTML_PATH.read_text(
+        encoding="utf-8"
+    ).lower()
 
-    assert script_path.exists(), (
-        f"Missing frontend script: {script_path}"
-    )
-
-    content = script_path.read_text(
+    script = WEB_SCRIPT_PATH.read_text(
         encoding="utf-8"
     )
 
-    lower_content = content.lower()
+    assert (
+        'id="prediction"'
+        in html
+    )
 
     assert (
-        "current_state" in content
-        or "prediction" in lower_content
-    ), (
-        "Frontend does not appear to display "
-        "a final behavioural-state prediction."
+        'id="confidencepercent"'
+        in html
     )
 
-    assert "confidence" in lower_content, (
-        "Frontend does not appear to expose confidence."
+    assert (
+        'id="probabilities"'
+        in html
     )
 
-    assert "probabilities" in lower_content, (
-        "Frontend does not appear to expose "
-        "probability diagnostics."
+    assert (
+        "current_state"
+        in script
+    )
+
+    assert (
+        "confidence_percent"
+        in script
+    )
+
+    assert (
+        "probabilities"
+        in script
     )
 
     print(
@@ -461,26 +450,127 @@ def test_final_output_design_supported_in_web_script():
     )
 
     print(
-        "       PASS: Probability diagnostics are supported."
+        "       PASS: Probability distribution is displayed."
     )
 
+
+def test_final_web_prediction_uses_temporal_probability_aggregation():
+    print(
+        "\n[ACCEPTANCE] Checking final temporal "
+        "prediction design..."
+    )
+
+    backend = WEB_APP_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    frontend = WEB_SCRIPT_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    html = WEB_HTML_PATH.read_text(
+        encoding="utf-8"
+    ).lower()
+
+    backend_requirements = [
+        "TEMPORAL_PROBABILITY_WINDOW",
+        "add_temporal_probability",
+        "rolling_mean_probability",
+        "raw_prediction",
+        "raw_probabilities",
+        "reset_temporal",
+    ]
+
+    for token in backend_requirements:
+
+        assert token in backend, (
+            f"Backend missing temporal requirement: "
+            f"{token}"
+        )
+
+    frontend_requirements = [
+        "temporal_samples",
+        "temporal_window",
+        "raw_prediction",
+        "raw_probabilities",
+        "/reset_temporal",
+    ]
+
+    for token in frontend_requirements:
+
+        assert token in frontend, (
+            f"Frontend missing temporal requirement: "
+            f"{token}"
+        )
+
+    html_requirements = [
+        'id="temporalsamples"',
+        'id="temporalwindow"',
+        'id="rawprediction"',
+        'id="rawconfidence"',
+        'id="resettemporalbtn"',
+    ]
+
+    for token in html_requirements:
+
+        assert token in html, (
+            f"HTML missing temporal element: "
+            f"{token}"
+        )
+
+    print(
+        "       PASS: Final result uses temporal "
+        "mean-probability aggregation."
+    )
+
+    print(
+        "       PASS: Latest raw result remains visible "
+        "for diagnostic comparison."
+    )
+
+    print(
+        "       PASS: Temporal history can be reset."
+    )
+
+
+def test_temporal_window_is_five_predictions():
+    print(
+        "\n[ACCEPTANCE] Checking selected temporal window size..."
+    )
+
+    backend = WEB_APP_PATH.read_text(
+        encoding="utf-8"
+    )
+
+    normalised = (
+        backend
+        .replace(" ", "")
+        .replace("\n", "")
+    )
+
+    assert (
+        "TEMPORAL_PROBABILITY_WINDOW=5"
+        in normalised
+    ), (
+        "Expected final temporal window size of 5."
+    )
+
+    print(
+        "       PASS: Final web application uses "
+        "a five-observation rolling window."
+    )
+
+
+# ============================================================
+# Four-class design
+# ============================================================
 
 def test_web_interface_supports_all_four_behavioural_states():
     print(
         "\n[ACCEPTANCE] Checking four-class behavioural design..."
     )
 
-    app_path = (
-        ROOT_DIR
-        / "web_app"
-        / "app.py"
-    )
-
-    assert app_path.exists(), (
-        f"Missing web backend: {app_path}"
-    )
-
-    content = app_path.read_text(
+    content = WEB_APP_PATH.read_text(
         encoding="utf-8"
     ).lower()
 
@@ -491,76 +581,88 @@ def test_web_interface_supports_all_four_behavioural_states():
     ]
 
     assert not missing_states, (
-        "The web backend does not represent all expected "
-        f"behavioural states. Missing: {missing_states}"
+        "Missing behavioural states: "
+        f"{missing_states}"
     )
 
     print(
-        "       PASS: Focused, distracted, fatigued and "
-        "overloaded are represented."
+        "       PASS: Focused, distracted, fatigued "
+        "and overloaded are represented."
     )
 
+
+# ============================================================
+# Webcam interface
+# ============================================================
 
 def test_web_interface_supports_live_webcam_capture():
     print(
         "\n[ACCEPTANCE] Checking live webcam interface support..."
     )
 
-    html_path = (
-        ROOT_DIR
-        / "web_app"
-        / "templates"
-        / "index.html"
-    )
-
-    script_path = (
-        ROOT_DIR
-        / "web_app"
-        / "static"
-        / "script.js"
-    )
-
-    html = html_path.read_text(
+    html = WEB_HTML_PATH.read_text(
         encoding="utf-8"
     ).lower()
 
-    script = script_path.read_text(
+    script = WEB_SCRIPT_PATH.read_text(
         encoding="utf-8"
     )
 
-    assert 'id="webcam"' in html, (
-        "Frontend does not contain the webcam video element."
+    assert 'id="webcam"' in html
+    assert 'id="framecanvas"' in html
+
+    assert "getUserMedia" in script
+    assert "captureWebcamFrame" in script
+    assert "image_frame" in script
+
+    print(
+        "       PASS: Browser webcam capture is supported."
     )
 
-    assert 'id="framecanvas"' in html, (
-        "Frontend does not contain the webcam frame canvas."
+
+def test_web_interface_exposes_separate_webcam_calibrated_result():
+    print(
+        "\n[ACCEPTANCE] Checking separate webcam "
+        "modality result..."
     )
 
-    assert "getUserMedia" in script, (
-        "Frontend does not request browser webcam access."
+    html = WEB_HTML_PATH.read_text(
+        encoding="utf-8"
+    ).lower()
+
+    script = WEB_SCRIPT_PATH.read_text(
+        encoding="utf-8"
     )
 
-    assert "captureWebcamFrame" in script, (
-        "Frontend does not implement webcam-frame capture."
+    assert (
+        'id="webcamprediction"'
+        in html
     )
 
-    assert "image_frame" in script, (
-        "Frontend does not submit captured webcam frames "
-        "to the backend."
+    assert (
+        'id="webcamconfidence"'
+        in html
+    )
+
+    assert (
+        'id="webcamprobabilitybars"'
+        in html
+    )
+
+    assert (
+        "webcam_prediction"
+        in script
     )
 
     print(
-        "       PASS: Webcam video element is present."
+        "       PASS: Webcam-calibrated modality result "
+        "is displayed separately from final fusion output."
     )
 
-    print(
-        "       PASS: Browser webcam capture is implemented."
-    )
 
-    print(
-        "       PASS: Webcam frames are submitted for inference."
-    )
-
+# ============================================================
+# Evaluation scripts
+# ============================================================
 
 def test_dissertation_ready_evaluation_scripts_exist():
     print(
@@ -568,11 +670,14 @@ def test_dissertation_ready_evaluation_scripts_exist():
     )
 
     required_files = [
-        ROOT_DIR
-        / "train_multimodal_comparison.py",
-
-        ROOT_DIR
-        / "evaluate_multimodal_results.py",
+        (
+            ROOT_DIR
+            / "train_multimodal_comparison.py"
+        ),
+        (
+            ROOT_DIR
+            / "evaluate_multimodal_results.py"
+        ),
     ]
 
     missing = [

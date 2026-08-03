@@ -1,4 +1,4 @@
-# run_all_tests.py
+# === run_all_tests.py ===
 
 from __future__ import annotations
 
@@ -7,94 +7,191 @@ import re
 import subprocess
 import sys
 import time
+
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 
+# ============================================================
+# Project paths
+# ============================================================
+
 ROOT_DIR = Path(__file__).resolve().parent
-TEST_DIR = ROOT_DIR / "tests"
-REPORT_DIR = ROOT_DIR / "test_reports"
+
+TEST_DIR = (
+    ROOT_DIR
+    / "tests"
+)
+
+REPORT_DIR = (
+    ROOT_DIR
+    / "test_reports"
+)
+
+
+# ============================================================
+# Test suite configuration
+# ============================================================
 
 TEST_SUITES = [
     (
         "Unit Testing",
         TEST_DIR / "test_01_unit.py",
-        "Tests isolated helper functions and local prediction logic.",
+        (
+            "Tests isolated helper functions, probability "
+            "normalisation, keystroke processing, confidence "
+            "logic, and temporal probability aggregation."
+        ),
     ),
     (
         "Integration Testing",
         TEST_DIR / "test_02_integration.py",
         (
-            "Tests model artifacts, pretrained encoders, webcam calibration, "
-            "feature schemas, and component integration."
+            "Tests model artifacts, pretrained encoders, "
+            "webcam calibration, feature schemas, final "
+            "inference integration, and temporal/webcam "
+            "backend integration."
         ),
     ),
     (
         "System Testing",
         TEST_DIR / "test_03_system.py",
         (
-            "Tests FastAPI endpoints, input validation, browser webcam "
-            "integration, and application-level behaviour."
+            "Tests FastAPI endpoints, input validation, "
+            "temporal-session reset, browser webcam "
+            "integration, and final application-level "
+            "behaviour."
         ),
     ),
     (
         "Acceptance Testing",
         TEST_DIR / "test_04_acceptance.py",
         (
-            "Tests whether final project requirements and deployment "
-            "artifacts are present."
+            "Tests whether final project requirements, "
+            "multimodal artifacts, webcam calibration, "
+            "temporal prediction design, and deployment "
+            "interfaces are present."
+        ),
+    ),
+    (
+        "Smoke / Regression Testing",
+        TEST_DIR / "test_sensefuzeai.py",
+        (
+            "Performs a compact regression check across "
+            "major SenseFuzeAI files, artifacts, endpoints, "
+            "webcam calibration, fusion schema, and temporal "
+            "prediction functionality."
         ),
     ),
 ]
 
 
-def extract_pytest_counts(output: str) -> dict[str, int]:
-    """
-    Extract simple pytest result counts from terminal output.
+# ============================================================
+# Pytest output parser
+# ============================================================
 
-    Examples recognised:
-        7 passed
-        1 failed, 6 passed
-        2 skipped, 10 passed
+def extract_pytest_counts(
+    output: str,
+) -> dict[str, int]:
     """
+    Extract pytest result counts from terminal output.
+
+    Supported examples:
+        12 passed
+        1 failed, 11 passed
+        2 skipped, 10 passed
+        1 error
+    """
+
     counts = {
         "passed": 0,
         "failed": 0,
         "skipped": 0,
         "errors": 0,
+        "xfailed": 0,
+        "xpassed": 0,
     }
 
     patterns = {
-        "passed": r"(\d+)\s+passed",
-        "failed": r"(\d+)\s+failed",
-        "skipped": r"(\d+)\s+skipped",
-        "errors": r"(\d+)\s+errors?",
+        "passed": (
+            r"(\d+)\s+passed"
+        ),
+        "failed": (
+            r"(\d+)\s+failed"
+        ),
+        "skipped": (
+            r"(\d+)\s+skipped"
+        ),
+        "errors": (
+            r"(\d+)\s+errors?"
+        ),
+        "xfailed": (
+            r"(\d+)\s+xfailed"
+        ),
+        "xpassed": (
+            r"(\d+)\s+xpassed"
+        ),
     }
 
     for key, pattern in patterns.items():
-        matches = re.findall(pattern, output)
+
+        matches = re.findall(
+            pattern,
+            output,
+            flags=re.IGNORECASE,
+        )
 
         if matches:
-            counts[key] = int(matches[-1])
+
+            counts[key] = int(
+                matches[-1]
+            )
 
     return counts
 
+
+# ============================================================
+# Individual suite runner
+# ============================================================
 
 def run_pytest_suite(
     name: str,
     test_file: Path,
     description: str,
 ) -> dict[str, Any]:
-    print("\n" + "=" * 88)
-    print(f"Running {name}")
-    print("=" * 88)
-    print(description)
-    print(f"Test file: {test_file}")
-    print("-" * 88)
+
+    print(
+        "\n"
+        + "=" * 92
+    )
+
+    print(
+        f"Running {name}"
+    )
+
+    print(
+        "=" * 92
+    )
+
+    print(
+        description
+    )
+
+    print(
+        f"Test file: {test_file}"
+    )
+
+    print(
+        "-" * 92
+    )
 
     if not test_file.exists():
-        print(f"ERROR: Missing test file: {test_file}")
+
+        print(
+            f"ERROR: Missing test file: "
+            f"{test_file}"
+        )
 
         return {
             "suite": name,
@@ -108,9 +205,14 @@ def run_pytest_suite(
                 "failed": 0,
                 "skipped": 0,
                 "errors": 0,
+                "xfailed": 0,
+                "xpassed": 0,
             },
             "stdout": "",
-            "stderr": f"Missing test file: {test_file}",
+            "stderr": (
+                f"Missing test file: "
+                f"{test_file}"
+            ),
         }
 
     command = [
@@ -119,15 +221,16 @@ def run_pytest_suite(
         "pytest",
         str(test_file),
 
-        # Verbose test names.
+        # Show individual test names.
         "-v",
 
-        # Disable pytest print-output capture so the custom
-        # [UNIT], [INTEGRATION], etc. messages are visible.
+        # Do not hide print() output.
         "-s",
     ]
 
-    start_time = time.perf_counter()
+    start_time = (
+        time.perf_counter()
+    )
 
     completed = subprocess.run(
         command,
@@ -138,19 +241,45 @@ def run_pytest_suite(
         errors="replace",
     )
 
-    runtime_seconds = time.perf_counter() - start_time
+    runtime_seconds = (
+        time.perf_counter()
+        - start_time
+    )
 
-    stdout = completed.stdout or ""
-    stderr = completed.stderr or ""
+    stdout = (
+        completed.stdout
+        or ""
+    )
 
-    print(stdout)
+    stderr = (
+        completed.stderr
+        or ""
+    )
+
+    print(
+        stdout
+    )
 
     if stderr.strip():
-        print("\n--- STDERR ---")
-        print(stderr)
 
-    counts = extract_pytest_counts(
-        stdout + "\n" + stderr
+        print(
+            "\n--- STDERR ---"
+        )
+
+        print(
+            stderr
+        )
+
+    combined_output = (
+        stdout
+        + "\n"
+        + stderr
+    )
+
+    counts = (
+        extract_pytest_counts(
+            combined_output
+        )
     )
 
     status = (
@@ -159,63 +288,96 @@ def run_pytest_suite(
         else "failed"
     )
 
-    print("-" * 88)
-    print(f"{name} result: {status.upper()}")
-    print(f"Runtime: {runtime_seconds:.2f} seconds")
+    print(
+        "-" * 92
+    )
+
+    print(
+        f"{name} result: "
+        f"{status.upper()}"
+    )
+
+    print(
+        f"Runtime: "
+        f"{runtime_seconds:.2f} seconds"
+    )
 
     return {
         "suite": name,
         "description": description,
         "file": str(test_file),
         "status": status,
-        "return_code": completed.returncode,
-        "runtime_seconds": runtime_seconds,
+        "return_code": (
+            completed.returncode
+        ),
+        "runtime_seconds": (
+            runtime_seconds
+        ),
         "counts": counts,
         "stdout": stdout,
         "stderr": stderr,
     }
 
 
+# ============================================================
+# Markdown + JSON report generation
+# ============================================================
+
 def generate_markdown_report(
     results: list[dict[str, Any]],
 ) -> tuple[Path, Path]:
+
     REPORT_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    timestamp = datetime.now().strftime(
-        "%Y%m%d_%H%M%S"
+    timestamp = (
+        datetime.now()
+        .strftime(
+            "%Y%m%d_%H%M%S"
+        )
     )
 
     report_path = (
         REPORT_DIR
-        / f"sensefuzeai_test_report_{timestamp}.md"
+        / (
+            "sensefuzeai_test_report_"
+            f"{timestamp}.md"
+        )
     )
 
     json_path = (
         REPORT_DIR
-        / f"sensefuzeai_test_report_{timestamp}.json"
+        / (
+            "sensefuzeai_test_report_"
+            f"{timestamp}.json"
+        )
     )
 
-    total_suites = len(results)
+    total_suites = len(
+        results
+    )
 
     passed_suites = sum(
         1
         for result in results
-        if result["status"] == "passed"
+        if result["status"]
+        == "passed"
     )
 
     failed_suites = sum(
         1
         for result in results
-        if result["status"] == "failed"
+        if result["status"]
+        == "failed"
     )
 
     missing_suites = sum(
         1
         for result in results
-        if result["status"] == "missing"
+        if result["status"]
+        == "missing"
     )
 
     total_tests_passed = sum(
@@ -238,6 +400,16 @@ def generate_markdown_report(
         for result in results
     )
 
+    total_xfailed = sum(
+        result["counts"]["xfailed"]
+        for result in results
+    )
+
+    total_xpassed = sum(
+        result["counts"]["xpassed"]
+        for result in results
+    )
+
     total_runtime = sum(
         result["runtime_seconds"]
         for result in results
@@ -245,13 +417,18 @@ def generate_markdown_report(
 
     overall_status = (
         "PASSED"
-        if failed_suites == 0
-        and missing_suites == 0
+        if (
+            failed_suites == 0
+            and missing_suites == 0
+        )
         else "FAILED"
     )
 
-    generated_time = datetime.now().strftime(
-        "%Y-%m-%d %H:%M:%S"
+    generated_time = (
+        datetime.now()
+        .strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
     )
 
     lines = [
@@ -264,11 +441,44 @@ def generate_markdown_report(
         "## Test Objective",
         "",
         (
-            "The purpose of this automated test suite is to verify "
-            "the correctness, integration, system behaviour, and "
-            "acceptance requirements of the SenseFuzeAI multimodal "
-            "behavioural-state prediction system, including the "
-            "webcam-calibrated image-classification pipeline."
+            "The purpose of this automated test suite is "
+            "to verify the correctness, integration, "
+            "system behaviour, acceptance requirements, "
+            "and regression stability of the SenseFuzeAI "
+            "multimodal behavioural-state prediction "
+            "system."
+        ),
+        "",
+        (
+            "The tests specifically include the "
+            "webcam-calibrated image classifier and the "
+            "final rolling temporal probability "
+            "aggregation used by the web application."
+        ),
+        "",
+        "## Current Prediction Architecture Under Test",
+        "",
+        (
+            "The final web application evaluates "
+            "keystroke, text, audio and image features "
+            "through the multimodal fusion classifier. "
+            "Each live fusion observation produces a "
+            "four-class probability vector."
+        ),
+        "",
+        (
+            "The final displayed behavioural state is "
+            "computed from the arithmetic mean of the "
+            "latest five fusion probability vectors. "
+            "The latest raw prediction remains available "
+            "as diagnostic information."
+        ),
+        "",
+        (
+            "The webcam-calibrated image classifier is "
+            "maintained as a separate visual-modality "
+            "diagnostic and does not replace the final "
+            "multimodal fusion decision."
         ),
         "",
         "## Overall Summary",
@@ -281,19 +491,26 @@ def generate_markdown_report(
         f"- Individual tests failed: {total_tests_failed}",
         f"- Individual tests skipped: {total_tests_skipped}",
         f"- Pytest errors: {total_errors}",
+        f"- Expected failures: {total_xfailed}",
+        f"- Unexpected passes: {total_xpassed}",
         f"- Total runtime: {total_runtime:.2f} seconds",
         "",
         "## Test Suite Results",
         "",
         (
             "| Suite | Status | Passed | Failed | "
-            "Skipped | Runtime (s) |"
+            "Skipped | Errors | Runtime (s) |"
         ),
-        "|---|---:|---:|---:|---:|---:|",
+        (
+            "|---|---:|---:|---:|---:|---:|---:|"
+        ),
     ]
 
     for result in results:
-        counts = result["counts"]
+
+        counts = result[
+            "counts"
+        ]
 
         lines.append(
             f"| {result['suite']} "
@@ -301,6 +518,7 @@ def generate_markdown_report(
             f"| {counts['passed']} "
             f"| {counts['failed']} "
             f"| {counts['skipped']} "
+            f"| {counts['errors']} "
             f"| {result['runtime_seconds']:.2f} |"
         )
 
@@ -313,15 +531,22 @@ def generate_markdown_report(
     )
 
     for result in results:
+
         lines.extend(
             [
                 f"### {result['suite']}",
                 "",
                 result["description"],
                 "",
-                f"Test file: `{result['file']}`",
+                (
+                    f"Test file: "
+                    f"`{result['file']}`"
+                ),
                 "",
-                f"Status: **{result['status'].upper()}**",
+                (
+                    f"Status: "
+                    f"**{result['status'].upper()}**"
+                ),
                 "",
             ]
         )
@@ -334,19 +559,23 @@ def generate_markdown_report(
     )
 
     for result in results:
+
         lines.extend(
             [
                 f"### {result['suite']}",
                 "",
                 "```text",
-                result["stdout"].strip()
-                or "(no standard output)",
+                (
+                    result["stdout"].strip()
+                    or "(no standard output)"
+                ),
                 "```",
                 "",
             ]
         )
 
         if result["stderr"].strip():
+
             lines.extend(
                 [
                     "**Errors / Warnings**",
@@ -366,41 +595,53 @@ def generate_markdown_report(
     )
 
     if overall_status == "PASSED":
+
         lines.extend(
             [
                 (
-                    "All required automated test suites completed "
-                    "successfully."
+                    "All required automated test suites "
+                    "completed successfully."
                 ),
                 "",
                 (
-                    "The automated results provide evidence that the "
-                    "tested unit functions, integration components, "
-                    "web application behaviour, webcam-calibration "
-                    "artifacts, and acceptance requirements are "
-                    "operational."
+                    "The results provide automated evidence "
+                    "that the tested utility functions, "
+                    "model artifacts, webcam calibration "
+                    "pipeline, multimodal integration, "
+                    "FastAPI endpoints, temporal "
+                    "probability aggregation, browser "
+                    "interface, and acceptance requirements "
+                    "are operational."
                 ),
                 "",
                 (
-                    "Model predictive accuracy should additionally be "
-                    "supported by the held-out evaluation metrics "
-                    "generated during model training and webcam "
-                    "calibration."
+                    "These software tests do not by "
+                    "themselves establish behavioural-state "
+                    "predictive validity. Model accuracy "
+                    "should therefore also be reported using "
+                    "the held-out evaluation metrics, "
+                    "classification reports, confusion "
+                    "matrices and multimodal evaluation "
+                    "results produced separately by the "
+                    "training/evaluation pipeline."
                 ),
             ]
         )
 
     else:
+
         lines.extend(
             [
                 (
-                    "One or more automated test suites did not complete "
-                    "successfully."
+                    "One or more automated test suites "
+                    "did not complete successfully."
                 ),
                 "",
                 (
-                    "Review the detailed output above before treating "
-                    "the software implementation as regression-tested."
+                    "The failed or missing components "
+                    "should be investigated before treating "
+                    "the current implementation as fully "
+                    "regression-tested."
                 ),
             ]
         )
@@ -419,25 +660,58 @@ def generate_markdown_report(
         encoding="utf-8",
     )
 
-    return report_path, json_path
+    return (
+        report_path,
+        json_path,
+    )
 
+
+# ============================================================
+# Main execution
+# ============================================================
 
 def main() -> int:
-    print("=" * 88)
-    print("SenseFuzeAI Automated Test Runner")
-    print("=" * 88)
 
-    print(f"Project root : {ROOT_DIR}")
-    print(f"Tests        : {TEST_DIR}")
-    print(f"Reports      : {REPORT_DIR}")
+    print(
+        "=" * 92
+    )
+
+    print(
+        "SenseFuzeAI Automated Test Runner"
+    )
+
+    print(
+        "=" * 92
+    )
+
+    print(
+        f"Project root : {ROOT_DIR}"
+    )
+
+    print(
+        f"Tests        : {TEST_DIR}"
+    )
+
+    print(
+        f"Reports      : {REPORT_DIR}"
+    )
+
+    print(
+        f"Suites       : {len(TEST_SUITES)}"
+    )
 
     if not TEST_DIR.exists():
+
         print(
-            f"\nERROR: Test directory not found: {TEST_DIR}"
+            "\nERROR: Test directory "
+            f"not found: {TEST_DIR}"
         )
+
         return 1
 
-    results: list[dict[str, Any]] = []
+    results: list[
+        dict[str, Any]
+    ] = []
 
     for (
         suite_name,
@@ -451,31 +725,50 @@ def main() -> int:
             description=description,
         )
 
-        results.append(result)
+        results.append(
+            result
+        )
 
-    report_path, json_path = generate_markdown_report(
+    (
+        report_path,
+        json_path,
+    ) = generate_markdown_report(
         results
     )
 
     failed_or_missing = [
         result
         for result in results
-        if result["status"] != "passed"
+        if result["status"]
+        != "passed"
     ]
 
-    print("\n" + "=" * 88)
-    print("FINAL TEST SUMMARY")
-    print("=" * 88)
+    print(
+        "\n"
+        + "=" * 92
+    )
+
+    print(
+        "FINAL TEST SUMMARY"
+    )
+
+    print(
+        "=" * 92
+    )
 
     for result in results:
-        counts = result["counts"]
+
+        counts = result[
+            "counts"
+        ]
 
         print(
-            f"{result['suite']:<24} "
+            f"{result['suite']:<28} "
             f"{result['status'].upper():<8} "
-            f"| passed={counts['passed']} "
-            f"| failed={counts['failed']} "
-            f"| skipped={counts['skipped']}"
+            f"| passed={counts['passed']:<3} "
+            f"| failed={counts['failed']:<3} "
+            f"| skipped={counts['skipped']:<3} "
+            f"| errors={counts['errors']:<3}"
         )
 
     total_passed = sum(
@@ -488,21 +781,65 @@ def main() -> int:
         for result in results
     )
 
-    print("\nIndividual test totals:")
-    print(f"  Passed : {total_passed}")
-    print(f"  Failed : {total_failed}")
+    total_skipped = sum(
+        result["counts"]["skipped"]
+        for result in results
+    )
 
-    print("\nReports generated:")
-    print(f"  Markdown : {report_path}")
-    print(f"  JSON     : {json_path}")
+    total_errors = sum(
+        result["counts"]["errors"]
+        for result in results
+    )
+
+    print(
+        "\nIndividual test totals:"
+    )
+
+    print(
+        f"  Passed  : {total_passed}"
+    )
+
+    print(
+        f"  Failed  : {total_failed}"
+    )
+
+    print(
+        f"  Skipped : {total_skipped}"
+    )
+
+    print(
+        f"  Errors  : {total_errors}"
+    )
+
+    print(
+        "\nReports generated:"
+    )
+
+    print(
+        f"  Markdown : {report_path}"
+    )
+
+    print(
+        f"  JSON     : {json_path}"
+    )
 
     if failed_or_missing:
-        print("\nOverall result: FAILED")
+
+        print(
+            "\nOverall result: FAILED"
+        )
+
         return 1
 
-    print("\nOverall result: PASSED")
+    print(
+        "\nOverall result: PASSED"
+    )
+
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+
+    raise SystemExit(
+        main()
+    )
