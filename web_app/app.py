@@ -1,26 +1,29 @@
-# === web_app/app.py ===
-# run and launch the web application: uvicorn web_app.app:app --reload | python app.py
+# web_app/app.py
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import csv
+import hashlib
 import json
+import math
 import os
+import statistics
 import sys
 import threading
 import time
 import uuid
 
-from collections import deque
 from contextlib import asynccontextmanager
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
-import joblib
+import cv2
+import librosa
 import numpy as np
-import pandas as pd
 import uvicorn
 
 from fastapi import (
@@ -42,14 +45,30 @@ from fastapi.templating import Jinja2Templates
 
 
 # ============================================================
-# Project paths
+# Paths
 # ============================================================
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-WEB_DIR = Path(__file__).resolve().parent
+ROOT_DIR = (
+    Path(__file__)
+    .resolve()
+    .parents[1]
+)
 
-UPLOAD_DIR = WEB_DIR / "uploads"
-OUTPUT_DIR = WEB_DIR / "output"
+WEB_DIR = (
+    Path(__file__)
+    .resolve()
+    .parent
+)
+
+UPLOAD_DIR = (
+    WEB_DIR
+    / "uploads"
+)
+
+OUTPUT_DIR = (
+    WEB_DIR
+    / "output"
+)
 
 LOG_FILE = (
     OUTPUT_DIR
@@ -66,172 +85,770 @@ OUTPUT_DIR.mkdir(
     exist_ok=True,
 )
 
-os.chdir(ROOT_DIR)
+if (
+    str(ROOT_DIR)
+    not in sys.path
+):
 
-if str(ROOT_DIR) not in sys.path:
     sys.path.insert(
         0,
         str(ROOT_DIR),
     )
 
-
-# ============================================================
-# Behavioural classes
-# ============================================================
-
-LABELS = [
-    "focused",
-    "distracted",
-    "fatigued",
-    "overloaded",
-]
+os.chdir(
+    ROOT_DIR
+)
 
 
 # ============================================================
-# Input requirements
+# Canonical raw + temporal inference implementations
+# ============================================================
+
+from final_multimodal_inference import (  # noqa: E402
+    FinalMultimodalInference,
+)
+
+from temporal_fusion import (  # noqa: E402
+    LABELS,
+    TEMPORAL_PROBABILITY_WINDOW,
+    PROBABILITY_SUM_TOLERANCE,
+    StaleGenerationError,
+    TemporalFusionEngine,
+    summarise_probability_dict,
+    validate_probability_distribution,
+)
+
+
+# ============================================================
+# Web configuration
 # ============================================================
 
 MIN_TEXT_CHARS = 20
 MIN_KEYPRESSES = 20
 
+LIVE_INTERVAL_MS = 2500
+
+AUDIO_CAPTURE_SECONDS = 10
+TARGET_SR = 16000
+
+NEAR_SILENCE_DBFS = -50.0
+QUIET_AUDIO_DBFS = -35.0
+
 
 # ============================================================
-# Temporal fusion configuration
+# Generic helpers
+#
+# These are keystroke helpers only.
+# Temporal mathematics come from temporal_fusion.py.
 # ============================================================
 
-TEMPORAL_PROBABILITY_WINDOW = 5
+def safe_mean(
+    values: list[float],
+) -> float:
 
-# Remove abandoned browser sessions after this period.
-SESSION_HISTORY_TTL_SECONDS = 60 * 60
+    return (
+        statistics.mean(values)
+        if values
+        else 0.0
+    )
 
-# Each browser session receives its own rolling probability history.
-SESSION_PROBABILITY_HISTORY: dict[
+
+def safe_std(
+    values: list[float],
+) -> float:
+
+    return (
+        statistics.stdev(values)
+        if len(values) >= 2
+        else 0.0
+    )
+
+
+# ============================================================
+# Keystroke feature construction
+# ============================================================
+
+def build_live_keystroke_features(
+    typed_text: str,
+    events: list[
+        dict[str, Any]
+    ],
+) -> dict[str, float]:
+
+    downs = [
+        event
+        for event in events
+        if event.get("type")
+        == "down"
+    ]
+
+    down_times = [
+        float(
+            event[
+                "timestamp_perf"
+            ]
+        )
+        for event
+        in downs
+        if event.get(
+            "timestamp_perf"
+        )
+        is not None
+    ]
+
+    if len(down_times) < 2:
+
+        raise ValueError(
+            "Not enough keystroke timing data."
+        )
+
+    keydown_count = len(
+        downs
+    )
+
+    if (
+        keydown_count
+        < MIN_KEYPRESSES
+    ):
+
+        raise ValueError(
+            f"At least {MIN_KEYPRESSES} "
+            "key-down events are required."
+        )
+
+    delays = [
+        down_times[index]
+        - down_times[
+            index - 1
+        ]
+        for index
+        in range(
+            1,
+            len(
+                down_times
+            ),
+        )
+    ]
+
+    hold_times: list[
+        float
+    ] = []
+
+    active_downs: dict[
+        str,
+        list[float],
+    ] = {}
+
+    for event in events:
+
+        key = event.get(
+            "key"
+        )
+
+        event_type = event.get(
+            "type"
+        )
+
+        timestamp = event.get(
+            "timestamp_perf"
+        )
+
+        if (
+            key is None
+            or
+            timestamp is None
+        ):
+
+            continue
+
+        timestamp = float(
+            timestamp
+        )
+
+        if event_type == "down":
+
+            active_downs.setdefault(
+                str(key),
+                [],
+            ).append(
+                timestamp
+            )
+
+        elif event_type == "up":
+
+            queue = (
+                active_downs.get(
+                    str(key)
+                )
+            )
+
+            if queue:
+
+                down_time = (
+                    queue.pop(0)
+                )
+
+                duration = (
+                    timestamp
+                    - down_time
+                )
+
+                if duration >= 0.0:
+
+                    hold_times.append(
+                        duration
+                    )
+
+    total_duration = (
+        down_times[-1]
+        - down_times[0]
+    )
+
+    word_count = len(
+        typed_text.split()
+    )
+
+    correction_count = sum(
+        1
+        for event
+        in downs
+        if event.get("key")
+        in {
+            "backspace",
+            "delete",
+        }
+    )
+
+    pauses_1000 = [
+        value
+        for value in delays
+        if value >= 1.0
+    ]
+
+    pauses_2000 = [
+        value
+        for value in delays
+        if value >= 2.0
+    ]
+
+    pauses_5000 = [
+        value
+        for value in delays
+        if value >= 5.0
+    ]
+
+    delay_mean = safe_mean(
+        delays
+    )
+
+    delay_std = safe_std(
+        delays
+    )
+
+    return {
+        "total_duration_sec":
+            round(
+                total_duration,
+                4,
+            ),
+
+        "keydown_count":
+            keydown_count,
+
+        "word_count":
+            word_count,
+
+        "typing_speed_kps":
+            (
+                round(
+                    keydown_count
+                    / total_duration,
+                    4,
+                )
+                if total_duration > 0.0
+                else 0.0
+            ),
+
+        "typing_speed_wpm":
+            (
+                round(
+                    (
+                        word_count
+                        / total_duration
+                    )
+                    * 60.0,
+                    4,
+                )
+                if total_duration > 0.0
+                else 0.0
+            ),
+
+        "delay_mean":
+            round(
+                delay_mean,
+                4,
+            ),
+
+        "delay_std":
+            round(
+                delay_std,
+                4,
+            ),
+
+        "delay_min":
+            (
+                round(
+                    min(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
+
+        "delay_max":
+            (
+                round(
+                    max(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
+
+        "hold_mean":
+            round(
+                safe_mean(
+                    hold_times
+                ),
+                4,
+            ),
+
+        "hold_std":
+            round(
+                safe_std(
+                    hold_times
+                ),
+                4,
+            ),
+
+        "pause_count_1000":
+            len(
+                pauses_1000
+            ),
+
+        "pause_count_2000":
+            len(
+                pauses_2000
+            ),
+
+        "pause_count_5000":
+            len(
+                pauses_5000
+            ),
+
+        "pause_ratio_1000":
+            (
+                round(
+                    len(
+                        pauses_1000
+                    )
+                    / len(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
+
+        "pause_ratio_2000":
+            (
+                round(
+                    len(
+                        pauses_2000
+                    )
+                    / len(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
+
+        "mental_block_ratio_5000":
+            (
+                round(
+                    len(
+                        pauses_5000
+                    )
+                    / len(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
+
+        "correction_count":
+            correction_count,
+
+        "correction_ratio":
+            (
+                round(
+                    correction_count
+                    / keydown_count,
+                    4,
+                )
+                if keydown_count
+                else 0.0
+            ),
+
+        "rhythm_consistency":
+            (
+                round(
+                    1.0
+                    / (
+                        1.0
+                        + delay_std
+                    ),
+                    4,
+                )
+                if delays
+                else 1.0
+            ),
+
+        "burstiness_proxy":
+            (
+                round(
+                    delay_std
+                    / delay_mean,
+                    4,
+                )
+                if delay_mean > 0.0
+                else 0.0
+            ),
+
+        "fits_starts_index":
+            (
+                round(
+                    len(
+                        pauses_1000
+                    )
+                    / len(delays),
+                    4,
+                )
+                if delays
+                else 0.0
+            ),
+    }
+
+
+# ============================================================
+# Audio diagnostic
+# ============================================================
+
+def analyse_audio_file(
+    path: Path,
+) -> dict[str, Any]:
+
+    try:
+
+        waveform, sample_rate = (
+            librosa.load(
+                path,
+                sr=TARGET_SR,
+                mono=True,
+                duration=20.0,
+            )
+        )
+
+        waveform = np.asarray(
+            waveform,
+            dtype=np.float32,
+        )
+
+        if waveform.size == 0:
+
+            return {
+                "condition":
+                    "empty",
+
+                "duration_sec":
+                    0.0,
+
+                "rms":
+                    0.0,
+
+                "dbfs":
+                    -120.0,
+
+                "note":
+                    "Audio contains no samples.",
+            }
+
+        duration = (
+            len(waveform)
+            / sample_rate
+        )
+
+        rms = float(
+            np.sqrt(
+                np.mean(
+                    np.square(
+                        waveform
+                    )
+                )
+            )
+        )
+
+        dbfs = (
+            20.0
+            * math.log10(
+                max(
+                    rms,
+                    1e-12,
+                )
+            )
+        )
+
+        if (
+            dbfs
+            <= NEAR_SILENCE_DBFS
+        ):
+
+            condition = (
+                "near-silence"
+            )
+
+            note = (
+                "Valid quiet-environment audio "
+                "input; it does not force the "
+                "focused label."
+            )
+
+        elif (
+            dbfs
+            <= QUIET_AUDIO_DBFS
+        ):
+
+            condition = (
+                "quiet"
+            )
+
+            note = (
+                "Low-energy audio input."
+            )
+
+        else:
+
+            condition = (
+                "active-audio"
+            )
+
+            note = (
+                "Audible signal detected."
+            )
+
+        return {
+            "condition":
+                condition,
+
+            "duration_sec":
+                float(
+                    duration
+                ),
+
+            "rms":
+                rms,
+
+            "dbfs":
+                float(
+                    dbfs
+                ),
+
+            "note":
+                note,
+        }
+
+    except Exception as exc:
+
+        return {
+            "condition":
+                "unknown",
+
+            "duration_sec":
+                None,
+
+            "rms":
+                None,
+
+            "dbfs":
+                None,
+
+            "note":
+                (
+                    "Audio diagnostic failed: "
+                    f"{exc}"
+                ),
+        }
+
+
+# ============================================================
+# Session state
+#
+# Each browser receives ONE independent TemporalFusionEngine.
+# ============================================================
+
+@dataclass
+class SessionState:
+
+    temporal_fusion: TemporalFusionEngine = (
+        field(
+            default_factory=(
+                TemporalFusionEngine
+            )
+        )
+    )
+
+    last_seen: float = field(
+        default_factory=time.time
+    )
+
+    audio_path: Optional[
+        Path
+    ] = None
+
+    audio_name: Optional[
+        str
+    ] = None
+
+    audio_source_kind: Optional[
+        str
+    ] = None
+
+    audio_diagnostics: dict[
+        str,
+        Any
+    ] = field(
+        default_factory=dict
+    )
+
+    visual_mode: str = (
+        "none"
+    )
+
+    visual_path: Optional[
+        Path
+    ] = None
+
+    visual_name: Optional[
+        str
+    ] = None
+
+    visual_started_at: Optional[
+        float
+    ] = None
+
+
+SESSION_STATES: dict[
     str,
-    deque[dict[str, float]],
+    SessionState
 ] = {}
 
-SESSION_LAST_SEEN: dict[
-    str,
-    float,
-] = {}
+SESSION_LOCK = (
+    threading.RLock()
+)
 
-SESSION_HISTORY_LOCK = (
+PREDICTOR_LOCK = (
     threading.Lock()
 )
 
 
 # ============================================================
-# Webcam-calibrated image classifier
+# Predictor
 # ============================================================
 
-IMAGE_MODEL_DIR = (
-    ROOT_DIR
-    / "models"
-    / "image_demo"
-)
-
-WEBCAM_IMAGE_MODEL_PATH = (
-    IMAGE_MODEL_DIR
-    / "image_pipeline_webcam_calibrated.joblib"
-)
-
-IMAGE_FEATURE_COLUMNS_PATH = (
-    IMAGE_MODEL_DIR
-    / "feature_columns.json"
-)
-
-webcam_image_pipeline = None
-webcam_image_feature_columns: list[str] = []
+predictor: Optional[
+    FinalMultimodalInference
+] = None
 
 
-# ============================================================
-# Model status
-# ============================================================
+MODEL_STATUS: dict[str, Any] = {
+    "text_model":
+        False,
 
-MODEL_STATUS = {
-    "text_model": False,
-    "audio_model": False,
-    "image_model": False,
-    "webcam_calibrated_image_model": False,
-    "keystroke_model": False,
-    "fusion_model": False,
-    "temporal_probability_window": (
-        TEMPORAL_PROBABILITY_WINDOW
-    ),
-    "inference_backend": "fallback",
-    "error": None,
+    "audio_model":
+        False,
+
+    "image_model":
+        False,
+
+    "keystroke_model":
+        False,
+
+    "fusion_model":
+        False,
+
+    "webcam_calibrated_image_model":
+        False,
+
+    "inference_backend":
+        (
+            "final_multimodal_inference."
+            "FinalMultimodalInference"
+        ),
+
+    "temporal_fusion_backend":
+        (
+            "temporal_fusion."
+            "TemporalFusionEngine"
+        ),
+
+    "labels":
+        list(LABELS),
+
+    "fallback_enabled":
+        False,
+
+    "temporal_probability_window":
+        TEMPORAL_PROBABILITY_WINDOW,
+
+    "live_interval_ms":
+        LIVE_INTERVAL_MS,
+
+    "audio_capture_seconds":
+        AUDIO_CAPTURE_SECONDS,
+
+    "target_audio_sample_rate":
+        TARGET_SR,
+
+    "min_text_chars":
+        MIN_TEXT_CHARS,
+
+    "min_keypresses":
+        MIN_KEYPRESSES,
+
+    "audio_source_policy":
+        (
+            "fixed_until_"
+            "replaced_or_reset"
+        ),
+
+    "visual_source_modes": [
+        "image",
+        "video",
+        "webcam",
+    ],
+
+    "input_change_resets_temporal":
+        True,
+
+    "error":
+        None,
 }
 
-predictor = None
-
-
-# ============================================================
-# Logging
-# ============================================================
-
-def initialise_log_file() -> None:
-
-    if LOG_FILE.exists():
-        return
-
-    with LOG_FILE.open(
-        "w",
-        newline="",
-        encoding="utf-8",
-    ) as f:
-
-        writer = csv.writer(f)
-
-        writer.writerow(
-            [
-                "timestamp",
-                "session_id",
-                "text_length",
-                "keystroke_count",
-                "audio_available",
-                "image_available",
-
-                "raw_fusion_state",
-                "raw_fusion_confidence",
-
-                "final_state",
-                "final_confidence",
-                "confidence_level",
-                "confidence_gap",
-
-                "temporal_samples",
-                "temporal_window",
-
-                "webcam_state",
-                "webcam_confidence",
-
-                "feature_dimension",
-                "used_modalities",
-            ]
-        )
-
-
-# ============================================================
-# Model loading
-# ============================================================
 
 def initialise_models() -> None:
 
     global predictor
-    global webcam_image_pipeline
-    global webcam_image_feature_columns
-
-    errors: list[str] = []
-
-    # --------------------------------------------------------
-    # Main multimodal inference pipeline
-    # --------------------------------------------------------
 
     try:
-
-        from final_multimodal_inference import (
-            FinalMultimodalInference,
-        )
 
         predictor = (
             FinalMultimodalInference()
@@ -239,15 +856,29 @@ def initialise_models() -> None:
 
         MODEL_STATUS.update(
             {
-                "text_model": True,
-                "audio_model": True,
-                "image_model": True,
-                "keystroke_model": True,
-                "fusion_model": True,
-                "inference_backend": (
-                    "final_multimodal_inference."
-                    "FinalMultimodalInference"
-                ),
+                "text_model":
+                    True,
+
+                "audio_model":
+                    True,
+
+                "image_model":
+                    True,
+
+                "keystroke_model":
+                    True,
+
+                "fusion_model":
+                    True,
+
+                "webcam_calibrated_image_model":
+                    (
+                        predictor.webcam_image_model
+                        is not None
+                    ),
+
+                "error":
+                    None,
             }
         )
 
@@ -257,76 +888,1046 @@ def initialise_models() -> None:
 
         MODEL_STATUS.update(
             {
-                "text_model": False,
-                "audio_model": False,
-                "image_model": False,
-                "keystroke_model": False,
-                "fusion_model": False,
-                "inference_backend": "fallback",
+                "fusion_model":
+                    False,
+
+                "error":
+                    str(exc),
             }
         )
 
-        errors.append(
-            f"Fusion backend: {exc}"
+
+# ============================================================
+# Session helpers
+# ============================================================
+
+def validate_session_id(
+    session_id: str,
+) -> str:
+
+    value = str(
+        session_id
+    ).strip()
+
+    if not value:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "session_id is required."
+            ),
         )
 
-    # --------------------------------------------------------
-    # Separate webcam-calibrated image classifier
-    # --------------------------------------------------------
+    if len(value) > 200:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "session_id is too long."
+            ),
+        )
+
+    return value
+
+
+def get_session(
+    session_id: str,
+) -> SessionState:
+
+    state = (
+        SESSION_STATES.get(
+            session_id
+        )
+    )
+
+    if state is None:
+
+        state = (
+            SessionState()
+        )
+
+        SESSION_STATES[
+            session_id
+        ] = state
+
+    state.last_seen = (
+        time.time()
+    )
+
+    return state
+
+
+def session_directory(
+    session_id: str,
+) -> Path:
+
+    token = (
+        hashlib.sha256(
+            session_id.encode(
+                "utf-8"
+            )
+        )
+        .hexdigest()[:24]
+    )
+
+    directory = (
+        UPLOAD_DIR
+        / token
+    )
+
+    directory.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    return directory
+
+
+def reset_temporal_for_source_change(
+    state: SessionState,
+) -> int:
+
+    generation = (
+        state.temporal_fusion.reset()
+    )
+
+    state.last_seen = (
+        time.time()
+    )
+
+    return generation
+
+
+def safe_suffix(
+    filename: Optional[
+        str
+    ],
+    default: str,
+) -> str:
+
+    suffix = Path(
+        filename
+        or ""
+    ).suffix.lower()
+
+    if not suffix:
+
+        return default
+
+    if len(suffix) > 10:
+
+        return default
+
+    return suffix
+
+
+async def save_upload(
+    *,
+    session_id: str,
+    upload: UploadFile,
+    prefix: str,
+    default_suffix: str,
+) -> Path:
+
+    content = await (
+        upload.read()
+    )
+
+    if not content:
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{prefix} upload is empty."
+            ),
+        )
+
+    suffix = safe_suffix(
+        upload.filename,
+        default_suffix,
+    )
+
+    path = (
+        session_directory(
+            session_id
+        )
+        / (
+            f"{prefix}_"
+            f"{uuid.uuid4().hex}"
+            f"{suffix}"
+        )
+    )
+
+    path.write_bytes(
+        content
+    )
+
+    return path
+
+
+def safe_delete(
+    path: Optional[
+        Path
+    ],
+) -> None:
+
+    if path is None:
+        return
 
     try:
 
-        if not WEBCAM_IMAGE_MODEL_PATH.exists():
-
-            raise FileNotFoundError(
-                "Missing webcam-calibrated "
-                f"model: {WEBCAM_IMAGE_MODEL_PATH}"
-            )
-
-        if not IMAGE_FEATURE_COLUMNS_PATH.exists():
-
-            raise FileNotFoundError(
-                "Missing image feature schema: "
-                f"{IMAGE_FEATURE_COLUMNS_PATH}"
-            )
-
-        webcam_image_pipeline = (
-            joblib.load(
-                WEBCAM_IMAGE_MODEL_PATH
-            )
+        path.unlink(
+            missing_ok=True
         )
 
-        with IMAGE_FEATURE_COLUMNS_PATH.open(
-            "r",
-            encoding="utf-8",
-        ) as f:
+    except Exception:
 
-            webcam_image_feature_columns = (
-                json.load(f)
-            )
+        pass
 
-        MODEL_STATUS[
-            "webcam_calibrated_image_model"
-        ] = True
 
-    except Exception as exc:
+# ============================================================
+# Visual conversion
+# ============================================================
 
-        webcam_image_pipeline = None
-        webcam_image_feature_columns = []
+def canonicalise_webcam_frame(
+    image_frame: str,
+    output_path: Path,
+) -> Path:
 
-        MODEL_STATUS[
-            "webcam_calibrated_image_model"
-        ] = False
+    if not image_frame:
 
-        errors.append(
-            f"Webcam classifier: {exc}"
+        raise ValueError(
+            "Webcam frame is missing."
         )
 
-    MODEL_STATUS["error"] = (
-        " | ".join(errors)
-        if errors
-        else None
+    if "," not in image_frame:
+
+        raise ValueError(
+            "Invalid webcam frame data."
+        )
+
+    _header, encoded = (
+        image_frame.split(
+            ",",
+            1,
+        )
     )
+
+    raw = base64.b64decode(
+        encoded
+    )
+
+    array = np.frombuffer(
+        raw,
+        dtype=np.uint8,
+    )
+
+    frame = cv2.imdecode(
+        array,
+        cv2.IMREAD_COLOR,
+    )
+
+    if frame is None:
+
+        raise ValueError(
+            "Could not decode webcam frame."
+        )
+
+    success = cv2.imwrite(
+        str(
+            output_path
+        ),
+        frame,
+    )
+
+    if not success:
+
+        raise RuntimeError(
+            "Could not save webcam snapshot."
+        )
+
+    return output_path
+
+
+def extract_video_snapshot(
+    *,
+    video_path: Path,
+    started_at: float,
+    output_path: Path,
+) -> Path:
+
+    capture = cv2.VideoCapture(
+        str(
+            video_path
+        )
+    )
+
+    if not capture.isOpened():
+
+        capture.release()
+
+        raise RuntimeError(
+            "Could not open selected video."
+        )
+
+    try:
+
+        fps = float(
+            capture.get(
+                cv2.CAP_PROP_FPS
+            )
+        )
+
+        frame_count = float(
+            capture.get(
+                cv2.CAP_PROP_FRAME_COUNT
+            )
+        )
+
+        if (
+            not np.isfinite(
+                fps
+            )
+            or
+            fps <= 0.0
+        ):
+
+            fps = 30.0
+
+        duration = (
+            frame_count
+            / fps
+            if frame_count > 0.0
+            else 0.0
+        )
+
+        elapsed = max(
+            0.0,
+            time.monotonic()
+            - started_at,
+        )
+
+        if duration > 0.0:
+
+            position_seconds = (
+                elapsed
+                % duration
+            )
+
+            capture.set(
+                cv2.CAP_PROP_POS_MSEC,
+                position_seconds
+                * 1000.0,
+            )
+
+        success, frame = (
+            capture.read()
+        )
+
+        if not success:
+
+            capture.set(
+                cv2.CAP_PROP_POS_FRAMES,
+                0,
+            )
+
+            success, frame = (
+                capture.read()
+            )
+
+        if not success:
+
+            raise RuntimeError(
+                "Could not read video frame."
+            )
+
+        success = cv2.imwrite(
+            str(
+                output_path
+            ),
+            frame,
+        )
+
+        if not success:
+
+            raise RuntimeError(
+                "Could not save video snapshot."
+            )
+
+        return output_path
+
+    finally:
+
+        capture.release()
+
+
+# ============================================================
+# Keystroke helpers
+# ============================================================
+
+def parse_keystrokes(
+    raw_events: str,
+) -> list[
+    dict[str, Any]
+]:
+
+    try:
+
+        parsed = json.loads(
+            raw_events
+        )
+
+    except Exception:
+
+        return []
+
+    if not isinstance(
+        parsed,
+        list,
+    ):
+
+        return []
+
+    return [
+        event
+        for event
+        in parsed
+        if isinstance(
+            event,
+            dict,
+        )
+    ]
+
+
+def count_keydowns(
+    events: list[
+        dict[str, Any]
+    ],
+) -> int:
+
+    return sum(
+        1
+        for event
+        in events
+        if event.get("type")
+        == "down"
+    )
+
+
+def create_keystroke_json(
+    *,
+    session_id: str,
+    text: str,
+    events: list[
+        dict[str, Any]
+    ],
+) -> Path:
+
+    features = (
+        build_live_keystroke_features(
+            text,
+            events,
+        )
+    )
+
+    path = (
+        session_directory(
+            session_id
+        )
+        / (
+            "keystrokes_"
+            f"{uuid.uuid4().hex}"
+            ".json"
+        )
+    )
+
+    payload = {
+        "features":
+            features,
+
+        "events":
+            events,
+
+        "typed_text":
+            text,
+    }
+
+    path.write_text(
+        json.dumps(
+            payload,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    return path
+
+
+# ============================================================
+# Canonical raw model invocation
+# ============================================================
+
+def run_canonical_prediction(
+    *,
+    keystroke_json: Path,
+    text: str,
+    audio_path: Path,
+    image_path: Path,
+) -> dict[str, Any]:
+
+    if predictor is None:
+
+        raise RuntimeError(
+            "Canonical fusion model "
+            "is unavailable."
+        )
+
+    with PREDICTOR_LOCK:
+
+        return predictor.predict(
+            keystroke_json=(
+                keystroke_json
+            ),
+
+            text=text,
+
+            audio_path=(
+                audio_path
+            ),
+
+            image_path=(
+                image_path
+            ),
+        )
+
+
+# ============================================================
+# Shared-result transformation
+# ============================================================
+
+def build_prediction_result(
+    *,
+    raw_result: dict[
+        str,
+        Any
+    ],
+    temporal_engine: (
+        TemporalFusionEngine
+    ),
+    expected_generation: int,
+    audio_diagnostics: dict[
+        str,
+        Any
+    ],
+    visual_mode: str,
+    visual_name: Optional[str],
+) -> dict[str, Any]:
+
+    raw_summary = (
+        summarise_probability_dict(
+            raw_result.get(
+                "probabilities",
+                {},
+            ),
+            labels=LABELS,
+        )
+    )
+
+    raw_probabilities = (
+        raw_summary[
+            "probabilities"
+        ]
+    )
+
+    temporal = (
+        temporal_engine.append(
+            raw_probabilities,
+            expected_generation=(
+                expected_generation
+            ),
+        )
+    )
+
+    raw_validation = (
+        validate_probability_distribution(
+            raw_probabilities,
+            labels=LABELS,
+            tolerance=(
+                PROBABILITY_SUM_TOLERANCE
+            ),
+        )
+    )
+
+    temporal_validation = (
+        validate_probability_distribution(
+            temporal[
+                "probabilities"
+            ],
+            labels=LABELS,
+            tolerance=(
+                PROBABILITY_SUM_TOLERANCE
+            ),
+        )
+    )
+
+    runtime_validation_pass = (
+        raw_validation[
+            "valid"
+        ]
+        and
+        temporal_validation[
+            "valid"
+        ]
+        and
+        temporal[
+            "current_state"
+        ]
+        in LABELS
+    )
+
+    image_calibration = (
+        raw_result.get(
+            "image_calibration"
+        )
+        or {}
+    )
+
+    webcam_prediction = None
+
+    if image_calibration.get(
+        "enabled"
+    ):
+
+        probability = (
+            image_calibration.get(
+                "top_probability"
+            )
+        )
+
+        webcam_prediction = {
+            "current_state":
+                image_calibration.get(
+                    "current_state"
+                ),
+
+            "confidence":
+                probability,
+
+            "confidence_percent":
+                (
+                    float(
+                        probability
+                    )
+                    * 100.0
+                    if probability
+                    is not None
+                    else None
+                ),
+
+            "confidence_gap":
+                image_calibration.get(
+                    "confidence_gap"
+                ),
+
+            "probabilities":
+                image_calibration.get(
+                    "probabilities"
+                ),
+        }
+
+    return {
+        "prediction":
+            temporal[
+                "current_state"
+            ],
+
+        "current_state":
+            temporal[
+                "current_state"
+            ],
+
+        "confidence":
+            temporal[
+                "confidence"
+            ],
+
+        "confidence_percent":
+            temporal[
+                "confidence_percent"
+            ],
+
+        "confidence_level":
+            temporal[
+                "confidence_level"
+            ],
+
+        "confidence_gap":
+            temporal[
+                "confidence_gap"
+            ],
+
+        "second_class":
+            temporal[
+                "second_class"
+            ],
+
+        "second_probability":
+            temporal[
+                "second_probability"
+            ],
+
+        "probabilities":
+            temporal[
+                "probabilities"
+            ],
+
+        "raw_prediction":
+            raw_result.get(
+                "prediction",
+                raw_summary[
+                    "current_state"
+                ],
+            ),
+
+        "raw_top_class":
+            raw_summary[
+                "current_state"
+            ],
+
+        "raw_confidence":
+            raw_summary[
+                "confidence"
+            ],
+
+        "raw_confidence_percent":
+            raw_summary[
+                "confidence_percent"
+            ],
+
+        "raw_probabilities":
+            raw_probabilities,
+
+        "temporal_samples":
+            temporal[
+                "temporal_samples"
+            ],
+
+        "temporal_window":
+            temporal[
+                "temporal_window"
+            ],
+
+        "temporal_window_full":
+            temporal[
+                "temporal_window_full"
+            ],
+
+        "generation":
+            temporal[
+                "generation"
+            ],
+
+        "feature_dimension":
+            raw_result.get(
+                "feature_dimension"
+            ),
+
+        "device":
+            raw_result.get(
+                "device"
+            ),
+
+        "used_modalities":
+            raw_result.get(
+                "used_modalities",
+                {},
+            ),
+
+        "visual_source_type":
+            visual_mode,
+
+        "visual_source_name":
+            visual_name,
+
+        "webcam_calibration_used":
+            webcam_prediction
+            is not None,
+
+        "webcam_prediction":
+            webcam_prediction,
+
+        "audio_diagnostics":
+            audio_diagnostics,
+
+        "runtime_validation": {
+            "pass":
+                runtime_validation_pass,
+
+            "raw_probability_sum":
+                raw_validation[
+                    "probability_sum"
+                ],
+
+            "temporal_probability_sum":
+                temporal_validation[
+                    "probability_sum"
+                ],
+
+            "probability_ranges_valid":
+                (
+                    raw_validation[
+                        "ranges_valid"
+                    ]
+                    and
+                    temporal_validation[
+                        "ranges_valid"
+                    ]
+                ),
+
+            "temporal_window_full":
+                temporal[
+                    "temporal_window_full"
+                ],
+        },
+
+        "behavioural_accuracy": {
+            "status":
+                "not_established",
+
+            "reason":
+                (
+                    "Runtime inference proves "
+                    "pipeline operation, not "
+                    "classifier accuracy."
+                ),
+        },
+    }
+
+
+# ============================================================
+# Logging
+# ============================================================
+
+LOG_COLUMNS = [
+    "timestamp",
+    "session_id",
+    "generation",
+    "text_length",
+    "keystroke_count",
+    "audio_source",
+    "audio_condition",
+    "audio_rms",
+    "audio_dbfs",
+    "visual_source_type",
+    "visual_source_name",
+    "raw_fusion_state",
+    "raw_fusion_confidence",
+    "raw_probabilities",
+    "final_state",
+    "final_confidence",
+    "temporal_probabilities",
+    "confidence_level",
+    "confidence_gap",
+    "temporal_samples",
+    "temporal_window",
+    "runtime_validation_pass",
+    "feature_dimension",
+    "used_modalities",
+]
+
+
+def initialise_log_file() -> None:
+
+    if LOG_FILE.exists():
+
+        try:
+
+            with LOG_FILE.open(
+                "r",
+                encoding="utf-8",
+            ) as file_handle:
+
+                first_line = (
+                    file_handle
+                    .readline()
+                    .strip()
+                )
+
+            expected = ",".join(
+                LOG_COLUMNS
+            )
+
+            if first_line == expected:
+
+                return
+
+            backup = (
+                LOG_FILE.with_name(
+                    "live_predictions_backup_"
+                    + datetime.now()
+                    .strftime(
+                        "%Y%m%d_%H%M%S"
+                    )
+                    + ".csv"
+                )
+            )
+
+            LOG_FILE.rename(
+                backup
+            )
+
+        except Exception:
+
+            pass
+
+    with LOG_FILE.open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as file_handle:
+
+        csv.writer(
+            file_handle
+        ).writerow(
+            LOG_COLUMNS
+        )
+
+
+def log_prediction(
+    *,
+    session_id: str,
+    generation: int,
+    text: str,
+    keystroke_count: int,
+    audio_name: Optional[
+        str
+    ],
+    result: dict[
+        str,
+        Any
+    ],
+) -> None:
+
+    audio = (
+        result.get(
+            "audio_diagnostics"
+        )
+        or {}
+    )
+
+    validation = (
+        result.get(
+            "runtime_validation"
+        )
+        or {}
+    )
+
+    with LOG_FILE.open(
+        "a",
+        newline="",
+        encoding="utf-8",
+    ) as file_handle:
+
+        writer = csv.writer(
+            file_handle
+        )
+
+        writer.writerow(
+            [
+                datetime.now(
+                    timezone.utc
+                ).isoformat(),
+
+                session_id,
+
+                generation,
+
+                len(text),
+
+                keystroke_count,
+
+                audio_name,
+
+                audio.get(
+                    "condition"
+                ),
+
+                audio.get(
+                    "rms"
+                ),
+
+                audio.get(
+                    "dbfs"
+                ),
+
+                result.get(
+                    "visual_source_type"
+                ),
+
+                result.get(
+                    "visual_source_name"
+                ),
+
+                result.get(
+                    "raw_top_class"
+                ),
+
+                result.get(
+                    "raw_confidence"
+                ),
+
+                json.dumps(
+                    result.get(
+                        "raw_probabilities"
+                    )
+                ),
+
+                result.get(
+                    "current_state"
+                ),
+
+                result.get(
+                    "confidence"
+                ),
+
+                json.dumps(
+                    result.get(
+                        "probabilities"
+                    )
+                ),
+
+                result.get(
+                    "confidence_level"
+                ),
+
+                result.get(
+                    "confidence_gap"
+                ),
+
+                result.get(
+                    "temporal_samples"
+                ),
+
+                result.get(
+                    "temporal_window"
+                ),
+
+                validation.get(
+                    "pass"
+                ),
+
+                result.get(
+                    "feature_dimension"
+                ),
+
+                json.dumps(
+                    result.get(
+                        "used_modalities",
+                        {},
+                    )
+                ),
+            ]
+        )
 
 
 # ============================================================
@@ -334,38 +1935,51 @@ def initialise_models() -> None:
 # ============================================================
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(
+    _app: FastAPI,
+):
 
     initialise_log_file()
+
     initialise_models()
 
     yield
 
 
 # ============================================================
-# FastAPI application
+# FastAPI
 # ============================================================
 
 app = FastAPI(
-    title="SenseFuzeAI Live Fusion Web App",
+    title=(
+        "SenseFuzeAI Live Fusion Web App"
+    ),
     lifespan=lifespan,
 )
 
 app.mount(
     "/static",
     StaticFiles(
-        directory=WEB_DIR / "static"
+        directory=(
+            WEB_DIR
+            / "static"
+        )
     ),
     name="static",
 )
 
-templates = Jinja2Templates(
-    directory=WEB_DIR / "templates"
+templates = (
+    Jinja2Templates(
+        directory=(
+            WEB_DIR
+            / "templates"
+        )
+    )
 )
 
 
 # ============================================================
-# Routes
+# Basic routes
 # ============================================================
 
 @app.get(
@@ -382,1473 +1996,982 @@ def index(
     )
 
 
-@app.get("/health")
-def health() -> Dict[str, Any]:
+@app.get(
+    "/health"
+)
+def health() -> dict[str, Any]:
 
     return {
-        "status": "ok",
-        "service": (
-            "SenseFuzeAI Live Fusion"
-        ),
-        "timestamp": (
-            datetime.utcnow().isoformat()
-        ),
-        "temporal_probability_window": (
-            TEMPORAL_PROBABILITY_WINDOW
-        ),
-    }
-
-
-@app.get("/model-status")
-def model_status() -> Dict[str, Any]:
-
-    return MODEL_STATUS
-
-
-# ============================================================
-# Uploaded input helpers
-# ============================================================
-
-def save_base64_image(
-    image_frame: Optional[str],
-) -> Optional[Path]:
-
-    if not image_frame:
-        return None
-
-    try:
-
-        if "," not in image_frame:
-            return None
-
-        _, encoded = (
-            image_frame.split(
-                ",",
-                1,
-            )
-        )
-
-        image_path = (
-            UPLOAD_DIR
-            / f"frame_{uuid.uuid4().hex}.jpg"
-        )
-
-        image_path.write_bytes(
-            base64.b64decode(encoded)
-        )
-
-        return image_path
-
-    except Exception:
-        return None
-
-
-async def save_audio_chunk(
-    audio_chunk: Optional[UploadFile],
-) -> Optional[Path]:
-
-    if audio_chunk is None:
-        return None
-
-    content = await audio_chunk.read()
-
-    if not content:
-        return None
-
-    audio_path = (
-        UPLOAD_DIR
-        / f"audio_{uuid.uuid4().hex}.webm"
-    )
-
-    audio_path.write_bytes(content)
-
-    return audio_path
-
-
-# ============================================================
-# Keystroke parsing
-# ============================================================
-
-def parse_keystrokes(
-    keystroke_events: str,
-) -> list[dict[str, Any]]:
-
-    try:
-
-        events = json.loads(
-            keystroke_events
-        )
-
-        if isinstance(events, list):
-            return events
-
-        return []
-
-    except Exception:
-        return []
-
-
-def extract_keystroke_count(
-    keystroke_events: str,
-) -> int:
-
-    return sum(
-        1
-        for event
-        in parse_keystrokes(
-            keystroke_events
-        )
-        if event.get("type")
-        == "down"
-    )
-
-
-# ============================================================
-# Live keystroke features
-# ============================================================
-
-def live_keystroke_features(
-    events: list[dict[str, Any]],
-) -> dict[str, float]:
-
-    downs = [
-        e
-        for e in events
-        if e.get("type")
-        == "down"
-    ]
-
-    down_times = [
-        float(
-            e.get(
-                "timestamp_perf",
-                0.0,
-            )
-        )
-        for e in downs
-    ]
-
-    intervals = (
-        np.diff(down_times)
-        if len(down_times) >= 2
-        else np.array([])
-    )
-
-    hold_times = []
-    active = {}
-
-    for event in events:
-
-        key = event.get("key")
-
-        timestamp = float(
-            event.get(
-                "timestamp_perf",
-                0.0,
-            )
-        )
-
-        if event.get("type") == "down":
-
-            active[key] = timestamp
-
-        elif (
-            event.get("type") == "up"
-            and key in active
-        ):
-
-            hold_times.append(
-                max(
-                    0.0,
-                    timestamp
-                    - active.pop(key),
-                )
-            )
-
-    hold_times = np.array(
-        hold_times,
-        dtype=float,
-    )
-
-    duration = (
-        max(down_times)
-        - min(down_times)
-        if len(down_times) >= 2
-        else 0.0
-    )
-
-    key_count = len(downs)
-
-    pauses_1000 = sum(
-        1
-        for value in intervals
-        if value >= 1.0
-    )
-
-    pauses_2000 = sum(
-        1
-        for value in intervals
-        if value >= 2.0
-    )
-
-    pauses_5000 = sum(
-        1
-        for value in intervals
-        if value >= 5.0
-    )
-
-    correction_count = sum(
-        1
-        for event in downs
-        if event.get("key")
-        in {
-            "backspace",
-            "delete",
-        }
-    )
-
-    interval_mean = (
-        float(np.mean(intervals))
-        if len(intervals)
-        else 0.0
-    )
-
-    interval_std = (
-        float(np.std(intervals))
-        if len(intervals)
-        else 0.0
-    )
-
-    return {
-        "total_duration_sec": round(
-            float(duration),
-            4,
-        ),
-
-        "keydown_count": int(
-            key_count
-        ),
-
-        "word_count": 0,
-
-        "typing_speed_kps": (
-            round(
-                float(
-                    key_count
-                    / duration
-                ),
-                4,
-            )
-            if duration > 0
-            else 0.0
-        ),
-
-        "typing_speed_wpm": 0.0,
-
-        "delay_mean": (
-            round(
-                interval_mean,
-                4,
-            )
-        ),
-
-        "delay_std": (
-            round(
-                float(
-                    np.std(
-                        intervals,
-                        ddof=1,
-                    )
-                ),
-                4,
-            )
-            if len(intervals) >= 2
-            else 0.0
-        ),
-
-        "delay_min": (
-            round(
-                float(
-                    np.min(
-                        intervals
-                    )
-                ),
-                4,
-            )
-            if len(intervals)
-            else 0.0
-        ),
-
-        "delay_max": (
-            round(
-                float(
-                    np.max(
-                        intervals
-                    )
-                ),
-                4,
-            )
-            if len(intervals)
-            else 0.0
-        ),
-
-        "hold_mean": (
-            round(
-                float(
-                    np.mean(
-                        hold_times
-                    )
-                ),
-                4,
-            )
-            if len(hold_times)
-            else 0.0
-        ),
-
-        "hold_std": (
-            round(
-                float(
-                    np.std(
-                        hold_times,
-                        ddof=1,
-                    )
-                ),
-                4,
-            )
-            if len(hold_times) >= 2
-            else 0.0
-        ),
-
-        "pause_count_1000": int(
-            pauses_1000
-        ),
-
-        "pause_count_2000": int(
-            pauses_2000
-        ),
-
-        "pause_count_5000": int(
-            pauses_5000
-        ),
-
-        "pause_ratio_1000": (
-            round(
-                float(
-                    pauses_1000
-                    / len(intervals)
-                ),
-                4,
-            )
-            if len(intervals)
-            else 0.0
-        ),
-
-        "pause_ratio_2000": (
-            round(
-                float(
-                    pauses_2000
-                    / len(intervals)
-                ),
-                4,
-            )
-            if len(intervals)
-            else 0.0
-        ),
-
-        "mental_block_ratio_5000": (
-            round(
-                float(
-                    pauses_5000
-                    / len(intervals)
-                ),
-                4,
-            )
-            if len(intervals)
-            else 0.0
-        ),
-
-        "correction_count": int(
-            correction_count
-        ),
-
-        "correction_ratio": (
-            round(
-                float(
-                    correction_count
-                    / key_count
-                ),
-                4,
-            )
-            if key_count
-            else 0.0
-        ),
-
-        "rhythm_consistency": (
-            round(
-                float(
-                    1.0
-                    / (
-                        1.0
-                        + interval_std
-                    )
-                ),
-                4,
-            )
-            if len(intervals)
-            else 1.0
-        ),
-
-        "burstiness_proxy": (
-            round(
-                float(
-                    interval_std
-                    / interval_mean
-                ),
-                4,
-            )
-            if (
-                len(intervals)
-                and interval_mean > 0
-            )
-            else 0.0
-        ),
-
-        "fits_starts_index": (
-            round(
-                float(
-                    pauses_1000
-                    / len(intervals)
-                ),
-                4,
-            )
-            if len(intervals)
-            else 0.0
-        ),
-    }
-
-
-# ============================================================
-# Fallback classifier
-# ============================================================
-
-def fallback_prediction(
-    text: str,
-) -> Dict[str, float]:
-
-    lower_text = text.lower()
-
-    scores = {
-        "focused": 0.40,
-        "distracted": 0.20,
-        "fatigued": 0.20,
-        "overloaded": 0.20,
-    }
-
-    if any(
-        word in lower_text
-        for word in [
-            "tired",
-            "sleepy",
-            "exhausted",
-            "fatigue",
-        ]
-    ):
-        scores["fatigued"] += 0.25
-
-    if any(
-        word in lower_text
-        for word in [
-            "confused",
-            "too much",
-            "stress",
-            "overload",
-        ]
-    ):
-        scores["overloaded"] += 0.25
-
-    if any(
-        word in lower_text
-        for word in [
-            "distracted",
-            "bored",
-            "phone",
-            "noise",
-        ]
-    ):
-        scores["distracted"] += 0.25
-
-    total = sum(
-        scores.values()
-    )
-
-    return {
-        label: value / total
-        for label, value
-        in scores.items()
-    }
-
-
-# ============================================================
-# Confidence
-# ============================================================
-
-def get_confidence_level(
-    confidence_gap: float,
-) -> str:
-
-    if confidence_gap >= 0.35:
-        return "High"
-
-    if confidence_gap >= 0.15:
-        return "Medium"
-
-    return "Low"
-
-
-# ============================================================
-# Probability helpers
-# ============================================================
-
-def normalise_probability_distribution(
-    probabilities: dict[str, float],
-) -> dict[str, float]:
-
-    output = {
-        label: max(
-            0.0,
-            float(
-                probabilities.get(
-                    label,
-                    0.0,
-                )
-            ),
-        )
-        for label in LABELS
-    }
-
-    total = sum(
-        output.values()
-    )
-
-    if total <= 0:
-
-        return {
-            label: 1.0 / len(LABELS)
-            for label in LABELS
-        }
-
-    return {
-        label: value / total
-        for label, value
-        in output.items()
-    }
-
-
-# ============================================================
-# Webcam-calibrated classifier
-# ============================================================
-
-def run_webcam_calibrated_prediction(
-    image_features: Optional[
-        dict[str, float]
-    ],
-) -> Optional[dict[str, Any]]:
-
-    if (
-        image_features is None
-        or webcam_image_pipeline is None
-        or not webcam_image_feature_columns
-    ):
-        return None
-
-    missing = [
-        column
-        for column
-        in webcam_image_feature_columns
-        if column
-        not in image_features
-    ]
-
-    if missing:
-
-        raise ValueError(
-            "Webcam calibrated image "
-            "feature mismatch. "
-            f"Missing: {missing[:20]}"
-        )
-
-    row = pd.DataFrame(
-        [
-            [
-                float(
-                    image_features[column]
-                )
-                for column
-                in webcam_image_feature_columns
-            ]
-        ],
-        columns=(
-            webcam_image_feature_columns
-        ),
-    )
-
-    prediction = (
-        webcam_image_pipeline
-        .predict(row)[0]
-    )
-
-    probabilities = (
-        webcam_image_pipeline
-        .predict_proba(row)[0]
-    )
-
-    classes = (
-        webcam_image_pipeline.classes_
-    )
-
-    probability_dict = {
-        str(label): float(prob)
-        for label, prob
-        in zip(
-            classes,
-            probabilities,
-        )
-    }
-
-    probability_dict = (
-        normalise_probability_distribution(
-            probability_dict
-        )
-    )
-
-    ranked = sorted(
-        probability_dict.items(),
-        key=lambda item: item[1],
-        reverse=True,
-    )
-
-    top_class, top_probability = (
-        ranked[0]
-    )
-
-    second_class, second_probability = (
-        ranked[1]
-    )
-
-    return {
-        "prediction": str(
-            prediction
-        ),
-        "current_state": (
-            top_class
-        ),
-        "confidence": float(
-            top_probability
-        ),
-        "confidence_percent": round(
-            top_probability * 100,
-            2,
-        ),
-        "second_class": second_class,
-        "second_probability": float(
-            second_probability
-        ),
-        "confidence_gap": float(
-            top_probability
-            - second_probability
-        ),
-        "confidence_level": (
-            get_confidence_level(
-                top_probability
-                - second_probability
-            )
-        ),
-        "probabilities": (
-            probability_dict
-        ),
-        "classifier": (
-            "webcam-calibrated"
-        ),
-    }
-
-
-# ============================================================
-# Multimodal prediction backend
-# ============================================================
-
-def run_prediction_backend(
-    text: str,
-    keystroke_events: str,
-    image_path: Optional[Path],
-    audio_path: Optional[Path],
-) -> Dict[str, Any]:
-
-    # --------------------------------------------------------
-    # Fallback mode
-    # --------------------------------------------------------
-
-    if predictor is None:
-
-        probabilities = (
-            fallback_prediction(text)
-        )
-
-        return {
-            "prediction": max(
-                probabilities,
-                key=probabilities.get,
-            ),
-            "probabilities": probabilities,
-            "device": "cpu",
-            "feature_dimension": "fallback",
-            "used_modalities": {
-                "text": bool(text),
-                "keystroke": bool(
-                    keystroke_events
-                ),
-                "audio": (
-                    audio_path
-                    is not None
-                ),
-                "image": (
-                    image_path
-                    is not None
-                ),
-            },
-            "webcam_prediction": None,
-        }
-
-    # --------------------------------------------------------
-    # Build fusion feature vector
-    # --------------------------------------------------------
-
-    features: dict[str, Any] = {}
-
-    events = parse_keystrokes(
-        keystroke_events
-    )
-
-    keystroke_features = (
-        live_keystroke_features(
-            events
-        )
-    )
-
-    text_word_count = len(
-        text.split()
-    )
-
-    if (
-        keystroke_features.get(
-            "total_duration_sec",
-            0,
-        )
-        > 0
-    ):
-
-        keystroke_features[
-            "word_count"
-        ] = text_word_count
-
-        keystroke_features[
-            "typing_speed_wpm"
-        ] = round(
+        "status":
             (
-                text_word_count
-                / keystroke_features[
-                    "total_duration_sec"
-                ]
-            )
-            * 60,
-            4,
-        )
-
-    features.update(
-        keystroke_features
-    )
-
-    features.update(
-        predictor.extract_text_features(
-            text
-        )
-    )
-
-    # --------------------------------------------------------
-    # Audio
-    # --------------------------------------------------------
-
-    if audio_path is not None:
-
-        features.update(
-            predictor.extract_audio_features(
-                audio_path
-            )
-        )
-
-    # --------------------------------------------------------
-    # Image
-    # --------------------------------------------------------
-
-    image_features = None
-
-    if image_path is not None:
-
-        image_features = (
-            predictor.extract_image_features(
-                image_path
-            )
-        )
-
-        features.update(
-            image_features
-        )
-
-    # --------------------------------------------------------
-    # Webcam-calibrated diagnostic
-    # --------------------------------------------------------
-
-    webcam_prediction = (
-        run_webcam_calibrated_prediction(
-            image_features
-        )
-    )
-
-    # --------------------------------------------------------
-    # Fusion model vector
-    # --------------------------------------------------------
-
-    row = {
-        column: float(
-            features.get(
-                column,
-                0.0,
-            )
-        )
-        for column
-        in predictor.feature_columns
-    }
-
-    x = pd.DataFrame(
-        [row],
-        columns=predictor.feature_columns,
-    )
-
-    prediction = (
-        predictor.fusion_model
-        .predict(x)[0]
-    )
-
-    if hasattr(
-        predictor.fusion_model,
-        "predict_proba",
-    ):
-
-        probabilities = (
-            predictor.fusion_model
-            .predict_proba(x)[0]
-        )
-
-        classes = (
-            predictor.fusion_model
-            .classes_
-        )
-
-        probability_dict = {
-            str(label): float(probability)
-            for label, probability
-            in zip(
-                classes,
-                probabilities,
-            )
-        }
-
-    else:
-
-        probability_dict = {
-            label: 0.10
-            for label in LABELS
-        }
-
-        probability_dict[
-            str(prediction)
-        ] = 0.70
-
-    probability_dict = (
-        normalise_probability_distribution(
-            probability_dict
-        )
-    )
-
-    return {
-        "prediction": str(
-            prediction
-        ),
-        "probabilities": (
-            probability_dict
-        ),
-        "device": str(
-            predictor.device
-        ),
-        "feature_dimension": int(
-            x.shape[1]
-        ),
-        "used_modalities": {
-            "text": True,
-            "keystroke": True,
-            "audio": (
-                audio_path
+                "ok"
+                if predictor
                 is not None
+                else "error"
             ),
-            "image": (
-                image_path
-                is not None
+
+        "timestamp":
+            datetime.now(
+                timezone.utc
+            ).isoformat(),
+
+        "temporal_probability_window":
+            TEMPORAL_PROBABILITY_WINDOW,
+
+        "live_interval_ms":
+            LIVE_INTERVAL_MS,
+
+        "temporal_fusion_backend":
+            (
+                "temporal_fusion."
+                "TemporalFusionEngine"
             ),
-        },
-        "webcam_prediction": (
-            webcam_prediction
-        ),
     }
 
 
-# ============================================================
-# Temporal-session helpers
-# ============================================================
-
-def cleanup_expired_sessions() -> None:
-
-    now = time.time()
-
-    expired = [
-        session_id
-        for session_id, last_seen
-        in SESSION_LAST_SEEN.items()
-        if (
-            now - last_seen
-            > SESSION_HISTORY_TTL_SECONDS
-        )
-    ]
-
-    for session_id in expired:
-
-        SESSION_PROBABILITY_HISTORY.pop(
-            session_id,
-            None,
-        )
-
-        SESSION_LAST_SEEN.pop(
-            session_id,
-            None,
-        )
-
-
-def add_temporal_probability(
-    session_id: str,
-    probabilities: dict[str, float],
-) -> tuple[
-    dict[str, float],
-    int,
+@app.get(
+    "/model-status"
+)
+def model_status() -> dict[
+    str,
+    Any
 ]:
 
-    probabilities = (
-        normalise_probability_distribution(
-            probabilities
-        )
+    return dict(
+        MODEL_STATUS
     )
-
-    with SESSION_HISTORY_LOCK:
-
-        cleanup_expired_sessions()
-
-        if (
-            session_id
-            not in SESSION_PROBABILITY_HISTORY
-        ):
-
-            SESSION_PROBABILITY_HISTORY[
-                session_id
-            ] = deque(
-                maxlen=(
-                    TEMPORAL_PROBABILITY_WINDOW
-                )
-            )
-
-        history = (
-            SESSION_PROBABILITY_HISTORY[
-                session_id
-            ]
-        )
-
-        history.append(
-            probabilities
-        )
-
-        SESSION_LAST_SEEN[
-            session_id
-        ] = time.time()
-
-        aggregated = {}
-
-        for label in LABELS:
-
-            aggregated[label] = float(
-                np.mean(
-                    [
-                        observation.get(
-                            label,
-                            0.0,
-                        )
-                        for observation
-                        in history
-                    ]
-                )
-            )
-
-        aggregated = (
-            normalise_probability_distribution(
-                aggregated
-            )
-        )
-
-        return (
-            aggregated,
-            len(history),
-        )
-
-
-def clear_temporal_session(
-    session_id: str,
-) -> None:
-
-    with SESSION_HISTORY_LOCK:
-
-        SESSION_PROBABILITY_HISTORY.pop(
-            session_id,
-            None,
-        )
-
-        SESSION_LAST_SEEN.pop(
-            session_id,
-            None,
-        )
 
 
 # ============================================================
-# Result normalisation + temporal aggregation
+# Audio source
 # ============================================================
 
-def normalise_prediction_result(
-    raw: Dict[str, Any],
-    session_id: str,
-) -> Dict[str, Any]:
+@app.post(
+    "/set_audio_source"
+)
+async def set_audio_source(
 
-    # --------------------------------------------------------
-    # Raw current fusion result
-    # --------------------------------------------------------
+    session_id: str = Form(...),
 
-    raw_probabilities = (
-        normalise_probability_distribution(
-            {
-                str(key): float(value)
-                for key, value
-                in raw[
-                    "probabilities"
-                ].items()
-            }
+    source_kind: str = Form(
+        "file"
+    ),
+
+    audio_file: UploadFile = File(...),
+
+) -> JSONResponse:
+
+    session_id = (
+        validate_session_id(
+            session_id
         )
     )
 
-    raw_ranked = sorted(
-        raw_probabilities.items(),
-        key=lambda item: item[1],
-        reverse=True,
-    )
-
-    raw_state, raw_confidence = (
-        raw_ranked[0]
-    )
-
-    # --------------------------------------------------------
-    # Temporal aggregation
-    # --------------------------------------------------------
-
-    (
-        aggregated_probabilities,
-        temporal_samples,
-    ) = add_temporal_probability(
+    path = await save_upload(
         session_id=session_id,
-        probabilities=raw_probabilities,
+        upload=audio_file,
+        prefix="audio",
+        default_suffix=".wav",
     )
 
-    ranked = sorted(
-        aggregated_probabilities.items(),
-        key=lambda item: item[1],
-        reverse=True,
-    )
-
-    current_state, confidence = (
-        ranked[0]
-    )
-
-    (
-        second_state,
-        second_probability,
-    ) = ranked[1]
-
-    confidence_gap = (
-        confidence
-        - second_probability
-    )
-
-    # --------------------------------------------------------
-    # Final API contract
-    # --------------------------------------------------------
-
-    return {
-        "session_id": session_id,
-
-        "prediction": current_state,
-        "current_state": current_state,
-
-        "confidence": float(
-            confidence
-        ),
-
-        "confidence_percent": round(
-            confidence * 100,
-            2,
-        ),
-
-        "confidence_gap": float(
-            confidence_gap
-        ),
-
-        "confidence_level": (
-            get_confidence_level(
-                confidence_gap
-            )
-        ),
-
-        # Final temporally aggregated distribution.
-        "probabilities": (
-            aggregated_probabilities
-        ),
-
-        # Current unsmoothed fusion result.
-        "raw_prediction": (
-            raw_state
-        ),
-
-        "raw_confidence": float(
-            raw_confidence
-        ),
-
-        "raw_confidence_percent": round(
-            raw_confidence * 100,
-            2,
-        ),
-
-        "raw_probabilities": (
-            raw_probabilities
-        ),
-
-        "temporal_samples": (
-            temporal_samples
-        ),
-
-        "temporal_window": (
-            TEMPORAL_PROBABILITY_WINDOW
-        ),
-
-        "temporal_aggregation": (
-            "rolling_mean_probability"
-        ),
-
-        "technical_details": {
-            "top_class": (
-                current_state
-            ),
-            "second_class": (
-                second_state
-            ),
-            "second_probability": (
-                float(
-                    second_probability
-                )
-            ),
-            "confidence_gap": (
-                float(
-                    confidence_gap
-                )
-            ),
-            "raw_top_class": (
-                raw_state
-            ),
-            "raw_top_probability": (
-                float(
-                    raw_confidence
-                )
-            ),
-            "temporal_samples": (
-                temporal_samples
-            ),
-            "temporal_window": (
-                TEMPORAL_PROBABILITY_WINDOW
-            ),
-            "temporal_aggregation": (
-                "rolling_mean_probability"
-            ),
-            "device": raw.get(
-                "device",
-                "unknown",
-            ),
-            "feature_dimension": (
-                raw.get(
-                    "feature_dimension",
-                    "unknown",
-                )
-            ),
-            "used_modalities": (
-                raw.get(
-                    "used_modalities",
-                    {},
-                )
-            ),
-        },
-
-        "device": raw.get(
-            "device",
-            "unknown",
-        ),
-
-        "feature_dimension": (
-            raw.get(
-                "feature_dimension",
-                "unknown",
-            )
-        ),
-
-        "used_modalities": (
-            raw.get(
-                "used_modalities",
-                {},
-            )
-        ),
-
-        "webcam_calibration_used": (
-            raw.get(
-                "webcam_prediction"
-            )
-            is not None
-        ),
-
-        "webcam_prediction": (
-            raw.get(
-                "webcam_prediction"
-            )
-        ),
-    }
-
-
-# ============================================================
-# Prediction logging
-# ============================================================
-
-def log_prediction(
-    session_id: str,
-    text: str,
-    keystroke_count: int,
-    audio_available: bool,
-    image_available: bool,
-    result: Dict[str, Any],
-) -> None:
-
-    webcam_result = (
-        result.get(
-            "webcam_prediction"
+    diagnostics = await (
+        asyncio.to_thread(
+            analyse_audio_file,
+            path,
         )
-        or {}
     )
 
-    with LOG_FILE.open(
-        "a",
-        newline="",
-        encoding="utf-8",
-    ) as f:
+    with SESSION_LOCK:
 
-        writer = csv.writer(f)
-
-        writer.writerow(
-            [
-                datetime.utcnow().isoformat(),
-
-                session_id,
-
-                len(text),
-
-                keystroke_count,
-
-                audio_available,
-
-                image_available,
-
-                result.get(
-                    "raw_prediction"
-                ),
-
-                result.get(
-                    "raw_confidence"
-                ),
-
-                result[
-                    "current_state"
-                ],
-
-                result[
-                    "confidence"
-                ],
-
-                result[
-                    "confidence_level"
-                ],
-
-                result[
-                    "confidence_gap"
-                ],
-
-                result[
-                    "temporal_samples"
-                ],
-
-                result[
-                    "temporal_window"
-                ],
-
-                webcam_result.get(
-                    "current_state"
-                ),
-
-                webcam_result.get(
-                    "confidence"
-                ),
-
-                result[
-                    "feature_dimension"
-                ],
-
-                json.dumps(
-                    result.get(
-                        "used_modalities",
-                        {},
-                    )
-                ),
-            ]
+        state = get_session(
+            session_id
         )
 
+        generation = (
+            reset_temporal_for_source_change(
+                state
+            )
+        )
+
+        state.audio_path = path
+
+        state.audio_name = (
+            audio_file.filename
+            or path.name
+        )
+
+        state.audio_source_kind = (
+            source_kind
+        )
+
+        state.audio_diagnostics = (
+            diagnostics
+        )
+
+    return JSONResponse(
+        {
+            "status":
+                "ok",
+
+            "generation":
+                generation,
+
+            "audio_ready":
+                True,
+
+            "audio_name":
+                (
+                    audio_file.filename
+                    or path.name
+                ),
+
+            "audio_source_kind":
+                source_kind,
+
+            "audio_diagnostics":
+                diagnostics,
+
+            "temporal_samples":
+                0,
+
+            "temporal_window":
+                TEMPORAL_PROBABILITY_WINDOW,
+        }
+    )
+
 
 # ============================================================
-# Prediction endpoint
+# Image source
 # ============================================================
 
-@app.post("/predict_live")
+@app.post(
+    "/set_visual_image"
+)
+async def set_visual_image(
+
+    session_id: str = Form(...),
+
+    image_file: UploadFile = File(...),
+
+) -> JSONResponse:
+
+    session_id = (
+        validate_session_id(
+            session_id
+        )
+    )
+
+    path = await save_upload(
+        session_id=session_id,
+        upload=image_file,
+        prefix="image",
+        default_suffix=".jpg",
+    )
+
+    image = cv2.imread(
+        str(path),
+        cv2.IMREAD_COLOR,
+    )
+
+    if image is None:
+
+        safe_delete(
+            path
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Uploaded image could not "
+                "be decoded."
+            ),
+        )
+
+    with SESSION_LOCK:
+
+        state = get_session(
+            session_id
+        )
+
+        generation = (
+            reset_temporal_for_source_change(
+                state
+            )
+        )
+
+        state.visual_mode = (
+            "image"
+        )
+
+        state.visual_path = path
+
+        state.visual_name = (
+            image_file.filename
+            or path.name
+        )
+
+        state.visual_started_at = None
+
+    return JSONResponse(
+        {
+            "status":
+                "ok",
+
+            "generation":
+                generation,
+
+            "visual_ready":
+                True,
+
+            "visual_mode":
+                "image",
+
+            "visual_name":
+                (
+                    image_file.filename
+                    or path.name
+                ),
+
+            "temporal_samples":
+                0,
+
+            "temporal_window":
+                TEMPORAL_PROBABILITY_WINDOW,
+        }
+    )
+
+
+# ============================================================
+# Video source
+# ============================================================
+
+@app.post(
+    "/set_visual_video"
+)
+async def set_visual_video(
+
+    session_id: str = Form(...),
+
+    video_file: UploadFile = File(...),
+
+) -> JSONResponse:
+
+    session_id = (
+        validate_session_id(
+            session_id
+        )
+    )
+
+    path = await save_upload(
+        session_id=session_id,
+        upload=video_file,
+        prefix="video",
+        default_suffix=".mp4",
+    )
+
+    capture = cv2.VideoCapture(
+        str(path)
+    )
+
+    opened = (
+        capture.isOpened()
+    )
+
+    capture.release()
+
+    if not opened:
+
+        safe_delete(
+            path
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Uploaded video could not "
+                "be opened by OpenCV."
+            ),
+        )
+
+    with SESSION_LOCK:
+
+        state = get_session(
+            session_id
+        )
+
+        generation = (
+            reset_temporal_for_source_change(
+                state
+            )
+        )
+
+        state.visual_mode = (
+            "video"
+        )
+
+        state.visual_path = path
+
+        state.visual_name = (
+            video_file.filename
+            or path.name
+        )
+
+        state.visual_started_at = (
+            time.monotonic()
+        )
+
+    return JSONResponse(
+        {
+            "status":
+                "ok",
+
+            "generation":
+                generation,
+
+            "visual_ready":
+                True,
+
+            "visual_mode":
+                "video",
+
+            "visual_name":
+                (
+                    video_file.filename
+                    or path.name
+                ),
+
+            "temporal_samples":
+                0,
+
+            "temporal_window":
+                TEMPORAL_PROBABILITY_WINDOW,
+        }
+    )
+
+
+# ============================================================
+# Webcam source
+# ============================================================
+
+@app.post(
+    "/set_visual_webcam"
+)
+async def set_visual_webcam(
+
+    session_id: str = Form(...),
+
+) -> JSONResponse:
+
+    session_id = (
+        validate_session_id(
+            session_id
+        )
+    )
+
+    with SESSION_LOCK:
+
+        state = get_session(
+            session_id
+        )
+
+        generation = (
+            reset_temporal_for_source_change(
+                state
+            )
+        )
+
+        state.visual_mode = (
+            "webcam"
+        )
+
+        state.visual_path = None
+
+        state.visual_name = (
+            "Webcam"
+        )
+
+        state.visual_started_at = (
+            time.monotonic()
+        )
+
+    return JSONResponse(
+        {
+            "status":
+                "ok",
+
+            "generation":
+                generation,
+
+            "visual_ready":
+                True,
+
+            "visual_mode":
+                "webcam",
+
+            "visual_name":
+                "Webcam",
+
+            "temporal_samples":
+                0,
+
+            "temporal_window":
+                TEMPORAL_PROBABILITY_WINDOW,
+        }
+    )
+
+
+# ============================================================
+# Stop visual
+#
+# Matches desktop semantics:
+# static images remain selected;
+# video/webcam streams are stopped without resetting history.
+# ============================================================
+
+@app.post(
+    "/stop_visual"
+)
+async def stop_visual(
+
+    session_id: str = Form(...),
+
+) -> JSONResponse:
+
+    session_id = (
+        validate_session_id(
+            session_id
+        )
+    )
+
+    with SESSION_LOCK:
+
+        state = get_session(
+            session_id
+        )
+
+        if state.visual_mode in {
+            "video",
+            "webcam",
+        }:
+
+            state.visual_mode = (
+                "none"
+            )
+
+            state.visual_path = None
+
+            state.visual_name = None
+
+            state.visual_started_at = None
+
+        generation = (
+            state.temporal_fusion
+            .generation
+        )
+
+        visual_mode = (
+            state.visual_mode
+        )
+
+    return JSONResponse(
+        {
+            "status":
+                "ok",
+
+            "generation":
+                generation,
+
+            "visual_mode":
+                visual_mode,
+
+            "visual_ready":
+                (
+                    visual_mode
+                    == "image"
+                ),
+        }
+    )
+
+
+# ============================================================
+# Live prediction
+# ============================================================
+
+@app.post(
+    "/predict_live"
+)
 async def predict_live(
 
-    session_id: str = Form(""),
+    session_id: str = Form(...),
 
-    text: str = Form(""),
+    generation: int = Form(...),
 
-    keystroke_events: str = Form(
-        "[]"
-    ),
+    text: str = Form(...),
 
-    image_frame: Optional[str] = Form(
-        None
-    ),
+    keystroke_events: str = Form(...),
 
-    audio_chunk: Optional[UploadFile] = File(
+    visual_mode: str = Form(...),
+
+    webcam_frame: Optional[
+        str
+    ] = Form(
         None
     ),
 
 ) -> JSONResponse:
 
-    text = text.strip()
-    session_id = session_id.strip()
+    if predictor is None:
 
-    # Older clients/tests that do not send session_id
-    # still work, but receive a one-request history.
-    if not session_id:
-
-        session_id = (
-            "legacy-"
-            + uuid.uuid4().hex
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Canonical fusion backend "
+                "is unavailable: "
+                f"{MODEL_STATUS.get('error')}"
+            ),
         )
 
-    keystroke_count = (
-        extract_keystroke_count(
+    session_id = (
+        validate_session_id(
+            session_id
+        )
+    )
+
+    text = (
+        text.strip()
+    )
+
+    events = (
+        parse_keystrokes(
             keystroke_events
         )
     )
 
-    if len(text) < MIN_TEXT_CHARS:
+    keydown_count = (
+        count_keydowns(
+            events
+        )
+    )
+
+    if (
+        len(text)
+        < MIN_TEXT_CHARS
+    ):
 
         raise HTTPException(
-            status_code=400,
+            status_code=409,
             detail=(
-                "At least 20 text "
-                "characters are required."
+                f"Text not ready: "
+                f"{len(text)}/"
+                f"{MIN_TEXT_CHARS}."
             ),
         )
 
-    if keystroke_count < MIN_KEYPRESSES:
+    if (
+        keydown_count
+        < MIN_KEYPRESSES
+    ):
 
         raise HTTPException(
-            status_code=400,
+            status_code=409,
             detail=(
-                "At least 20 keypresses "
-                "are required."
+                f"Keystrokes not ready: "
+                f"{keydown_count}/"
+                f"{MIN_KEYPRESSES}."
             ),
         )
 
-    image_path = save_base64_image(
-        image_frame
-    )
+    # --------------------------------------------------------
+    # Snapshot persistent source + temporal generation.
+    # --------------------------------------------------------
 
-    audio_path = await save_audio_chunk(
-        audio_chunk
-    )
+    with SESSION_LOCK:
+
+        state = get_session(
+            session_id
+        )
+
+        current_generation = (
+            state.temporal_fusion
+            .capture_generation()
+        )
+
+        if (
+            int(generation)
+            != current_generation
+        ):
+
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type":
+                        "stale_generation",
+
+                    "generation":
+                        current_generation,
+                },
+            )
+
+        if (
+            visual_mode
+            != state.visual_mode
+        ):
+
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type":
+                        "visual_mode_mismatch",
+
+                    "generation":
+                        current_generation,
+
+                    "visual_mode":
+                        state.visual_mode,
+                },
+            )
+
+        captured_generation = (
+            current_generation
+        )
+
+        temporal_engine = (
+            state.temporal_fusion
+        )
+
+        audio_path = (
+            state.audio_path
+        )
+
+        audio_name = (
+            state.audio_name
+        )
+
+        audio_diagnostics = dict(
+            state.audio_diagnostics
+        )
+
+        captured_visual_mode = (
+            state.visual_mode
+        )
+
+        visual_path = (
+            state.visual_path
+        )
+
+        visual_name = (
+            state.visual_name
+        )
+
+        visual_started_at = (
+            state.visual_started_at
+        )
+
+    # --------------------------------------------------------
+    # Strict four-modality gating.
+    # --------------------------------------------------------
+
+    if (
+        audio_path is None
+        or
+        not audio_path.exists()
+    ):
+
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Audio modality is required."
+            ),
+        )
+
+    if (
+        captured_visual_mode
+        not in {
+            "image",
+            "video",
+            "webcam",
+        }
+    ):
+
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Visual modality is required."
+            ),
+        )
+
+    keystroke_path: Optional[
+        Path
+    ] = None
+
+    temporary_image_path: Optional[
+        Path
+    ] = None
 
     try:
 
-        raw_result = (
-            run_prediction_backend(
+        keystroke_path = (
+            create_keystroke_json(
+                session_id=session_id,
                 text=text,
-                keystroke_events=(
-                    keystroke_events
-                ),
-                image_path=image_path,
-                audio_path=audio_path,
+                events=events,
             )
         )
 
-        result = (
-            normalise_prediction_result(
-                raw=raw_result,
-                session_id=session_id,
+        # ----------------------------------------------------
+        # Static image
+        # ----------------------------------------------------
+
+        if (
+            captured_visual_mode
+            == "image"
+        ):
+
+            if (
+                visual_path is None
+                or
+                not visual_path.exists()
+            ):
+
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Selected image is unavailable."
+                    ),
+                )
+
+            image_path = (
+                visual_path
+            )
+
+        # ----------------------------------------------------
+        # Video
+        # ----------------------------------------------------
+
+        elif (
+            captured_visual_mode
+            == "video"
+        ):
+
+            if (
+                visual_path is None
+                or
+                not visual_path.exists()
+                or
+                visual_started_at
+                is None
+            ):
+
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Selected video is unavailable."
+                    ),
+                )
+
+            temporary_image_path = (
+                session_directory(
+                    session_id
+                )
+                / (
+                    "video_frame_"
+                    f"{uuid.uuid4().hex}"
+                    ".jpg"
+                )
+            )
+
+            image_path = await (
+                asyncio.to_thread(
+                    extract_video_snapshot,
+                    video_path=(
+                        visual_path
+                    ),
+                    started_at=(
+                        visual_started_at
+                    ),
+                    output_path=(
+                        temporary_image_path
+                    ),
+                )
+            )
+
+        # ----------------------------------------------------
+        # Webcam
+        # ----------------------------------------------------
+
+        else:
+
+            if not webcam_frame:
+
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Current webcam frame "
+                        "is required."
+                    ),
+                )
+
+            temporary_image_path = (
+                session_directory(
+                    session_id
+                )
+                / (
+                    "webcam_frame_"
+                    f"{uuid.uuid4().hex}"
+                    ".jpg"
+                )
+            )
+
+            image_path = await (
+                asyncio.to_thread(
+                    canonicalise_webcam_frame,
+                    webcam_frame,
+                    temporary_image_path,
+                )
+            )
+
+        # ----------------------------------------------------
+        # Raw multimodal model
+        # ----------------------------------------------------
+
+        raw_result = await (
+            asyncio.to_thread(
+                run_canonical_prediction,
+                keystroke_json=(
+                    keystroke_path
+                ),
+                text=text,
+                audio_path=(
+                    audio_path
+                ),
+                image_path=(
+                    image_path
+                ),
             )
         )
+
+        # ----------------------------------------------------
+        # Temporal append.
+        #
+        # TemporalFusionEngine itself performs the definitive
+        # generation-safe stale-result check.
+        # ----------------------------------------------------
+
+        try:
+
+            result = (
+                build_prediction_result(
+                    raw_result=(
+                        raw_result
+                    ),
+                    temporal_engine=(
+                        temporal_engine
+                    ),
+                    expected_generation=(
+                        captured_generation
+                    ),
+                    audio_diagnostics=(
+                        audio_diagnostics
+                    ),
+                    visual_mode=(
+                        captured_visual_mode
+                    ),
+                    visual_name=(
+                        visual_name
+                    ),
+                )
+            )
+
+        except StaleGenerationError as exc:
+
+            with SESSION_LOCK:
+
+                current_state = (
+                    get_session(
+                        session_id
+                    )
+                )
+
+                current_generation = (
+                    current_state
+                    .temporal_fusion
+                    .generation
+                )
+
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type":
+                        "stale_result",
+
+                    "generation":
+                        current_generation,
+
+                    "message":
+                        str(exc),
+                },
+            ) from exc
+
+        # ----------------------------------------------------
+        # Ensure session still points to the same temporal
+        # engine/source generation after inference.
+        # ----------------------------------------------------
+
+        with SESSION_LOCK:
+
+            current_state = (
+                get_session(
+                    session_id
+                )
+            )
+
+            if (
+                current_state.temporal_fusion
+                is not temporal_engine
+            ):
+
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "type":
+                            "stale_session",
+
+                        "generation":
+                            (
+                                current_state
+                                .temporal_fusion
+                                .generation
+                            ),
+                    },
+                )
+
+            current_state.last_seen = (
+                time.time()
+            )
+
+        result[
+            "session_id"
+        ] = session_id
+
+        result[
+            "audio_source_name"
+        ] = audio_name
 
         log_prediction(
-            session_id=session_id,
+            session_id=(
+                session_id
+            ),
+            generation=(
+                result[
+                    "generation"
+                ]
+            ),
             text=text,
             keystroke_count=(
-                keystroke_count
+                keydown_count
             ),
-            audio_available=(
-                audio_path
-                is not None
-            ),
-            image_available=(
-                image_path
-                is not None
+            audio_name=(
+                audio_name
             ),
             result=result,
         )
@@ -1858,73 +2981,200 @@ async def predict_live(
         )
 
     except HTTPException:
+
         raise
 
     except Exception as exc:
 
         raise HTTPException(
             status_code=500,
-            detail=str(exc),
-        )
+            detail=(
+                f"{type(exc).__name__}: "
+                f"{exc}"
+            ),
+        ) from exc
 
     finally:
 
-        # Temporary live media files are no longer
-        # required after feature extraction.
-        for temp_path in [
-            image_path,
-            audio_path,
-        ]:
+        safe_delete(
+            keystroke_path
+        )
 
-            if (
-                temp_path is not None
-                and temp_path.exists()
-            ):
-
-                try:
-                    temp_path.unlink()
-                except OSError:
-                    pass
+        safe_delete(
+            temporary_image_path
+        )
 
 
 # ============================================================
-# Temporal reset endpoint
+# Temporal reset
 # ============================================================
 
-@app.post("/reset_temporal")
+@app.post(
+    "/reset_temporal"
+)
 async def reset_temporal(
+
     session_id: str = Form(...),
+
 ) -> JSONResponse:
 
     session_id = (
-        session_id.strip()
+        validate_session_id(
+            session_id
+        )
     )
 
-    if not session_id:
+    with SESSION_LOCK:
 
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "session_id is required."
-            ),
+        state = get_session(
+            session_id
         )
 
-    clear_temporal_session(
-        session_id
-    )
+        generation = (
+            state.temporal_fusion
+            .reset()
+        )
+
+        state.last_seen = (
+            time.time()
+        )
+
+        temporal_status = (
+            state.temporal_fusion
+            .status()
+        )
 
     return JSONResponse(
         {
-            "status": "ok",
-            "session_id": session_id,
-            "message": (
-                "Temporal probability "
-                "history cleared."
-            ),
-            "temporal_samples": 0,
-            "temporal_window": (
-                TEMPORAL_PROBABILITY_WINDOW
-            ),
+            "status":
+                "ok",
+
+            "session_id":
+                session_id,
+
+            "generation":
+                generation,
+
+            "temporal_samples":
+                temporal_status[
+                    "temporal_samples"
+                ],
+
+            "temporal_window":
+                temporal_status[
+                    "temporal_window"
+                ],
+
+            "temporal_window_full":
+                temporal_status[
+                    "temporal_window_full"
+                ],
+
+            "message":
+                (
+                    "Temporal probability "
+                    "history reset."
+                ),
+        }
+    )
+
+
+# ============================================================
+# Full reset
+# ============================================================
+
+@app.post(
+    "/full_reset"
+)
+async def full_reset(
+
+    session_id: str = Form(...),
+
+) -> JSONResponse:
+
+    session_id = (
+        validate_session_id(
+            session_id
+        )
+    )
+
+    with SESSION_LOCK:
+
+        state = get_session(
+            session_id
+        )
+
+        generation = (
+            state.temporal_fusion
+            .reset()
+        )
+
+        state.audio_path = None
+        state.audio_name = None
+
+        state.audio_source_kind = (
+            None
+        )
+
+        state.audio_diagnostics = {}
+
+        state.visual_mode = (
+            "none"
+        )
+
+        state.visual_path = None
+        state.visual_name = None
+
+        state.visual_started_at = (
+            None
+        )
+
+        state.last_seen = (
+            time.time()
+        )
+
+        temporal_status = (
+            state.temporal_fusion
+            .status()
+        )
+
+    return JSONResponse(
+        {
+            "status":
+                "ok",
+
+            "session_id":
+                session_id,
+
+            "generation":
+                generation,
+
+            "temporal_samples":
+                temporal_status[
+                    "temporal_samples"
+                ],
+
+            "temporal_window":
+                temporal_status[
+                    "temporal_window"
+                ],
+
+            "temporal_window_full":
+                temporal_status[
+                    "temporal_window_full"
+                ],
+
+            "audio_ready":
+                False,
+
+            "visual_ready":
+                False,
+
+            "visual_mode":
+                "none",
+
+            "message":
+                "Full session reset.",
         }
     )
 
@@ -1936,8 +3186,8 @@ async def reset_temporal(
 if __name__ == "__main__":
 
     uvicorn.run(
-        "app:app",
+        "web_app.app:app",
         host="127.0.0.1",
         port=8000,
-        reload=True,
+        reload=False,
     )

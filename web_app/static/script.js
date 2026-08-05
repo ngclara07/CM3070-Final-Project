@@ -1,306 +1,1613 @@
-// === web_app/static/script.js ===
+"use strict";
 
 
 // ============================================================
-// DOM references
+// SenseFuzeAI canonical web live-fusion client
+//
+// File:
+//     web_app/static/script.js
+//
+// Architectural responsibility
+// --------------------------------
+//
+// This file is responsible for:
+//
+//     - browser UI state
+//     - text acquisition
+//     - keystroke acquisition
+//     - audio acquisition
+//     - image/video/webcam acquisition
+//     - HTTP communication with app.py
+//     - stale-client-response protection
+//     - rendering server results
+//
+// This file DOES NOT implement:
+//
+//     - probability normalisation
+//     - temporal probability history
+//     - rolling probability averaging
+//     - temporal confidence calculation
+//     - confidence-gap thresholds
+//     - server reset generation
+//
+// Those operations are canonical in:
+//
+//     temporal_fusion.py
+//
+// Processing architecture:
+//
+//     Browser inputs
+//          |
+//          v
+//     script.js
+//          |
+//          v
+//     web_app/app.py
+//          |
+//          v
+//     FinalMultimodalInference.predict(...)
+//          |
+//          | raw probability vector
+//          v
+//     TemporalFusionEngine
+//          |
+//          v
+//     app.py JSON result
+//          |
+//          v
+//     script.js DISPLAY ONLY
+//
+// Behaviour aligned with live_fusion_gui.py:
+//
+//     - minimum 20 text characters
+//     - minimum 20 key-down events
+//     - 2500 ms scheduler
+//     - all four modalities required
+//     - fixed audio source until replaced/reset
+//     - image / video / webcam modes
+//     - source changes reset temporal history server-side
+//     - temporal window = 5
+//     - generation-safe stale-result rejection
+//
+// ============================================================
+
+
+// ============================================================
+// DOM helpers
+// ============================================================
+
+function getElement(id) {
+
+  return document.getElementById(
+    id
+  );
+}
+
+
+function setText(
+  element,
+  value
+) {
+
+  if (element) {
+
+    element.textContent =
+      String(value);
+  }
+}
+
+
+function sleep(ms) {
+
+  return new Promise(
+    resolve => {
+
+      window.setTimeout(
+        resolve,
+        ms
+      );
+    }
+  );
+}
+
+
+function finiteNumber(
+  value,
+  fallback = 0
+) {
+
+  const numeric =
+    Number(value);
+
+
+  return (
+    Number.isFinite(numeric)
+      ? numeric
+      : fallback
+  );
+}
+
+
+function positiveInteger(
+  value,
+  fallback
+) {
+
+  const numeric =
+    Number(value);
+
+
+  if (
+    Number.isInteger(numeric)
+    &&
+    numeric > 0
+  ) {
+
+    return numeric;
+  }
+
+
+  return fallback;
+}
+
+
+// ============================================================
+// Existing DOM references
 // ============================================================
 
 const textInput =
-  document.getElementById("textInput");
+  getElement(
+    "textInput"
+  );
+
 
 const webcam =
-  document.getElementById("webcam");
+  getElement(
+    "webcam"
+  );
+
 
 const canvas =
-  document.getElementById("frameCanvas");
+  getElement(
+    "frameCanvas"
+  );
 
 
 const startBtn =
-  document.getElementById("startBtn");
+  getElement(
+    "startBtn"
+  );
+
 
 const stopBtn =
-  document.getElementById("stopBtn");
+  getElement(
+    "stopBtn"
+  );
+
 
 const resetBtn =
-  document.getElementById("resetBtn");
+  getElement(
+    "resetBtn"
+  );
+
 
 const resetTemporalBtn =
-  document.getElementById("resetTemporalBtn");
+  getElement(
+    "resetTemporalBtn"
+  );
 
 
 const statusBox =
-  document.getElementById("status");
+  getElement(
+    "status"
+  );
+
 
 const sessionStatus =
-  document.getElementById("sessionStatus");
+  getElement(
+    "sessionStatus"
+  );
+
 
 const audioStatus =
-  document.getElementById("audioStatus");
+  getElement(
+    "audioStatus"
+  );
+
 
 const webcamStatus =
-  document.getElementById("webcamStatus");
+  getElement(
+    "webcamStatus"
+  );
+
 
 const modelStatusText =
-  document.getElementById("modelStatusText");
+  getElement(
+    "modelStatusText"
+  );
+
 
 const webcamModelStatusText =
-  document.getElementById("webcamModelStatusText");
+  getElement(
+    "webcamModelStatusText"
+  );
 
 
 const predictionBox =
-  document.getElementById("prediction");
+  getElement(
+    "prediction"
+  );
+
 
 const confidencePercent =
-  document.getElementById("confidencePercent");
+  getElement(
+    "confidencePercent"
+  );
+
 
 const confidenceFill =
-  document.getElementById("confidenceFill");
+  getElement(
+    "confidenceFill"
+  );
+
 
 const confidenceLevel =
-  document.getElementById("confidenceLevel");
+  getElement(
+    "confidenceLevel"
+  );
 
 
 const rawPrediction =
-  document.getElementById("rawPrediction");
+  getElement(
+    "rawPrediction"
+  );
+
 
 const rawConfidence =
-  document.getElementById("rawConfidence");
+  getElement(
+    "rawConfidence"
+  );
 
 
 const temporalSamples =
-  document.getElementById("temporalSamples");
+  getElement(
+    "temporalSamples"
+  );
+
 
 const temporalWindow =
-  document.getElementById("temporalWindow");
+  getElement(
+    "temporalWindow"
+  );
+
 
 const temporalWindowStatus =
-  document.getElementById("temporalWindowStatus");
+  getElement(
+    "temporalWindowStatus"
+  );
 
 
 const secondaryState =
-  document.getElementById("secondaryState");
+  getElement(
+    "secondaryState"
+  );
+
 
 const confidenceGap =
-  document.getElementById("confidenceGap");
+  getElement(
+    "confidenceGap"
+  );
+
 
 const featureDimension =
-  document.getElementById("featureDimension");
+  getElement(
+    "featureDimension"
+  );
+
 
 const deviceInfo =
-  document.getElementById("deviceInfo");
+  getElement(
+    "deviceInfo"
+  );
+
 
 const probabilitiesBox =
-  document.getElementById("probabilities");
+  getElement(
+    "probabilities"
+  );
+
 
 const rawProbabilitiesBox =
-  document.getElementById("rawProbabilities");
+  getElement(
+    "rawProbabilities"
+  );
 
 
 const webcamPrediction =
-  document.getElementById("webcamPrediction");
+  getElement(
+    "webcamPrediction"
+  );
+
 
 const webcamConfidence =
-  document.getElementById("webcamConfidence");
+  getElement(
+    "webcamConfidence"
+  );
+
 
 const webcamProbabilityBars =
-  document.getElementById("webcamProbabilityBars");
+  getElement(
+    "webcamProbabilityBars"
+  );
 
 
 const webcamCalibrationUsed =
-  document.getElementById("webcamCalibrationUsed");
+  getElement(
+    "webcamCalibrationUsed"
+  );
+
 
 const activeModalities =
-  document.getElementById("activeModalities");
+  getElement(
+    "activeModalities"
+  );
+
 
 const technicalRawState =
-  document.getElementById("technicalRawState");
+  getElement(
+    "technicalRawState"
+  );
+
 
 const technicalTemporalSamples =
-  document.getElementById("technicalTemporalSamples");
+  getElement(
+    "technicalTemporalSamples"
+  );
+
 
 const sessionIdDisplay =
-  document.getElementById("sessionIdDisplay");
+  getElement(
+    "sessionIdDisplay"
+  );
 
 
 const modelReady =
-  document.getElementById("modelReady");
+  getElement(
+    "modelReady"
+  );
+
 
 const webcamModelReady =
-  document.getElementById("webcamModelReady");
+  getElement(
+    "webcamModelReady"
+  );
+
 
 const textReady =
-  document.getElementById("textReady");
+  getElement(
+    "textReady"
+  );
+
 
 const keyReady =
-  document.getElementById("keyReady");
+  getElement(
+    "keyReady"
+  );
+
 
 const audioReady =
-  document.getElementById("audioReady");
+  getElement(
+    "audioReady"
+  );
+
 
 const imageReady =
-  document.getElementById("imageReady");
+  getElement(
+    "imageReady"
+  );
 
 
 const textCard =
-  document.getElementById("textCard");
+  getElement(
+    "textCard"
+  );
+
 
 const webcamCard =
-  document.getElementById("webcamCard");
+  getElement(
+    "webcamCard"
+  );
+
 
 const audioCard =
-  document.getElementById("audioCard");
+  getElement(
+    "audioCard"
+  );
 
 
 const charCount =
-  document.getElementById("charCount");
+  getElement(
+    "charCount"
+  );
+
 
 const keyCount =
-  document.getElementById("keyCount");
+  getElement(
+    "keyCount"
+  );
+
+
+const validationStatus =
+  getElement(
+    "validationStatus"
+  );
+
+
+const audioDiagnostic =
+  getElement(
+    "audioDiagnostic"
+  );
 
 
 // ============================================================
 // Configuration
+//
+// These values are bootstrap defaults only.
+//
+// /model-status supplied by app.py is authoritative.
 // ============================================================
 
-const MIN_TEXT_CHARS = 20;
-const MIN_KEYPRESSES = 20;
+let MIN_TEXT_CHARS = 20;
 
-// Keep this aligned with the backend prediction cadence.
-const LIVE_INTERVAL_MS = 15000;
+let MIN_KEYPRESSES = 20;
+
+let LIVE_INTERVAL_MS = 2500;
+
+let TEMPORAL_WINDOW = 5;
+
+let AUDIO_CAPTURE_SECONDS = 10;
+
+let TARGET_AUDIO_SAMPLE_RATE = 16000;
 
 
 // ============================================================
-// Session state
+// Canonical labels
+//
+// Deliberately NOT hard-coded.
+//
+// app.py should return:
+//
+//     "labels": list(LABELS)
+//
+// from /model-status.
+//
+// If an older backend does not return labels, rendering falls
+// back to the keys contained in the probability response.
+// ============================================================
+
+let behaviouralLabels = [];
+
+
+// ============================================================
+// Model state
+// ============================================================
+
+let fusionModelLoaded =
+  false;
+
+
+let webcamModelLoaded =
+  false;
+
+
+let temporalFusionBackend =
+  null;
+
+
+// ============================================================
+// Generation / concurrency state
+// ============================================================
+
+// Server-side generation returned by TemporalFusionEngine.
+let serverGeneration = 0;
+
+
+// Independent browser epoch.
+//
+// Whenever the browser begins a reset or modality-source
+// replacement, this value changes immediately.
+//
+// A response produced for an older browser epoch is therefore
+// prevented from repainting the interface.
+let clientEpoch = 0;
+
+
+// True while a modality/reset operation is modifying the
+// current experiment condition.
+//
+// Automatic prediction pauses during such changes.
+let stateChangeInProgress =
+  false;
+
+
+// Prevent overlapping fusion requests.
+let predictionInFlight =
+  false;
+
+
+// Automatic scheduler handle.
+let liveTimer =
+  null;
+
+
+// ============================================================
+// Keystroke state
 // ============================================================
 
 let keystrokeEvents = [];
-let activeKeys = new Set();
 
-
-let mediaStream = null;
-let mediaRecorder = null;
-
-let audioChunks = [];
-let latestAudioBlob = null;
-
-
-let liveTimer = null;
-
-let sessionActive = false;
-
-let fusionModelLoaded = false;
-let webcamModelLoaded = false;
-
-let predictionInFlight = false;
+let activeKeys =
+  new Set();
 
 
 // ============================================================
-// Browser session identifier
+// Audio state
+//
+// Audio remains FIXED after selection/recording until explicitly
+// replaced or Full Reset is performed.
+// ============================================================
+
+let audioSourceReady =
+  false;
+
+
+let audioSourceName =
+  null;
+
+
+let audioSourceKind =
+  null;
+
+
+let microphoneRecording =
+  false;
+
+
+// ============================================================
+// Visual state
+// ============================================================
+
+let visualMode =
+  "none";
+
+
+let visualSourceReady =
+  false;
+
+
+let visualSourceName =
+  null;
+
+
+let webcamStream =
+  null;
+
+
+let visualObjectUrl =
+  null;
+
+
+let staticImagePreview =
+  null;
+
+
+// ============================================================
+// Dynamic file inputs
+// ============================================================
+
+let audioFileInput =
+  null;
+
+
+let imageFileInput =
+  null;
+
+
+let videoFileInput =
+  null;
+
+
+// ============================================================
+// Session ID
 // ============================================================
 
 function createSessionId() {
 
   if (
-    window.crypto &&
-    typeof window.crypto.randomUUID === "function"
+    window.crypto
+    &&
+    typeof window.crypto.randomUUID
+      === "function"
   ) {
-    return window.crypto.randomUUID();
+
+    return (
+      window.crypto.randomUUID()
+    );
   }
 
+
   return (
-    "session-" +
-    Date.now().toString(36) +
-    "-" +
-    Math.random().toString(36).slice(2)
+    "session-"
+    + Date.now()
+      .toString(36)
+    + "-"
+    + Math.random()
+      .toString(36)
+      .slice(2)
   );
 }
 
 
-let sessionId = createSessionId();
+const sessionId =
+  createSessionId();
+
+
+setText(
+  sessionIdDisplay,
+  sessionId
+);
+
+
+// ============================================================
+// Client operation / epoch helpers
+// ============================================================
+
+function beginStateChange(
+  message
+) {
+
+  clientEpoch += 1;
+
+  stateChangeInProgress =
+    true;
+
+
+  if (message) {
+
+    setText(
+      statusBox,
+      message
+    );
+  }
+
+
+  updateReadiness();
+
+
+  return clientEpoch;
+}
+
+
+function finishStateChange(
+  operationEpoch
+) {
+
+  if (
+    operationEpoch
+    === clientEpoch
+  ) {
+
+    stateChangeInProgress =
+      false;
+  }
+
+
+  updateReadiness();
+}
+
+
+function operationStillCurrent(
+  operationEpoch
+) {
+
+  return (
+    operationEpoch
+    === clientEpoch
+  );
+}
+
+
+// ============================================================
+// Error helpers
+// ============================================================
+
+function formatServerError(
+  data
+) {
+
+  if (!data) {
+
+    return (
+      "Unknown server error."
+    );
+  }
+
+
+  const detail =
+    (
+      data.detail
+      ??
+      data.error
+      ??
+      data.message
+    );
+
+
+  if (
+    typeof detail
+    === "string"
+  ) {
+
+    return detail;
+  }
+
+
+  try {
+
+    return JSON.stringify(
+      detail
+    );
+
+  } catch (_) {
+
+    return String(
+      detail
+    );
+  }
+}
+
+
+function handleConflictResponse(
+  data
+) {
+
+  const detail =
+    data
+    &&
+    typeof data.detail
+      === "object"
+    &&
+    data.detail !== null
+
+      ? data.detail
+
+      : null;
+
+
+  if (!detail) {
+
+    return false;
+  }
+
+
+  if (
+    detail.generation
+    !== undefined
+  ) {
+
+    const generation =
+      Number(
+        detail.generation
+      );
+
+
+    if (
+      Number.isFinite(
+        generation
+      )
+    ) {
+
+      serverGeneration =
+        generation;
+    }
+  }
+
+
+  const type =
+    String(
+      detail.type
+      || ""
+    );
+
+
+  if (
+    type
+    === "stale_generation"
+    ||
+    type
+    === "stale_result"
+    ||
+    type
+    === "stale_session"
+  ) {
+
+    setText(
+      statusBox,
+      (
+        "Stale prediction rejected "
+        + "after reset/source change."
+      )
+    );
+
+
+    return true;
+  }
+
+
+  if (
+    type
+    === "visual_mode_mismatch"
+  ) {
+
+    const serverVisualMode =
+      String(
+        detail.visual_mode
+        || "none"
+      );
+
+
+    setText(
+      statusBox,
+      (
+        "Visual-source state changed "
+        + `on server (${serverVisualMode}).`
+      )
+    );
+
+
+    return true;
+  }
+
+
+  return false;
+}
+
+
+// ============================================================
+// Styles for dynamically generated controls/results
+// ============================================================
+
+function installStyles() {
+
+  if (
+    getElement(
+      "sensefuzeDynamicStyles"
+    )
+  ) {
+
+    return;
+  }
+
+
+  const style =
+    document.createElement(
+      "style"
+    );
+
+
+  style.id =
+    "sensefuzeDynamicStyles";
+
+
+  style.textContent = `
+    #probabilities,
+    #rawProbabilities,
+    #webcamProbabilityBars {
+      display: block !important;
+      width: 100%;
+      min-height: 130px;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+
+    .sf-prob-row {
+      margin: 5px 0;
+      width: 100%;
+    }
+
+    .sf-prob-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: .9rem;
+      margin-bottom: 3px;
+    }
+
+    .sf-prob-track {
+      width: 100%;
+      height: 9px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, .20);
+    }
+
+    .sf-prob-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: #49e8cf;
+      transition: width .2s ease;
+    }
+
+    .sf-prob-fill.raw {
+      background: #f5b942;
+    }
+
+    .sf-prob-fill.temporal {
+      background: #49e8cf;
+    }
+
+    .sf-prob-fill.webcam {
+      background: #8b7bff;
+    }
+
+    .sf-prob-sum {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      padding-top: 5px;
+      border-top: 1px solid rgba(148, 163, 184, .25);
+      color: #b9c8da;
+      font-size: .82rem;
+    }
+
+    .sf-source-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .sf-source-controls button {
+      cursor: pointer;
+      padding: 7px 11px;
+    }
+
+    #sfStaticImagePreview {
+      display: none;
+      width: 100%;
+      max-height: 320px;
+      margin-top: 8px;
+      object-fit: contain;
+    }
+  `;
+
+
+  document.head.appendChild(
+    style
+  );
+}
+
+
+// ============================================================
+// Dynamic control creation
+// ============================================================
+
+function makeButton(
+  text,
+  handler
+) {
+
+  const button =
+    document.createElement(
+      "button"
+    );
+
+
+  button.type =
+    "button";
+
+
+  button.textContent =
+    text;
+
+
+  button.addEventListener(
+    "click",
+    handler
+  );
+
+
+  return button;
+}
+
+
+function installAudioControls() {
+
+  const host =
+    (
+      audioCard
+      ||
+      (
+        audioStatus
+          ? audioStatus.parentElement
+          : null
+      )
+    );
+
+
+  if (!host) {
+
+    return;
+  }
+
+
+  if (
+    getElement(
+      "sfAudioSourceControls"
+    )
+  ) {
+
+    return;
+  }
+
+
+  const row =
+    document.createElement(
+      "div"
+    );
+
+
+  row.id =
+    "sfAudioSourceControls";
+
+
+  row.className =
+    "sf-source-controls";
+
+
+  audioFileInput =
+    document.createElement(
+      "input"
+    );
+
+
+  audioFileInput.type =
+    "file";
+
+
+  audioFileInput.accept =
+    (
+      "audio/*,"
+      + ".wav,.mp3,.flac,.ogg,"
+      + ".m4a,.webm"
+    );
+
+
+  audioFileInput.style.display =
+    "none";
+
+
+  audioFileInput.addEventListener(
+    "change",
+
+    async () => {
+
+      const file =
+        (
+          audioFileInput.files
+          &&
+          audioFileInput.files.length > 0
+
+            ? audioFileInput.files[0]
+
+            : null
+        );
+
+
+      if (file) {
+
+        await setAudioFile(
+          file,
+          "file"
+        );
+      }
+
+
+      audioFileInput.value =
+        "";
+    }
+  );
+
+
+  const chooseButton =
+    makeButton(
+      "Choose Audio File",
+
+      () => {
+
+        audioFileInput.click();
+      }
+    );
+
+
+  const recordButton =
+    makeButton(
+      (
+        "Record Microphone "
+        + `(${AUDIO_CAPTURE_SECONDS}s)`
+      ),
+
+      recordMicrophoneOnce
+    );
+
+
+  row.appendChild(
+    chooseButton
+  );
+
+
+  row.appendChild(
+    recordButton
+  );
+
+
+  row.appendChild(
+    audioFileInput
+  );
+
+
+  host.appendChild(
+    row
+  );
+}
+
+
+function installVisualControls() {
+
+  const host =
+    (
+      webcamCard
+      ||
+      (
+        webcamStatus
+          ? webcamStatus.parentElement
+          : null
+      )
+    );
+
+
+  if (!host) {
+
+    return;
+  }
+
+
+  if (
+    getElement(
+      "sfVisualSourceControls"
+    )
+  ) {
+
+    return;
+  }
+
+
+  const row =
+    document.createElement(
+      "div"
+    );
+
+
+  row.id =
+    "sfVisualSourceControls";
+
+
+  row.className =
+    "sf-source-controls";
+
+
+  imageFileInput =
+    document.createElement(
+      "input"
+    );
+
+
+  imageFileInput.type =
+    "file";
+
+
+  imageFileInput.accept =
+    "image/*";
+
+
+  imageFileInput.style.display =
+    "none";
+
+
+  imageFileInput.addEventListener(
+    "change",
+
+    async () => {
+
+      const file =
+        (
+          imageFileInput.files
+          &&
+          imageFileInput.files.length > 0
+
+            ? imageFileInput.files[0]
+
+            : null
+        );
+
+
+      if (file) {
+
+        await setVisualImage(
+          file
+        );
+      }
+
+
+      imageFileInput.value =
+        "";
+    }
+  );
+
+
+  videoFileInput =
+    document.createElement(
+      "input"
+    );
+
+
+  videoFileInput.type =
+    "file";
+
+
+  videoFileInput.accept =
+    "video/*";
+
+
+  videoFileInput.style.display =
+    "none";
+
+
+  videoFileInput.addEventListener(
+    "change",
+
+    async () => {
+
+      const file =
+        (
+          videoFileInput.files
+          &&
+          videoFileInput.files.length > 0
+
+            ? videoFileInput.files[0]
+
+            : null
+        );
+
+
+      if (file) {
+
+        await setVisualVideo(
+          file
+        );
+      }
+
+
+      videoFileInput.value =
+        "";
+    }
+  );
+
+
+  row.appendChild(
+    makeButton(
+      "Choose Image",
+
+      () => {
+
+        imageFileInput.click();
+      }
+    )
+  );
+
+
+  row.appendChild(
+    makeButton(
+      "Choose Video",
+
+      () => {
+
+        videoFileInput.click();
+      }
+    )
+  );
+
+
+  row.appendChild(
+    imageFileInput
+  );
+
+
+  row.appendChild(
+    videoFileInput
+  );
+
+
+  host.appendChild(
+    row
+  );
+
+
+  staticImagePreview =
+    document.createElement(
+      "img"
+    );
+
+
+  staticImagePreview.id =
+    "sfStaticImagePreview";
+
+
+  staticImagePreview.alt =
+    "Selected visual source";
+
+
+  host.appendChild(
+    staticImagePreview
+  );
+}
 
 
 // ============================================================
 // Key normalisation
 // ============================================================
 
-function normaliseKey(event) {
+function normaliseKey(
+  event
+) {
 
-  if (event.key === "Backspace") {
+  if (
+    event.key
+    === "Backspace"
+  ) {
+
     return "backspace";
   }
 
-  if (event.key === "Delete") {
+
+  if (
+    event.key
+    === "Delete"
+  ) {
+
     return "delete";
   }
 
-  if (event.key === " ") {
+
+  if (
+    event.key
+    === " "
+  ) {
+
     return "space";
   }
 
-  if (event.key.length === 1) {
-    return event.key.toLowerCase();
+
+  if (
+    typeof event.key
+      === "string"
+    &&
+    event.key.length
+      === 1
+  ) {
+
+    return (
+      event.key
+        .toLowerCase()
+    );
   }
 
-  return event.key.toLowerCase();
+
+  return (
+    String(
+      event.key
+    )
+    .toLowerCase()
+  );
 }
 
 
 // ============================================================
-// Readiness helpers
+// Readiness
 // ============================================================
 
 function setReady(
   element,
-  isReady,
+  ready,
   readyText = "Ready",
   missingText = "Missing"
 ) {
 
+  if (!element) {
+
+    return;
+  }
+
+
   element.classList.toggle(
     "active",
-    isReady
+    ready
   );
 
-  element.querySelector("b").textContent =
-    isReady
-      ? readyText
-      : missingText;
+
+  const bold =
+    element.querySelector(
+      "b"
+    );
+
+
+  if (bold) {
+
+    bold.textContent =
+      (
+        ready
+          ? readyText
+          : missingText
+      );
+  }
+}
+
+
+function currentTextLength() {
+
+  if (!textInput) {
+
+    return 0;
+  }
+
+
+  return (
+    textInput.value
+      .trim()
+      .length
+  );
+}
+
+
+function currentKeydownCount() {
+
+  return (
+    keystrokeEvents.filter(
+      event =>
+        event.type === "down"
+    ).length
+  );
+}
+
+
+function audioIsReady() {
+
+  return Boolean(
+    audioSourceReady
+  );
+}
+
+
+function visualIsReady() {
+
+  if (
+    visualMode
+    === "image"
+  ) {
+
+    return Boolean(
+      visualSourceReady
+    );
+  }
+
+
+  if (
+    visualMode
+    === "video"
+  ) {
+
+    return Boolean(
+      visualSourceReady
+    );
+  }
+
+
+  if (
+    visualMode
+    === "webcam"
+  ) {
+
+    return Boolean(
+      visualSourceReady
+      &&
+      webcamStream
+      &&
+      webcam
+      &&
+      webcam.videoWidth > 0
+      &&
+      webcam.videoHeight > 0
+    );
+  }
+
+
+  return false;
+}
+
+
+function allModalitiesReady() {
+
+  return (
+    !stateChangeInProgress
+    &&
+    fusionModelLoaded
+    &&
+    currentTextLength()
+      >= MIN_TEXT_CHARS
+    &&
+    currentKeydownCount()
+      >= MIN_KEYPRESSES
+    &&
+    audioIsReady()
+    &&
+    visualIsReady()
+  );
 }
 
 
 function updateReadiness() {
 
-  const textOk =
-    textInput.value.trim().length
-    >= MIN_TEXT_CHARS;
+  const textCount =
+    currentTextLength();
 
 
   const keydowns =
-    keystrokeEvents.filter(
-      event =>
-        event.type === "down"
-    ).length;
+    currentKeydownCount();
+
+
+  const textOk =
+    (
+      textCount
+      >= MIN_TEXT_CHARS
+    );
 
 
   const keyOk =
-    keydowns
-    >= MIN_KEYPRESSES;
+    (
+      keydowns
+      >= MIN_KEYPRESSES
+    );
 
 
   const audioOk =
-    latestAudioBlob !== null;
+    audioIsReady();
 
 
-  const imageOk =
-    mediaStream !== null;
+  const visualOk =
+    visualIsReady();
 
 
-  charCount.textContent =
-    textInput.value.trim().length;
+  setText(
+    charCount,
+    textCount
+  );
 
 
-  keyCount.textContent =
-    keydowns;
+  setText(
+    keyCount,
+    keydowns
+  );
 
 
   setReady(
@@ -315,7 +1622,7 @@ function updateReadiness() {
     webcamModelReady,
     webcamModelLoaded,
     "Loaded",
-    "Unavailable"
+    "Not required"
   );
 
 
@@ -335,63 +1642,107 @@ function updateReadiness() {
     audioReady,
     audioOk,
     "Ready",
-    "Optional"
+    "Required"
   );
 
 
   setReady(
     imageReady,
-    imageOk,
+    visualOk,
     "Ready",
-    "Optional"
+    "Required"
   );
 
 
-  textCard.classList.toggle(
-    "active",
-    textOk && keyOk
-  );
+  if (textCard) {
+
+    const active =
+      (
+        textOk
+        &&
+        keyOk
+      );
 
 
-  webcamCard.classList.toggle(
-    "active",
-    imageOk
-  );
+    textCard.classList.toggle(
+      "active",
+      active
+    );
 
 
-  audioCard.classList.toggle(
-    "active",
-    audioOk
-  );
+    const badge =
+      textCard.querySelector(
+        ".badge"
+      );
 
 
-  textCard
-    .querySelector(".badge")
-    .textContent =
-      textOk && keyOk
-        ? "active"
-        : "inactive";
+    if (badge) {
+
+      badge.textContent =
+        (
+          active
+            ? "active"
+            : "inactive"
+        );
+    }
+  }
 
 
-  webcamCard
-    .querySelector(".badge")
-    .textContent =
-      imageOk
-        ? "active"
-        : "inactive";
+  if (audioCard) {
 
-
-  audioCard
-    .querySelector(".badge")
-    .textContent =
+    audioCard.classList.toggle(
+      "active",
       audioOk
-        ? "active"
-        : "inactive";
+    );
+
+
+    const badge =
+      audioCard.querySelector(
+        ".badge"
+      );
+
+
+    if (badge) {
+
+      badge.textContent =
+        (
+          audioOk
+            ? "active"
+            : "inactive"
+        );
+    }
+  }
+
+
+  if (webcamCard) {
+
+    webcamCard.classList.toggle(
+      "active",
+      visualOk
+    );
+
+
+    const badge =
+      webcamCard.querySelector(
+        ".badge"
+      );
+
+
+    if (badge) {
+
+      badge.textContent =
+        (
+          visualOk
+            ? "active"
+            : "inactive"
+        );
+    }
+  }
 }
 
 
 // ============================================================
-// Model status
+// Model / canonical configuration status
 // ============================================================
 
 async function checkModelStatus() {
@@ -400,12 +1751,26 @@ async function checkModelStatus() {
 
     const response =
       await fetch(
-        "/model-status"
+        "/model-status",
+        {
+          cache:
+            "no-store"
+        }
       );
 
 
     const data =
       await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
 
 
     fusionModelLoaded =
@@ -420,61 +1785,153 @@ async function checkModelStatus() {
       );
 
 
-    const configuredWindow =
-      Number(
-        data.temporal_probability_window
-        || 5
+    temporalFusionBackend =
+      (
+        data.temporal_fusion_backend
+        || null
       );
 
 
-    temporalWindow.textContent =
-      configuredWindow;
+    MIN_TEXT_CHARS =
+      positiveInteger(
+        data.min_text_chars,
+        20
+      );
 
 
-    temporalWindowStatus.textContent =
-      `0 / ${configuredWindow}`;
+    MIN_KEYPRESSES =
+      positiveInteger(
+        data.min_keypresses,
+        20
+      );
 
 
-    modelStatusText.textContent =
-      fusionModelLoaded
-        ? (
-            "Fusion model loaded. " +
-            `Backend: ${data.inference_backend}`
+    LIVE_INTERVAL_MS =
+      positiveInteger(
+        data.live_interval_ms,
+        2500
+      );
+
+
+    TEMPORAL_WINDOW =
+      positiveInteger(
+        data.temporal_probability_window,
+        5
+      );
+
+
+    AUDIO_CAPTURE_SECONDS =
+      positiveInteger(
+        data.audio_capture_seconds,
+        10
+      );
+
+
+    TARGET_AUDIO_SAMPLE_RATE =
+      positiveInteger(
+        data.target_audio_sample_rate,
+        16000
+      );
+
+
+    if (
+      Array.isArray(
+        data.labels
+      )
+    ) {
+
+      behaviouralLabels =
+        data.labels
+          .map(
+            value =>
+              String(value).trim()
           )
-        : (
-            "Fusion model unavailable. " +
-            "Fallback active. " +
-            `${data.error || ""}`
+          .filter(
+            value =>
+              value.length > 0
           );
+    }
 
 
-    webcamModelStatusText.textContent =
+    setText(
+      temporalWindow,
+      TEMPORAL_WINDOW
+    );
+
+
+    setText(
+      temporalWindowStatus,
+      `0 / ${TEMPORAL_WINDOW}`
+    );
+
+
+    if (fusionModelLoaded) {
+
+      setText(
+        modelStatusText,
+        (
+          "FinalMultimodalInference loaded"
+          + (
+              temporalFusionBackend
+                ? (
+                    " | Temporal backend: "
+                    + temporalFusionBackend
+                  )
+                : ""
+            )
+        )
+      );
+
+    } else {
+
+      setText(
+        modelStatusText,
+        (
+          "Fusion backend unavailable: "
+          + String(
+              data.error
+              || "unknown error"
+            )
+        )
+      );
+    }
+
+
+    setText(
+      webcamModelStatusText,
+
       webcamModelLoaded
         ? (
-            "Webcam-calibrated image " +
-            "classifier loaded."
+            "Webcam-calibrated image "
+            + "augmentation loaded."
           )
         : (
-            "Webcam-calibrated classifier " +
-            "is unavailable."
-          );
+            "Webcam calibration not "
+            + "required by current fusion schema."
+          )
+    );
 
-
-    updateReadiness();
 
   } catch (error) {
 
-    fusionModelLoaded = false;
-    webcamModelLoaded = false;
+    fusionModelLoaded =
+      false;
 
-    modelStatusText.textContent =
-      "Could not query model status.";
 
-    webcamModelStatusText.textContent =
-      "Webcam classifier status unavailable.";
-
-    updateReadiness();
+    setText(
+      modelStatusText,
+      (
+        "Model-status query failed: "
+        + String(
+            error.message
+            || error
+          )
+      )
+    );
   }
+
+
+  updateReadiness();
 }
 
 
@@ -482,94 +1939,2104 @@ async function checkModelStatus() {
 // Keystroke capture
 // ============================================================
 
-textInput.addEventListener(
-  "keydown",
-  event => {
+if (textInput) {
 
-    const key =
-      normaliseKey(event);
+  textInput.addEventListener(
+    "keydown",
+
+    event => {
+
+      const key =
+        normaliseKey(
+          event
+        );
 
 
-    if (activeKeys.has(key)) {
+      // Match desktop behaviour:
+      // ignore operating-system/browser key-repeat events.
+      if (
+        activeKeys.has(
+          key
+        )
+      ) {
+
+        return;
+      }
+
+
+      activeKeys.add(
+        key
+      );
+
+
+      keystrokeEvents.push(
+        {
+          type:
+            "down",
+
+          key:
+            key,
+
+          timestamp_perf:
+            performance.now()
+            / 1000,
+
+          timestamp_epoch:
+            Date.now()
+            / 1000
+        }
+      );
+
+
+      updateReadiness();
+    }
+  );
+
+
+  textInput.addEventListener(
+    "keyup",
+
+    event => {
+
+      const key =
+        normaliseKey(
+          event
+        );
+
+
+      activeKeys.delete(
+        key
+      );
+
+
+      keystrokeEvents.push(
+        {
+          type:
+            "up",
+
+          key:
+            key,
+
+          timestamp_perf:
+            performance.now()
+            / 1000,
+
+          timestamp_epoch:
+            Date.now()
+            / 1000
+        }
+      );
+
+
+      updateReadiness();
+    }
+  );
+
+
+  textInput.addEventListener(
+    "input",
+    updateReadiness
+  );
+}
+
+
+// ============================================================
+// Audio source: file
+// ============================================================
+
+async function setAudioFile(
+  file,
+  sourceKind,
+  existingOperationEpoch = null
+) {
+
+  if (!file) {
+
+    return;
+  }
+
+
+  const operationEpoch =
+    (
+      existingOperationEpoch
+      !== null
+
+        ? existingOperationEpoch
+
+        : beginStateChange(
+            "Loading new audio source..."
+          )
+    );
+
+
+  if (
+    !operationStillCurrent(
+      operationEpoch
+    )
+  ) {
+
+    return;
+  }
+
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+    "session_id",
+    sessionId
+  );
+
+
+  formData.append(
+    "source_kind",
+    sourceKind
+  );
+
+
+  formData.append(
+    "audio_file",
+    file,
+    file.name
+  );
+
+
+  try {
+
+    setText(
+      statusBox,
+      "Uploading audio source..."
+    );
+
+
+    const response =
+      await fetch(
+        "/set_audio_source",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
       return;
     }
 
 
-    activeKeys.add(key);
+    if (!response.ok) {
+
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
 
 
-    keystrokeEvents.push(
-      {
-        type: "down",
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
 
-        key: key,
 
-        timestamp_perf:
-          performance.now()
-          / 1000,
+    audioSourceReady =
+      true;
 
-        timestamp_epoch:
-          Date.now()
-          / 1000
-      }
+
+    audioSourceName =
+      (
+        data.audio_name
+        || file.name
+      );
+
+
+    audioSourceKind =
+      (
+        data.audio_source_kind
+        || sourceKind
+      );
+
+
+    // Source replacement performs a canonical temporal reset
+    // in app.py / TemporalFusionEngine.
+    resetPredictionDisplay();
+
+
+    setText(
+      audioStatus,
+      (
+        "Audio: "
+        + audioSourceName
+        + " | fixed source"
+      )
     );
 
 
-    updateReadiness();
-  }
-);
-
-
-textInput.addEventListener(
-  "keyup",
-  event => {
-
-    const key =
-      normaliseKey(event);
-
-
-    activeKeys.delete(key);
-
-
-    keystrokeEvents.push(
-      {
-        type: "up",
-
-        key: key,
-
-        timestamp_perf:
-          performance.now()
-          / 1000,
-
-        timestamp_epoch:
-          Date.now()
-          / 1000
-      }
+    updateAudioDiagnostic(
+      data.audio_diagnostics
     );
 
 
+    setText(
+      statusBox,
+      (
+        "Audio source ready"
+        + ` | Generation=${serverGeneration}`
+        + " | Temporal history reset."
+      )
+    );
+
+
+  } catch (error) {
+
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      setText(
+        statusBox,
+        (
+          "Audio source failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
+
+  } finally {
+
+    finishStateChange(
+      operationEpoch
+    );
+  }
+}
+
+
+// ============================================================
+// Browser microphone acquisition
+//
+// Behaviour:
+//     - exactly ONE recording operation
+//     - 10 seconds by default
+//     - mono
+//     - resampled to 16 kHz
+//     - PCM16 WAV
+//     - reused for subsequent predictions
+//
+// No automatic recurring audio replacement occurs.
+// ============================================================
+
+function concatenateFloat32(
+  chunks
+) {
+
+  const totalLength =
+    chunks.reduce(
+      (
+        total,
+        chunk
+      ) => {
+
+        return (
+          total
+          + chunk.length
+        );
+      },
+      0
+    );
+
+
+  const output =
+    new Float32Array(
+      totalLength
+    );
+
+
+  let offset = 0;
+
+
+  for (
+    const chunk
+    of chunks
+  ) {
+
+    output.set(
+      chunk,
+      offset
+    );
+
+
+    offset +=
+      chunk.length;
+  }
+
+
+  return output;
+}
+
+
+function resampleLinear(
+  input,
+  inputRate,
+  outputRate
+) {
+
+  if (
+    input.length === 0
+  ) {
+
+    return (
+      new Float32Array(0)
+    );
+  }
+
+
+  if (
+    inputRate
+    === outputRate
+  ) {
+
+    return input;
+  }
+
+
+  const outputLength =
+    Math.max(
+      1,
+
+      Math.round(
+        input.length
+        * outputRate
+        / inputRate
+      )
+    );
+
+
+  const output =
+    new Float32Array(
+      outputLength
+    );
+
+
+  const ratio =
+    inputRate
+    / outputRate;
+
+
+  for (
+    let index = 0;
+    index < outputLength;
+    index += 1
+  ) {
+
+    const sourcePosition =
+      index
+      * ratio;
+
+
+    const left =
+      Math.floor(
+        sourcePosition
+      );
+
+
+    const right =
+      Math.min(
+        left + 1,
+        input.length - 1
+      );
+
+
+    const fraction =
+      sourcePosition
+      - left;
+
+
+    output[index] =
+      (
+        input[left]
+        * (
+            1
+            - fraction
+          )
+        +
+        input[right]
+        * fraction
+      );
+  }
+
+
+  return output;
+}
+
+
+function forceExactDuration(
+  samples,
+  sampleRate,
+  seconds
+) {
+
+  const requiredLength =
+    Math.round(
+      sampleRate
+      * seconds
+    );
+
+
+  const output =
+    new Float32Array(
+      requiredLength
+    );
+
+
+  const copyLength =
+    Math.min(
+      samples.length,
+      requiredLength
+    );
+
+
+  output.set(
+    samples.subarray(
+      0,
+      copyLength
+    ),
+    0
+  );
+
+
+  return output;
+}
+
+
+function encodePcm16Wav(
+  samples,
+  sampleRate
+) {
+
+  const bytesPerSample =
+    2;
+
+
+  const buffer =
+    new ArrayBuffer(
+      44
+      + samples.length
+      * bytesPerSample
+    );
+
+
+  const view =
+    new DataView(
+      buffer
+    );
+
+
+  function writeString(
+    offset,
+    value
+  ) {
+
+    for (
+      let index = 0;
+      index < value.length;
+      index += 1
+    ) {
+
+      view.setUint8(
+        offset + index,
+        value.charCodeAt(
+          index
+        )
+      );
+    }
+  }
+
+
+  writeString(
+    0,
+    "RIFF"
+  );
+
+
+  view.setUint32(
+    4,
+    36
+    + samples.length
+    * bytesPerSample,
+    true
+  );
+
+
+  writeString(
+    8,
+    "WAVE"
+  );
+
+
+  writeString(
+    12,
+    "fmt "
+  );
+
+
+  view.setUint32(
+    16,
+    16,
+    true
+  );
+
+
+  // PCM
+  view.setUint16(
+    20,
+    1,
+    true
+  );
+
+
+  // Mono
+  view.setUint16(
+    22,
+    1,
+    true
+  );
+
+
+  view.setUint32(
+    24,
+    sampleRate,
+    true
+  );
+
+
+  view.setUint32(
+    28,
+    sampleRate
+    * bytesPerSample,
+    true
+  );
+
+
+  view.setUint16(
+    32,
+    bytesPerSample,
+    true
+  );
+
+
+  view.setUint16(
+    34,
+    16,
+    true
+  );
+
+
+  writeString(
+    36,
+    "data"
+  );
+
+
+  view.setUint32(
+    40,
+    samples.length
+    * bytesPerSample,
+    true
+  );
+
+
+  let offset = 44;
+
+
+  for (
+    let index = 0;
+    index < samples.length;
+    index += 1
+  ) {
+
+    const sample =
+      Math.max(
+        -1,
+        Math.min(
+          1,
+          samples[index]
+        )
+      );
+
+
+    const pcm =
+      (
+        sample < 0
+
+          ? sample * 32768
+
+          : sample * 32767
+      );
+
+
+    view.setInt16(
+      offset,
+      Math.round(
+        pcm
+      ),
+      true
+    );
+
+
+    offset +=
+      bytesPerSample;
+  }
+
+
+  return new Blob(
+    [buffer],
+    {
+      type:
+        "audio/wav"
+    }
+  );
+}
+
+
+async function recordMicrophoneOnce() {
+
+  if (microphoneRecording) {
+
+    return;
+  }
+
+
+  if (
+    !navigator.mediaDevices
+    ||
+    !navigator.mediaDevices
+      .getUserMedia
+  ) {
+
+    setText(
+      statusBox,
+      "Microphone API is unavailable."
+    );
+
+
+    return;
+  }
+
+
+  microphoneRecording =
+    true;
+
+
+  const operationEpoch =
+    beginStateChange(
+      (
+        "Recording fixed "
+        + `${AUDIO_CAPTURE_SECONDS}s `
+        + "microphone sample..."
+      )
+    );
+
+
+  let stream = null;
+
+  let context = null;
+
+
+  try {
+
+    stream =
+      await navigator.mediaDevices
+        .getUserMedia(
+          {
+            audio: {
+              channelCount:
+                1,
+
+              echoCancellation:
+                false,
+
+              noiseSuppression:
+                false,
+
+              autoGainControl:
+                false
+            },
+
+            video:
+              false
+          }
+        );
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      return;
+    }
+
+
+    const AudioContextClass =
+      (
+        window.AudioContext
+        ||
+        window.webkitAudioContext
+      );
+
+
+    if (!AudioContextClass) {
+
+      throw new Error(
+        "Web Audio API is unavailable."
+      );
+    }
+
+
+    context =
+      new AudioContextClass();
+
+
+    await context.resume();
+
+
+    const source =
+      context.createMediaStreamSource(
+        stream
+      );
+
+
+    const processor =
+      context.createScriptProcessor(
+        4096,
+        1,
+        1
+      );
+
+
+    const silentGain =
+      context.createGain();
+
+
+    silentGain.gain.value =
+      0;
+
+
+    const chunks = [];
+
+
+    processor.onaudioprocess =
+      event => {
+
+        chunks.push(
+          new Float32Array(
+            event.inputBuffer
+              .getChannelData(0)
+          )
+        );
+      };
+
+
+    source.connect(
+      processor
+    );
+
+
+    processor.connect(
+      silentGain
+    );
+
+
+    silentGain.connect(
+      context.destination
+    );
+
+
+    setText(
+      audioStatus,
+      (
+        "Recording microphone "
+        + `(${AUDIO_CAPTURE_SECONDS}s)...`
+      )
+    );
+
+
+    await sleep(
+      AUDIO_CAPTURE_SECONDS
+      * 1000
+    );
+
+
+    processor.disconnect();
+
+    source.disconnect();
+
+    silentGain.disconnect();
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      return;
+    }
+
+
+    const combined =
+      concatenateFloat32(
+        chunks
+      );
+
+
+    if (
+      combined.length === 0
+    ) {
+
+      throw new Error(
+        "Microphone produced no audio samples."
+      );
+    }
+
+
+    const resampled =
+      resampleLinear(
+        combined,
+        context.sampleRate,
+        TARGET_AUDIO_SAMPLE_RATE
+      );
+
+
+    const exact =
+      forceExactDuration(
+        resampled,
+        TARGET_AUDIO_SAMPLE_RATE,
+        AUDIO_CAPTURE_SECONDS
+      );
+
+
+    const wavBlob =
+      encodePcm16Wav(
+        exact,
+        TARGET_AUDIO_SAMPLE_RATE
+      );
+
+
+    const file =
+      new File(
+        [wavBlob],
+        "microphone.wav",
+        {
+          type:
+            "audio/wav"
+        }
+      );
+
+
+    // Use the SAME operation epoch.
+    // Do not create a second source-change epoch.
+    await setAudioFile(
+      file,
+      "microphone",
+      operationEpoch
+    );
+
+
+  } catch (error) {
+
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      setText(
+        statusBox,
+        (
+          "Microphone recording failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
+
+  } finally {
+
+    if (context) {
+
+      try {
+
+        await context.close();
+
+      } catch (_) {
+
+        // Ignore shutdown errors.
+      }
+    }
+
+
+    if (stream) {
+
+      stream
+        .getTracks()
+        .forEach(
+          track => {
+
+            track.stop();
+          }
+        );
+    }
+
+
+    microphoneRecording =
+      false;
+
+
+    finishStateChange(
+      operationEpoch
+    );
+  }
+}
+
+
+// ============================================================
+// Audio diagnostic display
+//
+// Diagnostic only.
+// No model probability is modified in JavaScript.
+// ============================================================
+
+function updateAudioDiagnostic(
+  audio
+) {
+
+  const value =
+    (
+      audio
+      || {}
+    );
+
+
+  const dbfs =
+    Number(
+      value.dbfs
+    );
+
+
+  const duration =
+    Number(
+      (
+        value.duration_sec
+        ??
+        value.analysed_duration_sec
+      )
+    );
+
+
+  let diagnosticText =
+    (
+      "Audio condition: "
+      + String(
+          value.condition
+          || "unknown"
+        )
+    );
+
+
+  if (
+    Number.isFinite(
+      duration
+    )
+  ) {
+
+    diagnosticText +=
+      (
+        " | Analysed: "
+        + duration.toFixed(2)
+        + "s"
+      );
+  }
+
+
+  if (
+    Number.isFinite(
+      dbfs
+    )
+  ) {
+
+    diagnosticText +=
+      (
+        " | Level: "
+        + dbfs.toFixed(1)
+        + " dBFS"
+      );
+  }
+
+
+  if (value.note) {
+
+    diagnosticText +=
+      (
+        " | "
+        + String(
+            value.note
+          )
+      );
+  }
+
+
+  if (audioDiagnostic) {
+
+    setText(
+      audioDiagnostic,
+      diagnosticText
+    );
+
+  } else {
+
+    setText(
+      audioStatus,
+      diagnosticText
+    );
+  }
+}
+
+
+// ============================================================
+// Visual preview utilities
+// ============================================================
+
+function revokeVisualObjectUrl() {
+
+  if (visualObjectUrl) {
+
+    URL.revokeObjectURL(
+      visualObjectUrl
+    );
+
+
+    visualObjectUrl =
+      null;
+  }
+}
+
+
+function hideStaticImagePreview() {
+
+  if (!staticImagePreview) {
+
+    return;
+  }
+
+
+  staticImagePreview.style.display =
+    "none";
+
+
+  staticImagePreview.removeAttribute(
+    "src"
+  );
+}
+
+
+function stopWebcamStreamLocally() {
+
+  if (webcamStream) {
+
+    webcamStream
+      .getTracks()
+      .forEach(
+        track => {
+
+          track.stop();
+        }
+      );
+  }
+
+
+  webcamStream =
+    null;
+
+
+  if (webcam) {
+
+    webcam.srcObject =
+      null;
+  }
+}
+
+
+function stopVideoPreview() {
+
+  if (!webcam) {
+
+    return;
+  }
+
+
+  try {
+
+    webcam.pause();
+
+  } catch (_) {
+
+    // Ignore.
+  }
+
+
+  webcam.removeAttribute(
+    "src"
+  );
+
+
+  try {
+
+    webcam.load();
+
+  } catch (_) {
+
+    // Ignore.
+  }
+}
+
+
+// ============================================================
+// Static image source
+// ============================================================
+
+async function setVisualImage(
+  file
+) {
+
+  if (!file) {
+
+    return;
+  }
+
+
+  const operationEpoch =
+    beginStateChange(
+      "Loading new image source..."
+    );
+
+
+  stopWebcamStreamLocally();
+
+  stopVideoPreview();
+
+  hideStaticImagePreview();
+
+  revokeVisualObjectUrl();
+
+
+  visualMode =
+    "none";
+
+
+  visualSourceReady =
+    false;
+
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+    "session_id",
+    sessionId
+  );
+
+
+  formData.append(
+    "image_file",
+    file,
+    file.name
+  );
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/set_visual_image",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      return;
+    }
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
+    visualMode =
+      "image";
+
+
+    visualSourceReady =
+      true;
+
+
+    visualSourceName =
+      (
+        data.visual_name
+        || file.name
+      );
+
+
+    visualObjectUrl =
+      URL.createObjectURL(
+        file
+      );
+
+
+    if (staticImagePreview) {
+
+      staticImagePreview.src =
+        visualObjectUrl;
+
+
+      staticImagePreview.style.display =
+        "block";
+    }
+
+
+    if (webcam) {
+
+      webcam.style.display =
+        "none";
+    }
+
+
+    resetPredictionDisplay();
+
+
+    setText(
+      webcamStatus,
+      (
+        "Image: "
+        + visualSourceName
+      )
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Image source ready"
+        + ` | Generation=${serverGeneration}`
+        + " | Temporal history reset."
+      )
+    );
+
+
+  } catch (error) {
+
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      visualMode =
+        "none";
+
+
+      visualSourceReady =
+        false;
+
+
+      visualSourceName =
+        null;
+
+
+      setText(
+        statusBox,
+        (
+          "Image source failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
+
+  } finally {
+
+    finishStateChange(
+      operationEpoch
+    );
+  }
+}
+
+
+// ============================================================
+// Video source
+//
+// Server controls canonical OpenCV frame extraction.
+//
+// Browser playback is preview only.
+// ============================================================
+
+async function setVisualVideo(
+  file
+) {
+
+  if (!file) {
+
+    return;
+  }
+
+
+  const operationEpoch =
+    beginStateChange(
+      "Loading new video source..."
+    );
+
+
+  stopWebcamStreamLocally();
+
+  stopVideoPreview();
+
+  hideStaticImagePreview();
+
+  revokeVisualObjectUrl();
+
+
+  visualMode =
+    "none";
+
+
+  visualSourceReady =
+    false;
+
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+    "session_id",
+    sessionId
+  );
+
+
+  formData.append(
+    "video_file",
+    file,
+    file.name
+  );
+
+
+  try {
+
+    const response =
+      await fetch(
+        "/set_visual_video",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      return;
+    }
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
+    visualMode =
+      "video";
+
+
+    visualSourceReady =
+      true;
+
+
+    visualSourceName =
+      (
+        data.visual_name
+        || file.name
+      );
+
+
+    visualObjectUrl =
+      URL.createObjectURL(
+        file
+      );
+
+
+    if (webcam) {
+
+      webcam.srcObject =
+        null;
+
+
+      webcam.src =
+        visualObjectUrl;
+
+
+      webcam.loop =
+        true;
+
+
+      webcam.muted =
+        true;
+
+
+      webcam.style.display =
+        "";
+
+
+      try {
+
+        await webcam.play();
+
+      } catch (_) {
+
+        // Browser autoplay restrictions do not affect
+        // server-side canonical video inference.
+      }
+    }
+
+
+    resetPredictionDisplay();
+
+
+    setText(
+      webcamStatus,
+      (
+        "Video: "
+        + visualSourceName
+      )
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Video source ready"
+        + ` | Generation=${serverGeneration}`
+        + " | Temporal history reset."
+      )
+    );
+
+
+  } catch (error) {
+
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      visualMode =
+        "none";
+
+
+      visualSourceReady =
+        false;
+
+
+      visualSourceName =
+        null;
+
+
+      setText(
+        statusBox,
+        (
+          "Video source failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
+
+  } finally {
+
+    finishStateChange(
+      operationEpoch
+    );
+  }
+}
+
+
+// ============================================================
+// Webcam source
+// ============================================================
+
+async function startWebcamMode() {
+
+  if (
+    !navigator.mediaDevices
+    ||
+    !navigator.mediaDevices
+      .getUserMedia
+  ) {
+
+    setText(
+      statusBox,
+      "Webcam API is unavailable."
+    );
+
+
+    return;
+  }
+
+
+  const operationEpoch =
+    beginStateChange(
+      "Starting webcam..."
+    );
+
+
+  stopWebcamStreamLocally();
+
+  stopVideoPreview();
+
+  hideStaticImagePreview();
+
+  revokeVisualObjectUrl();
+
+
+  visualMode =
+    "none";
+
+
+  visualSourceReady =
+    false;
+
+
+  let newStream =
+    null;
+
+
+  try {
+
+    newStream =
+      await navigator.mediaDevices
+        .getUserMedia(
+          {
+            video:
+              true,
+
+            audio:
+              false
+          }
+        );
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      newStream
+        .getTracks()
+        .forEach(
+          track => {
+
+            track.stop();
+          }
+        );
+
+
+      return;
+    }
+
+
+    if (!webcam) {
+
+      throw new Error(
+        "Webcam video element is missing."
+      );
+    }
+
+
+    webcamStream =
+      newStream;
+
+
+    webcam.removeAttribute(
+      "src"
+    );
+
+
+    webcam.srcObject =
+      webcamStream;
+
+
+    webcam.muted =
+      true;
+
+
+    webcam.style.display =
+      "";
+
+
+    await webcam.play();
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      stopWebcamStreamLocally();
+
+      return;
+    }
+
+
+    const formData =
+      new FormData();
+
+
+    formData.append(
+      "session_id",
+      sessionId
+    );
+
+
+    const response =
+      await fetch(
+        "/set_visual_webcam",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      stopWebcamStreamLocally();
+
+      return;
+    }
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
+    visualMode =
+      "webcam";
+
+
+    visualSourceReady =
+      true;
+
+
+    visualSourceName =
+      (
+        data.visual_name
+        || "Webcam"
+      );
+
+
+    resetPredictionDisplay();
+
+
+    setText(
+      webcamStatus,
+      "Webcam active."
+    );
+
+
+    setText(
+      sessionStatus,
+      "Webcam session running."
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Webcam ready"
+        + ` | Generation=${serverGeneration}`
+        + " | Temporal history reset."
+      )
+    );
+
+
+    if (startBtn) {
+
+      startBtn.disabled =
+        true;
+    }
+
+
+    if (stopBtn) {
+
+      stopBtn.disabled =
+        false;
+    }
+
+
+  } catch (error) {
+
+    stopWebcamStreamLocally();
+
+
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      visualMode =
+        "none";
+
+
+      visualSourceReady =
+        false;
+
+
+      visualSourceName =
+        null;
+
+
+      setText(
+        statusBox,
+        (
+          "Webcam start failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
+
+  } finally {
+
+    finishStateChange(
+      operationEpoch
+    );
+  }
+}
+
+
+// ============================================================
+// Stop visual
+//
+// Mirrors current desktop semantics:
+//
+// Static image:
+//     remains selected.
+//
+// Video / webcam:
+//     stream stops.
+//
+// Stop Visual itself DOES NOT reset temporal history.
+// ============================================================
+
+async function stopVisualMode() {
+
+  if (
+    visualMode
+    === "image"
+  ) {
+
+    setText(
+      statusBox,
+      (
+        "Static image remains selected. "
+        + "Stop Visual applies to "
+        + "video/webcam streams."
+      )
+    );
+
+
+    return;
+  }
+
+
+  if (
+    visualMode !== "video"
+    &&
+    visualMode !== "webcam"
+  ) {
+
+    return;
+  }
+
+
+  stopWebcamStreamLocally();
+
+  stopVideoPreview();
+
+  revokeVisualObjectUrl();
+
+
+  visualSourceReady =
+    false;
+
+
+  try {
+
+    const formData =
+      new FormData();
+
+
+    formData.append(
+      "session_id",
+      sessionId
+    );
+
+
+    const response =
+      await fetch(
+        "/stop_visual",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if (!response.ok) {
+
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
+    visualMode =
+      String(
+        data.visual_mode
+        || "none"
+      );
+
+
+    visualSourceReady =
+      Boolean(
+        data.visual_ready
+      );
+
+
+    if (
+      visualMode
+      === "none"
+    ) {
+
+      visualSourceName =
+        null;
+    }
+
+
+    setText(
+      webcamStatus,
+      "Visual stream stopped."
+    );
+
+
+    setText(
+      sessionStatus,
+      "Visual stream stopped."
+    );
+
+
+    if (startBtn) {
+
+      startBtn.disabled =
+        false;
+    }
+
+
+    if (stopBtn) {
+
+      stopBtn.disabled =
+        true;
+    }
+
+
+  } catch (error) {
+
+    setText(
+      statusBox,
+      (
+        "Stop Visual failed: "
+        + String(
+            error.message
+            || error
+          )
+      )
+    );
+
+
+  } finally {
+
     updateReadiness();
   }
-);
-
-
-textInput.addEventListener(
-  "input",
-  updateReadiness
-);
+}
 
 
 // ============================================================
 // Webcam frame capture
+//
+// Browser sends PNG so an unnecessary lossy JPEG encode is
+// avoided.
+//
+// app.py decodes the frame and creates the canonical OpenCV
+// JPEG snapshot before FinalMultimodalInference.
 // ============================================================
 
 function captureWebcamFrame() {
 
   if (
-    !mediaStream ||
-    webcam.videoWidth === 0 ||
-    webcam.videoHeight === 0
+    visualMode
+      !== "webcam"
+    ||
+    !webcamStream
+    ||
+    !webcam
+    ||
+    !canvas
+    ||
+    webcam.videoWidth
+      <= 0
+    ||
+    webcam.videoHeight
+      <= 0
   ) {
+
     return null;
   }
 
@@ -583,7 +4050,15 @@ function captureWebcamFrame() {
 
 
   const context =
-    canvas.getContext("2d");
+    canvas.getContext(
+      "2d"
+    );
+
+
+  if (!context) {
+
+    return null;
+  }
 
 
   context.drawImage(
@@ -595,300 +4070,1184 @@ function captureWebcamFrame() {
   );
 
 
-  return canvas.toDataURL(
-    "image/jpeg",
-    0.90
+  return (
+    canvas.toDataURL(
+      "image/png"
+    )
   );
 }
 
 
 // ============================================================
-// Audio recording cycle
+// Probability rendering
+//
+// IMPORTANT:
+//
+// This function DOES NOT normalise probabilities,
+// aggregate them, rank them, calculate confidence,
+// or calculate the confidence gap.
+//
+// It only converts server-provided decimal values into
+// percentages for display.
 // ============================================================
 
-function beginAudioRecordingCycle() {
+function resolveRenderLabels(
+  probabilities
+) {
 
   if (
-    !mediaRecorder ||
-    !sessionActive
+    behaviouralLabels.length > 0
   ) {
-    return;
+
+    return (
+      behaviouralLabels
+    );
   }
 
 
   if (
-    mediaRecorder.state
-    !== "inactive"
+    probabilities
+    &&
+    typeof probabilities
+      === "object"
   ) {
+
+    return (
+      Object.keys(
+        probabilities
+      )
+    );
+  }
+
+
+  return [];
+}
+
+
+function renderProbabilityBars(
+  container,
+  probabilities,
+  type = "temporal",
+  probabilitySum = null
+) {
+
+  if (!container) {
+
     return;
   }
 
 
-  audioChunks = [];
+  container.innerHTML =
+    "";
 
 
-  mediaRecorder.start();
+  if (
+    !probabilities
+    ||
+    typeof probabilities
+      !== "object"
+  ) {
+
+    return;
+  }
 
 
-  setTimeout(
-    () => {
+  const labels =
+    resolveRenderLabels(
+      probabilities
+    );
 
-      if (
-        mediaRecorder &&
-        mediaRecorder.state === "recording"
-      ) {
 
-        mediaRecorder.stop();
-      }
+  for (
+    const label
+    of labels
+  ) {
 
-    },
-    LIVE_INTERVAL_MS
+    const probability =
+      finiteNumber(
+        probabilities[label],
+        0
+      );
+
+
+    const percentage =
+      probability
+      * 100;
+
+
+    const boundedPercentage =
+      Math.max(
+        0,
+        Math.min(
+          100,
+          percentage
+        )
+      );
+
+
+    const row =
+      document.createElement(
+        "div"
+      );
+
+
+    row.className =
+      "sf-prob-row";
+
+
+    const labelRow =
+      document.createElement(
+        "div"
+      );
+
+
+    labelRow.className =
+      "sf-prob-label";
+
+
+    const name =
+      document.createElement(
+        "span"
+      );
+
+
+    name.textContent =
+      label;
+
+
+    const value =
+      document.createElement(
+        "strong"
+      );
+
+
+    value.textContent =
+      (
+        percentage.toFixed(2)
+        + "%"
+      );
+
+
+    labelRow.appendChild(
+      name
+    );
+
+
+    labelRow.appendChild(
+      value
+    );
+
+
+    const track =
+      document.createElement(
+        "div"
+      );
+
+
+    track.className =
+      "sf-prob-track";
+
+
+    const fill =
+      document.createElement(
+        "div"
+      );
+
+
+    fill.className =
+      (
+        "sf-prob-fill "
+        + type
+      );
+
+
+    fill.style.width =
+      (
+        boundedPercentage
+        + "%"
+      );
+
+
+    track.appendChild(
+      fill
+    );
+
+
+    row.appendChild(
+      labelRow
+    );
+
+
+    row.appendChild(
+      track
+    );
+
+
+    container.appendChild(
+      row
+    );
+  }
+
+
+  if (
+    probabilitySum !== null
+    &&
+    Number.isFinite(
+      Number(
+        probabilitySum
+      )
+    )
+  ) {
+
+    const sumRow =
+      document.createElement(
+        "div"
+      );
+
+
+    sumRow.className =
+      "sf-prob-sum";
+
+
+    const sumName =
+      document.createElement(
+        "span"
+      );
+
+
+    sumName.textContent =
+      "Probability sum";
+
+
+    const sumValue =
+      document.createElement(
+        "strong"
+      );
+
+
+    sumValue.textContent =
+      Number(
+        probabilitySum
+      ).toFixed(6);
+
+
+    sumRow.appendChild(
+      sumName
+    );
+
+
+    sumRow.appendChild(
+      sumValue
+    );
+
+
+    container.appendChild(
+      sumRow
+    );
+  }
+}
+
+
+// ============================================================
+// Prediction-result rendering
+//
+// Every substantive prediction value here comes from app.py /
+// TemporalFusionEngine.
+//
+// No temporal inference is reconstructed in JavaScript.
+// ============================================================
+
+function updatePredictionUI(
+  data
+) {
+
+  if (
+    !data
+    ||
+    typeof data
+      !== "object"
+  ) {
+
+    return;
+  }
+
+
+  const returnedGeneration =
+    Number(
+      data.generation
+    );
+
+
+  if (
+    Number.isFinite(
+      returnedGeneration
+    )
+  ) {
+
+    serverGeneration =
+      returnedGeneration;
+  }
+
+
+  const state =
+    String(
+      (
+        data.current_state
+        ||
+        data.prediction
+        ||
+        "unknown"
+      )
+    );
+
+
+  const confidencePct =
+    finiteNumber(
+      data.confidence_percent,
+      0
+    );
+
+
+  const gap =
+    finiteNumber(
+      data.confidence_gap,
+      0
+    );
+
+
+  const level =
+    String(
+      data.confidence_level
+      || "Low"
+    );
+
+
+  const validation =
+    (
+      data.runtime_validation
+      || {}
+    );
+
+
+  setText(
+    predictionBox,
+    state.toUpperCase()
+  );
+
+
+  setText(
+    confidencePercent,
+    (
+      confidencePct.toFixed(2)
+      + "%"
+    )
+  );
+
+
+  if (confidenceFill) {
+
+    confidenceFill.style.width =
+      (
+        Math.max(
+          0,
+          Math.min(
+            100,
+            confidencePct
+          )
+        )
+        + "%"
+      );
+  }
+
+
+  setText(
+    confidenceLevel,
+    level
+  );
+
+
+  if (confidenceLevel) {
+
+    confidenceLevel.classList.remove(
+      "confidence-high",
+      "confidence-medium",
+      "confidence-low"
+    );
+
+
+    confidenceLevel.classList.add(
+      (
+        "confidence-"
+        + level.toLowerCase()
+      )
+    );
+  }
+
+
+  setText(
+    rawPrediction,
+    (
+      data.raw_top_class
+      || "—"
+    )
+  );
+
+
+  const rawConfidencePct =
+    Number(
+      data.raw_confidence_percent
+    );
+
+
+  setText(
+    rawConfidence,
+
+    Number.isFinite(
+      rawConfidencePct
+    )
+
+      ? (
+          rawConfidencePct
+            .toFixed(2)
+          + "%"
+        )
+
+      : "—"
+  );
+
+
+  setText(
+    temporalSamples,
+    (
+      data.temporal_samples
+      ?? 0
+    )
+  );
+
+
+  setText(
+    temporalWindow,
+    (
+      data.temporal_window
+      ?? TEMPORAL_WINDOW
+    )
+  );
+
+
+  setText(
+    temporalWindowStatus,
+    (
+      `${data.temporal_samples ?? 0}`
+      + " / "
+      + `${data.temporal_window ?? TEMPORAL_WINDOW}`
+    )
+  );
+
+
+  setText(
+    secondaryState,
+    (
+      data.second_class
+      || "—"
+    )
+  );
+
+
+  setText(
+    confidenceGap,
+    gap.toFixed(4)
+  );
+
+
+  setText(
+    featureDimension,
+    (
+      data.feature_dimension
+      ?? "—"
+    )
+  );
+
+
+  setText(
+    deviceInfo,
+    (
+      data.device
+      || "—"
+    )
+  );
+
+
+  renderProbabilityBars(
+    probabilitiesBox,
+    data.probabilities,
+    "temporal",
+    validation.temporal_probability_sum
+  );
+
+
+  renderProbabilityBars(
+    rawProbabilitiesBox,
+    data.raw_probabilities,
+    "raw",
+    validation.raw_probability_sum
+  );
+
+
+  const modalities =
+    (
+      data.used_modalities
+      || {}
+    );
+
+
+  const active =
+    Object.entries(
+      modalities
+    )
+      .filter(
+        ([, enabled]) => {
+
+          return Boolean(
+            enabled
+          );
+        }
+      )
+      .map(
+        ([name]) => {
+
+          return name;
+        }
+      );
+
+
+  setText(
+    activeModalities,
+    (
+      active.length > 0
+
+        ? active.join(
+            ", "
+          )
+
+        : "—"
+    )
+  );
+
+
+  setText(
+    technicalRawState,
+    (
+      data.raw_top_class
+      || "—"
+    )
+  );
+
+
+  setText(
+    technicalTemporalSamples,
+    (
+      `${data.temporal_samples ?? 0}`
+      + "/"
+      + `${data.temporal_window ?? TEMPORAL_WINDOW}`
+    )
+  );
+
+
+  const webcamResult =
+    data.webcam_prediction;
+
+
+  if (
+    webcamResult
+    &&
+    typeof webcamResult
+      === "object"
+  ) {
+
+    setText(
+      webcamPrediction,
+      (
+        webcamResult.current_state
+        || "—"
+      )
+    );
+
+
+    const webcamConfidencePct =
+      Number(
+        webcamResult.confidence_percent
+      );
+
+
+    setText(
+      webcamConfidence,
+
+      Number.isFinite(
+        webcamConfidencePct
+      )
+
+        ? (
+            webcamConfidencePct
+              .toFixed(2)
+            + "%"
+          )
+
+        : "—"
+    );
+
+
+    setText(
+      webcamCalibrationUsed,
+      "Yes"
+    );
+
+
+    renderProbabilityBars(
+      webcamProbabilityBars,
+      webcamResult.probabilities,
+      "webcam",
+      null
+    );
+
+
+  } else {
+
+    setText(
+      webcamPrediction,
+      "Not used"
+    );
+
+
+    setText(
+      webcamConfidence,
+      "—"
+    );
+
+
+    setText(
+      webcamCalibrationUsed,
+      "No"
+    );
+
+
+    if (webcamProbabilityBars) {
+
+      webcamProbabilityBars.innerHTML =
+        "";
+    }
+  }
+
+
+  updateAudioDiagnostic(
+    data.audio_diagnostics
+  );
+
+
+  const rawSum =
+    finiteNumber(
+      validation.raw_probability_sum,
+      0
+    );
+
+
+  const temporalSum =
+    finiteNumber(
+      validation.temporal_probability_sum,
+      0
+    );
+
+
+  const windowFull =
+    Boolean(
+      (
+        data.temporal_window_full
+        ??
+        validation.temporal_window_full
+      )
+    );
+
+
+  const validationText =
+    (
+      "Runtime validation: "
+      + (
+          validation.pass
+            ? "PASS"
+            : "CHECK"
+        )
+      + " | Raw sum: "
+      + rawSum.toFixed(6)
+      + " | Temporal sum: "
+      + temporalSum.toFixed(6)
+      + " | Window: "
+      + (
+          windowFull
+            ? "FULL"
+            : "WARMING UP"
+        )
+    );
+
+
+  if (validationStatus) {
+
+    setText(
+      validationStatus,
+      validationText
+    );
+  }
+
+
+  setText(
+    statusBox,
+    (
+      validationText
+      + ` | Generation=${serverGeneration}`
+      + ` | Audio=${audioSourceName || "—"}`
+      + ` | Visual=${data.visual_source_type || visualMode}`
+    )
   );
 }
 
 
 // ============================================================
-// Start session
+// Automatic live prediction
+//
+// Equivalent scheduler policy:
+//
+//     every LIVE_INTERVAL_MS:
+//         if inference already running -> skip
+//         if modalities not ready      -> skip
+//         otherwise                    -> predict
+//
+// The backend owns temporal history.
 // ============================================================
 
-async function startSession() {
+async function runLivePrediction() {
 
-  if (sessionActive) {
+  if (
+    predictionInFlight
+    ||
+    stateChangeInProgress
+  ) {
+
     return;
   }
 
 
-  // Start a fresh temporal sequence.
-  sessionId =
-    createSessionId();
+  updateReadiness();
 
 
-  resetPredictionDisplay();
+  if (
+    !allModalitiesReady()
+  ) {
+
+    return;
+  }
+
+
+  let webcamFrame =
+    null;
+
+
+  if (
+    visualMode
+    === "webcam"
+  ) {
+
+    webcamFrame =
+      captureWebcamFrame();
+
+
+    if (!webcamFrame) {
+
+      setText(
+        statusBox,
+        (
+          "Current webcam frame "
+          + "is unavailable."
+        )
+      );
+
+
+      return;
+    }
+  }
+
+
+  predictionInFlight =
+    true;
+
+
+  const requestEpoch =
+    clientEpoch;
+
+
+  const requestGeneration =
+    serverGeneration;
 
 
   try {
 
-    mediaStream =
-      await navigator.mediaDevices
-        .getUserMedia(
-          {
-            video: true,
-            audio: true
-          }
-        );
+    const formData =
+      new FormData();
 
 
-    webcam.srcObject =
-      mediaStream;
+    formData.append(
+      "session_id",
+      sessionId
+    );
 
 
-    await webcam.play();
+    formData.append(
+      "generation",
+      String(
+        requestGeneration
+      )
+    );
 
 
-    webcamStatus.textContent =
-      "Webcam capturing.";
+    formData.append(
+      "text",
+      (
+        textInput
+          ? textInput.value.trim()
+          : ""
+      )
+    );
 
 
-    audioStatus.textContent =
-      "Microphone recording.";
+    formData.append(
+      "keystroke_events",
+      JSON.stringify(
+        keystrokeEvents
+      )
+    );
 
 
-    mediaRecorder =
-      new MediaRecorder(
-        mediaStream
+    formData.append(
+      "visual_mode",
+      visualMode
+    );
+
+
+    if (webcamFrame) {
+
+      formData.append(
+        "webcam_frame",
+        webcamFrame
+      );
+    }
+
+
+    setText(
+      statusBox,
+      (
+        "Running canonical multimodal "
+        + "fusion inference..."
+      )
+    );
+
+
+    const response =
+      await fetch(
+        "/predict_live",
+        {
+          method:
+            "POST",
+
+          body:
+            formData
+        }
       );
 
 
-    mediaRecorder.ondataavailable =
-      event => {
-
-        if (event.data.size > 0) {
-
-          audioChunks.push(
-            event.data
-          );
-        }
-      };
+    const data =
+      await response.json();
 
 
-    mediaRecorder.onstop =
-      () => {
+    if (!response.ok) {
 
-        if (audioChunks.length > 0) {
+      if (
+        response.status === 409
+        &&
+        handleConflictResponse(
+          data
+        )
+      ) {
 
-          latestAudioBlob =
-            new Blob(
-              audioChunks,
-              {
-                type: "audio/webm"
-              }
-            );
-
-
-          audioStatus.textContent =
-            "Latest audio chunk ready.";
-        }
+        return;
+      }
 
 
-        audioChunks = [];
+      throw new Error(
+        formatServerError(
+          data
+        )
+      );
+    }
 
 
-        updateReadiness();
+    // Browser reset/source replacement occurred while request
+    // was running.
+    if (
+      requestEpoch
+      !== clientEpoch
+    ) {
+
+      return;
+    }
 
 
-        if (sessionActive) {
-
-          beginAudioRecordingCycle();
-        }
-      };
-
-
-    sessionActive = true;
-
-
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-
-
-    sessionStatus.textContent =
-      "Live session running.";
-
-
-    statusBox.textContent =
-      "Capturing live multimodal behaviour...";
-
-
-    beginAudioRecordingCycle();
-
-
-    liveTimer =
-      setInterval(
-        runLivePrediction,
-        LIVE_INTERVAL_MS
+    const returnedGeneration =
+      Number(
+        data.generation
       );
 
 
-    updateReadiness();
+    // The backend response must belong to exactly the same
+    // TemporalFusionEngine generation used by this request.
+    if (
+      !Number.isFinite(
+        returnedGeneration
+      )
+      ||
+      returnedGeneration
+      !== requestGeneration
+    ) {
+
+      return;
+    }
+
+
+    serverGeneration =
+      returnedGeneration;
+
+
+    updatePredictionUI(
+      data
+    );
+
 
   } catch (error) {
 
-    // --------------------------------------------------------
-    // Limited modality mode
-    // --------------------------------------------------------
+    // Do not replace UI with an old error following a reset.
+    if (
+      requestEpoch
+      === clientEpoch
+    ) {
 
-    sessionActive = true;
-
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-
-
-    mediaStream = null;
-    mediaRecorder = null;
-
-
-    sessionStatus.textContent =
-      "Session running with limited modalities.";
-
-
-    webcamStatus.textContent =
-      "Webcam unavailable.";
-
-
-    audioStatus.textContent =
-      "Microphone unavailable.";
-
-
-    statusBox.textContent =
-      "Camera/microphone unavailable. " +
-      "Text and keystroke prediction remain available.";
-
-
-    liveTimer =
-      setInterval(
-        runLivePrediction,
-        LIVE_INTERVAL_MS
+      setText(
+        statusBox,
+        (
+          "Live prediction failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
       );
+    }
 
 
-    updateReadiness();
+  } finally {
+
+    predictionInFlight =
+      false;
   }
 }
 
 
 // ============================================================
-// Stop session
+// Prediction-display reset
+//
+// UI-only operation.
+//
+// It does NOT manipulate temporal history.
+// Temporal history exists only in TemporalFusionEngine.
 // ============================================================
 
-function stopSession() {
+function resetPredictionDisplay() {
 
-  sessionActive = false;
+  setText(
+    predictionBox,
+    "—"
+  );
 
 
-  if (liveTimer) {
+  setText(
+    confidencePercent,
+    "—"
+  );
 
-    clearInterval(
-      liveTimer
+
+  if (confidenceFill) {
+
+    confidenceFill.style.width =
+      "0%";
+  }
+
+
+  setText(
+    confidenceLevel,
+    "—"
+  );
+
+
+  if (confidenceLevel) {
+
+    confidenceLevel.classList.remove(
+      "confidence-high",
+      "confidence-medium",
+      "confidence-low"
     );
-
-    liveTimer = null;
   }
 
 
-  if (
-    mediaRecorder &&
-    mediaRecorder.state === "recording"
-  ) {
+  setText(
+    rawPrediction,
+    "—"
+  );
 
-    mediaRecorder.stop();
+
+  setText(
+    rawConfidence,
+    "—"
+  );
+
+
+  setText(
+    temporalSamples,
+    "0"
+  );
+
+
+  setText(
+    temporalWindow,
+    TEMPORAL_WINDOW
+  );
+
+
+  setText(
+    temporalWindowStatus,
+    `0 / ${TEMPORAL_WINDOW}`
+  );
+
+
+  setText(
+    secondaryState,
+    "—"
+  );
+
+
+  setText(
+    confidenceGap,
+    "—"
+  );
+
+
+  setText(
+    featureDimension,
+    "—"
+  );
+
+
+  setText(
+    deviceInfo,
+    "—"
+  );
+
+
+  setText(
+    webcamPrediction,
+    "—"
+  );
+
+
+  setText(
+    webcamConfidence,
+    "—"
+  );
+
+
+  setText(
+    webcamCalibrationUsed,
+    "—"
+  );
+
+
+  setText(
+    activeModalities,
+    "—"
+  );
+
+
+  setText(
+    technicalRawState,
+    "—"
+  );
+
+
+  setText(
+    technicalTemporalSamples,
+    "0"
+  );
+
+
+  setText(
+    sessionIdDisplay,
+    sessionId
+  );
+
+
+  if (probabilitiesBox) {
+
+    probabilitiesBox.innerHTML =
+      "";
   }
 
 
-  if (mediaStream) {
+  if (rawProbabilitiesBox) {
 
-    mediaStream
-      .getTracks()
-      .forEach(
-        track => track.stop()
-      );
+    rawProbabilitiesBox.innerHTML =
+      "";
   }
 
 
-  mediaStream = null;
-  mediaRecorder = null;
+  if (webcamProbabilityBars) {
+
+    webcamProbabilityBars.innerHTML =
+      "";
+  }
 
 
-  webcam.srcObject = null;
+  if (validationStatus) {
 
-
-  startBtn.disabled = false;
-  stopBtn.disabled = true;
-
-
-  sessionStatus.textContent =
-    "Session stopped.";
-
-
-  statusBox.textContent =
-    "Live session stopped.";
-
-
-  webcamStatus.textContent =
-    "Webcam inactive.";
-
-
-  audioStatus.textContent =
-    "Microphone inactive.";
-
-
-  updateReadiness();
+    validationStatus.textContent =
+      "";
+  }
 }
 
 
 // ============================================================
 // Temporal reset
+//
+// Audio and visual sources remain selected.
+//
+// Canonical generation increment + temporal-history clear occur
+// only in:
+//
+//     app.py
+//         ->
+//     TemporalFusionEngine.reset()
 // ============================================================
 
 async function resetTemporalWindow() {
+
+  const operationEpoch =
+    beginStateChange(
+      "Resetting temporal history..."
+    );
+
 
   try {
 
@@ -906,8 +5265,11 @@ async function resetTemporalWindow() {
       await fetch(
         "/reset_temporal",
         {
-          method: "POST",
-          body: formData
+          method:
+            "POST",
+
+          body:
+            formData
         }
       );
 
@@ -916,238 +5278,106 @@ async function resetTemporalWindow() {
       await response.json();
 
 
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      return;
+    }
+
+
     if (!response.ok) {
 
       throw new Error(
-        data.detail ||
-        "Could not reset temporal history."
+        formatServerError(
+          data
+        )
       );
     }
 
 
-    temporalSamples.textContent =
-      "0";
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
 
 
-    temporalWindowStatus.textContent =
-      `0 / ${data.temporal_window || 5}`;
+    TEMPORAL_WINDOW =
+      positiveInteger(
+        data.temporal_window,
+        TEMPORAL_WINDOW
+      );
 
 
-    technicalTemporalSamples.textContent =
-      "0";
+    resetPredictionDisplay();
 
 
-    statusBox.textContent =
-      "Temporal probability window reset.";
+    setText(
+      statusBox,
+      (
+        "Temporal probability history reset"
+        + ` | Generation=${serverGeneration}.`
+      )
+    );
+
 
   } catch (error) {
 
-    statusBox.textContent =
-      "Temporal reset failed: " +
-      error.message;
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      setText(
+        statusBox,
+        (
+          "Temporal reset failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
+
+  } finally {
+
+    finishStateChange(
+      operationEpoch
+    );
   }
 }
 
 
 // ============================================================
 // Full reset
+//
+// Full browser session reset + canonical backend reset.
 // ============================================================
 
 async function resetSession() {
 
-  try {
+  const operationEpoch =
+    beginStateChange(
+      "Performing full reset..."
+    );
 
-    await resetTemporalWindow();
 
-  } catch (_) {
-    // Continue resetting the interface.
-  }
+  stopWebcamStreamLocally();
 
+  stopVideoPreview();
 
-  stopSession();
+  hideStaticImagePreview();
 
-
-  textInput.value = "";
-
-
-  keystrokeEvents = [];
-
-  activeKeys.clear();
-
-
-  audioChunks = [];
-
-  latestAudioBlob = null;
-
-
-  // Generate a completely new temporal session.
-  sessionId =
-    createSessionId();
-
-
-  resetPredictionDisplay();
-
-
-  statusBox.textContent =
-    "Session reset.";
-
-
-  sessionStatus.textContent =
-    "Session not started.";
-
-
-  updateReadiness();
-}
-
-
-// ============================================================
-// Prediction display reset
-// ============================================================
-
-function resetPredictionDisplay() {
-
-  predictionBox.textContent =
-    "—";
-
-
-  confidencePercent.textContent =
-    "—";
-
-
-  confidenceFill.style.width =
-    "0%";
-
-
-  confidenceLevel.textContent =
-    "—";
-
-
-  confidenceLevel.classList.remove(
-    "confidence-high",
-    "confidence-medium",
-    "confidence-low"
-  );
-
-
-  rawPrediction.textContent =
-    "—";
-
-
-  rawConfidence.textContent =
-    "—";
-
-
-  temporalSamples.textContent =
-    "0";
-
-
-  secondaryState.textContent =
-    "—";
-
-
-  confidenceGap.textContent =
-    "—";
-
-
-  featureDimension.textContent =
-    "—";
-
-
-  deviceInfo.textContent =
-    "—";
-
-
-  webcamPrediction.textContent =
-    "—";
-
-
-  webcamConfidence.textContent =
-    "—";
-
-
-  webcamCalibrationUsed.textContent =
-    "—";
-
-
-  activeModalities.textContent =
-    "—";
-
-
-  technicalRawState.textContent =
-    "—";
-
-
-  technicalTemporalSamples.textContent =
-    "—";
-
-
-  sessionIdDisplay.textContent =
-    sessionId;
-
-
-  probabilitiesBox.innerHTML =
-    "";
-
-
-  rawProbabilitiesBox.innerHTML =
-    "";
-
-
-  webcamProbabilityBars.innerHTML =
-    "";
-}
-
-
-// ============================================================
-// Run live prediction
-// ============================================================
-
-async function runLivePrediction() {
-
-  if (predictionInFlight) {
-    return;
-  }
+  revokeVisualObjectUrl();
 
 
   try {
-
-    updateReadiness();
-
-
-    const text =
-      textInput.value.trim();
-
-
-    const keydowns =
-      keystrokeEvents.filter(
-        event =>
-          event.type === "down"
-      ).length;
-
-
-    if (
-      text.length < MIN_TEXT_CHARS ||
-      keydowns < MIN_KEYPRESSES
-    ) {
-
-      statusBox.textContent =
-        "Waiting for sufficient text " +
-        "and keystroke data...";
-
-      return;
-    }
-
-
-    predictionInFlight = true;
-
-
-    statusBox.textContent =
-      "Running multimodal fusion prediction...";
-
-
-    const frameData =
-      captureWebcamFrame();
-
 
     const formData =
       new FormData();
@@ -1159,45 +5389,15 @@ async function runLivePrediction() {
     );
 
 
-    formData.append(
-      "text",
-      text
-    );
-
-
-    formData.append(
-      "keystroke_events",
-      JSON.stringify(
-        keystrokeEvents
-      )
-    );
-
-
-    if (frameData !== null) {
-
-      formData.append(
-        "image_frame",
-        frameData
-      );
-    }
-
-
-    if (latestAudioBlob !== null) {
-
-      formData.append(
-        "audio_chunk",
-        latestAudioBlob,
-        "live_audio.webm"
-      );
-    }
-
-
     const response =
       await fetch(
-        "/predict_live",
+        "/full_reset",
         {
-          method: "POST",
-          body: formData
+          method:
+            "POST",
+
+          body:
+            formData
         }
       );
 
@@ -1206,491 +5406,233 @@ async function runLivePrediction() {
       await response.json();
 
 
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      return;
+    }
+
+
     if (!response.ok) {
 
       throw new Error(
-        data.detail ||
-        data.error ||
-        "Live prediction failed."
+        formatServerError(
+          data
+        )
       );
     }
 
 
-    updatePredictionUI(
-      data
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
+    TEMPORAL_WINDOW =
+      positiveInteger(
+        data.temporal_window,
+        TEMPORAL_WINDOW
+      );
+
+
+    if (textInput) {
+
+      textInput.value =
+        "";
+    }
+
+
+    keystrokeEvents = [];
+
+    activeKeys.clear();
+
+
+    audioSourceReady =
+      false;
+
+
+    audioSourceName =
+      null;
+
+
+    audioSourceKind =
+      null;
+
+
+    visualMode =
+      "none";
+
+
+    visualSourceReady =
+      false;
+
+
+    visualSourceName =
+      null;
+
+
+    resetPredictionDisplay();
+
+
+    setText(
+      audioStatus,
+      "Audio not loaded."
     );
+
+
+    if (audioDiagnostic) {
+
+      setText(
+        audioDiagnostic,
+        "Audio condition: —"
+      );
+    }
+
+
+    setText(
+      webcamStatus,
+      "Visual input not loaded."
+    );
+
+
+    setText(
+      sessionStatus,
+      "Session not started."
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Full session reset"
+        + ` | Generation=${serverGeneration}.`
+      )
+    );
+
+
+    if (startBtn) {
+
+      startBtn.disabled =
+        false;
+    }
+
+
+    if (stopBtn) {
+
+      stopBtn.disabled =
+        true;
+    }
+
 
   } catch (error) {
 
-    statusBox.textContent =
-      "Live prediction failed: " +
-      error.message;
+    if (
+      operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+
+      setText(
+        statusBox,
+        (
+          "Full reset failed: "
+          + String(
+              error.message
+              || error
+            )
+        )
+      );
+    }
+
 
   } finally {
 
-    predictionInFlight = false;
+    finishStateChange(
+      operationEpoch
+    );
   }
 }
 
 
 // ============================================================
-// Probability renderer
+// Existing button bindings
+//
+// Existing Start button = Start Webcam.
+//
+// Automatic multimodal prediction itself remains continuously
+// scheduled in the background once the page is initialised.
 // ============================================================
 
-function renderProbabilityBars(
-  container,
-  probabilities,
-  fillClass = ""
-) {
+if (startBtn) {
 
-  container.innerHTML =
-    "";
-
-
-  if (!probabilities) {
-    return;
-  }
+  startBtn.addEventListener(
+    "click",
+    startWebcamMode
+  );
+}
 
 
-  Object.entries(
-    probabilities
-  )
-    .sort(
-      (a, b) =>
-        Number(b[1])
-        - Number(a[1])
-    )
-    .forEach(
-      ([label, probability]) => {
+if (stopBtn) {
 
-        const percentage =
-          (
-            Number(probability)
-            * 100
-          ).toFixed(2);
+  stopBtn.addEventListener(
+    "click",
+    stopVisualMode
+  );
+}
 
 
-        const row =
-          document.createElement(
-            "div"
-          );
+if (resetTemporalBtn) {
+
+  resetTemporalBtn.addEventListener(
+    "click",
+    resetTemporalWindow
+  );
+}
 
 
-        row.className =
-          "prob-row";
+if (resetBtn) {
 
-
-        row.innerHTML = `
-          <div class="prob-label">
-            <span>${label}</span>
-            <span>${percentage}%</span>
-          </div>
-
-          <div class="track">
-            <div
-              class="fill ${fillClass}"
-              data-width="${percentage}%"
-            ></div>
-          </div>
-        `;
-
-
-        container.appendChild(
-          row
-        );
-      }
-    );
-
-
-  requestAnimationFrame(
-    () => {
-
-      container
-        .querySelectorAll(".fill")
-        .forEach(
-          bar => {
-
-            bar.style.width =
-              bar.dataset.width;
-          }
-        );
-    }
+  resetBtn.addEventListener(
+    "click",
+    resetSession
   );
 }
 
 
 // ============================================================
-// Update prediction UI
+// Shutdown
 // ============================================================
 
-function updatePredictionUI(data) {
+window.addEventListener(
+  "beforeunload",
 
-  // ----------------------------------------------------------
-  // Final temporally aggregated result
-  // ----------------------------------------------------------
+  () => {
 
-  const state =
-    data.current_state ||
-    data.prediction ||
-    "unknown";
+    if (
+      liveTimer
+      !== null
+    ) {
 
-
-  const confidence =
-    Number(
-      data.confidence || 0
-    );
-
-
-  const confidencePct =
-    Number(
-      data.confidence_percent
-      ?? confidence * 100
-    );
-
-
-  const gap =
-    Number(
-      data.confidence_gap || 0
-    );
-
-
-  const level =
-    data.confidence_level ||
-    "Low";
-
-
-  predictionBox.textContent =
-    state.toUpperCase();
-
-
-  confidencePercent.textContent =
-    `${confidencePct.toFixed(2)}%`;
-
-
-  confidenceFill.style.width =
-    `${
-      Math.max(
-        0,
-        Math.min(
-          confidencePct,
-          100
-        )
-      )
-    }%`;
-
-
-  confidenceLevel.textContent =
-    level;
-
-
-  confidenceLevel.classList.remove(
-    "confidence-high",
-    "confidence-medium",
-    "confidence-low"
-  );
-
-
-  if (level === "High") {
-
-    confidenceLevel.classList.add(
-      "confidence-high"
-    );
-
-  } else if (
-    level === "Medium"
-  ) {
-
-    confidenceLevel.classList.add(
-      "confidence-medium"
-    );
-
-  } else {
-
-    confidenceLevel.classList.add(
-      "confidence-low"
-    );
-  }
-
-
-  // ----------------------------------------------------------
-  // Temporal diagnostics
-  // ----------------------------------------------------------
-
-  const samples =
-    Number(
-      data.temporal_samples || 0
-    );
-
-
-  const windowSize =
-    Number(
-      data.temporal_window || 5
-    );
-
-
-  temporalSamples.textContent =
-    samples;
-
-
-  temporalWindow.textContent =
-    windowSize;
-
-
-  temporalWindowStatus.textContent =
-    `${samples} / ${windowSize}`;
-
-
-  // ----------------------------------------------------------
-  // Raw current fusion result
-  // ----------------------------------------------------------
-
-  const rawState =
-    data.raw_prediction ||
-    "—";
-
-
-  const rawConfidencePct =
-    Number(
-      data.raw_confidence_percent
-      ?? (
-        Number(
-          data.raw_confidence || 0
-        )
-        * 100
-      )
-    );
-
-
-  rawPrediction.textContent =
-    rawState.toUpperCase();
-
-
-  rawConfidence.textContent =
-    `${rawConfidencePct.toFixed(2)}%`;
-
-
-  // ----------------------------------------------------------
-  // Technical details
-  // ----------------------------------------------------------
-
-  const details =
-    data.technical_details || {};
-
-
-  secondaryState.textContent =
-    (
-      details.second_class ||
-      "—"
-    ).toUpperCase();
-
-
-  confidenceGap.textContent =
-    gap.toFixed(4);
-
-
-  featureDimension.textContent =
-    data.feature_dimension ??
-    details.feature_dimension ??
-    "—";
-
-
-  deviceInfo.textContent =
-    data.device ||
-    details.device ||
-    "—";
-
-
-  webcamCalibrationUsed.textContent =
-    data.webcam_calibration_used
-      ? "Yes"
-      : "No";
-
-
-  activeModalities.textContent =
-    formatModalities(
-      data.used_modalities
-    );
-
-
-  technicalRawState.textContent =
-    rawState.toUpperCase();
-
-
-  technicalTemporalSamples.textContent =
-    `${samples} / ${windowSize}`;
-
-
-  sessionIdDisplay.textContent =
-    data.session_id ||
-    sessionId;
-
-
-  // ----------------------------------------------------------
-  // Final aggregated probabilities
-  // ----------------------------------------------------------
-
-  renderProbabilityBars(
-    probabilitiesBox,
-    data.probabilities
-  );
-
-
-  // ----------------------------------------------------------
-  // Raw probabilities
-  // ----------------------------------------------------------
-
-  renderProbabilityBars(
-    rawProbabilitiesBox,
-    data.raw_probabilities,
-    "raw-fill"
-  );
-
-
-  // ----------------------------------------------------------
-  // Webcam-calibrated result
-  // ----------------------------------------------------------
-
-  updateWebcamResult(
-    data.webcam_prediction
-  );
-
-
-  // ----------------------------------------------------------
-  // Status message
-  // ----------------------------------------------------------
-
-  statusBox.textContent =
-    (
-      "Behavioural-state prediction complete | " +
-      `Temporal window: ${samples}/${windowSize} | ` +
-      `Active modalities: ${
-        formatModalities(
-          data.used_modalities
-        )
-      }`
-    );
-}
-
-
-// ============================================================
-// Webcam-calibrated result
-// ============================================================
-
-function updateWebcamResult(
-  webcamResult
-) {
-
-  if (!webcamResult) {
-
-    webcamPrediction.textContent =
-      "—";
-
-
-    webcamConfidence.textContent =
-      "—";
-
-
-    webcamProbabilityBars.innerHTML =
-      "";
-
-
-    return;
-  }
-
-
-  const state =
-    webcamResult.current_state ||
-    webcamResult.prediction ||
-    "unknown";
-
-
-  const confidencePct =
-    Number(
-      webcamResult.confidence_percent
-      ?? (
-        Number(
-          webcamResult.confidence || 0
-        )
-        * 100
-      )
-    );
-
-
-  webcamPrediction.textContent =
-    state.toUpperCase();
-
-
-  webcamConfidence.textContent =
-    `${confidencePct.toFixed(2)}%`;
-
-
-  renderProbabilityBars(
-    webcamProbabilityBars,
-    webcamResult.probabilities,
-    "webcam-fill"
-  );
-}
-
-
-// ============================================================
-// Active modality formatter
-// ============================================================
-
-function formatModalities(
-  modalities
-) {
-
-  if (!modalities) {
-    return "unknown";
-  }
-
-
-  const active =
-    Object.entries(
-      modalities
-    )
-      .filter(
-        ([, enabled]) =>
-          Boolean(enabled)
-      )
-      .map(
-        ([name]) => name
+      window.clearInterval(
+        liveTimer
       );
 
 
-  return (
-    active.length
-      ? active.join(", ")
-      : "none"
-  );
-}
+      liveTimer =
+        null;
+    }
 
 
-// ============================================================
-// Event handlers
-// ============================================================
-
-startBtn.addEventListener(
-  "click",
-  startSession
-);
+    stopWebcamStreamLocally();
 
 
-stopBtn.addEventListener(
-  "click",
-  stopSession
-);
-
-
-resetTemporalBtn.addEventListener(
-  "click",
-  resetTemporalWindow
-);
-
-
-resetBtn.addEventListener(
-  "click",
-  resetSession
+    revokeVisualObjectUrl();
+  }
 );
 
 
@@ -1698,8 +5640,78 @@ resetBtn.addEventListener(
 // Initialisation
 // ============================================================
 
-resetPredictionDisplay();
+async function initialise() {
 
-checkModelStatus();
+  installStyles();
 
-updateReadiness();
+
+  // Load authoritative backend configuration FIRST.
+  await checkModelStatus();
+
+
+  // Dynamic button labels now use backend-supplied values,
+  // e.g. AUDIO_CAPTURE_SECONDS.
+  installAudioControls();
+
+  installVisualControls();
+
+
+  resetPredictionDisplay();
+
+  updateReadiness();
+
+
+  if (startBtn) {
+
+    startBtn.disabled =
+      false;
+  }
+
+
+  if (stopBtn) {
+
+    stopBtn.disabled =
+      true;
+  }
+
+
+  setText(
+    sessionStatus,
+    "Session not started."
+  );
+
+
+  setText(
+    statusBox,
+    (
+      "Ready. Provide text, keystrokes, "
+      + "one fixed audio source and "
+      + "one visual source."
+    )
+  );
+
+
+  if (
+    liveTimer
+    !== null
+  ) {
+
+    window.clearInterval(
+      liveTimer
+    );
+  }
+
+
+  liveTimer =
+    window.setInterval(
+      runLivePrediction,
+      LIVE_INTERVAL_MS
+    );
+}
+
+
+// ============================================================
+// Start
+// ============================================================
+
+void initialise();

@@ -1,0 +1,11 @@
+{
+    "observations": 62,
+    "tolerance": 1e-09,
+    "all_within_tolerance": true,
+    "within_tolerance_count": 62,
+    "within_tolerance_rate": 1.0,
+    "argmax_match_count": 62,
+    "argmax_match_rate": 1.0,
+    "maximum_absolute_probability_error": 0.0,
+    "mean_absolute_probability_error": 0.0
+}

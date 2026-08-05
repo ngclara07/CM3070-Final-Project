@@ -1,0 +1,17 @@
+{
+    "feature_group": "multimodal_all",
+    "best_model": "catboost",
+    "num_features": 2367,
+    "test_accuracy": 1.0,
+    "test_macro_f1": 1.0,
+    "test_temporal_accuracy": 1.0,
+    "test_temporal_macro_f1": 1.0,
+    "test_temporal_full_accuracy": NaN,
+    "test_temporal_full_macro_f1": NaN,
+    "full_window_test_observations": 0,
+    "test_raw_switch_rate": 0.0,
+    "test_temporal_switch_rate": 0.0,
+    "test_switch_rate_reduction": 0.0,
+    "temporal_minus_raw_accuracy": 0.0,
+    "temporal_minus_raw_macro_f1": 0.0
+}

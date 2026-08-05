@@ -1,0 +1,16 @@
+feature_group,best_model,num_features,test_accuracy,test_macro_f1,test_temporal_accuracy,test_temporal_macro_f1,test_temporal_full_accuracy,test_temporal_full_macro_f1,full_window_test_observations,test_raw_switch_rate,test_temporal_switch_rate,test_switch_rate_reduction,temporal_minus_raw_accuracy,temporal_minus_raw_macro_f1
+keystroke_image,random_forest,790,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+keystroke_audio_image,random_forest,1599,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+keystroke_audio,lightgbm,831,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+keystroke_only,random_forest,22,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+keystroke_text_image,logistic_regression,1558,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+keystroke_text_audio,catboost,1599,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+keystroke_text,catboost,790,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+text_audio,logistic_regression,1577,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+text_audio_image,logistic_regression,2345,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+text_image,logistic_regression,1536,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+multimodal_all,catboost,2367,1.0,1.0,1.0,1.0,,,0,0.0,0.0,0.0,0.0,0.0
+audio_image,logistic_regression,1577,0.9838709677419355,0.9833147942157954,0.9838709677419355,0.9833147942157954,,,0,0.0,0.0,0.0,0.0,0.0
+text_only,svm_rbf,768,0.967741935483871,0.9672043010752689,0.967741935483871,0.9672043010752689,,,0,0.0,0.0,0.0,0.0,0.0
+audio_only,svm_rbf,809,0.9032258064516129,0.9050903119868637,0.9032258064516129,0.9050903119868637,,,0,0.0,0.0,0.0,0.0,0.0
+image_only,random_forest,768,0.9032258064516129,0.9009336973741868,0.9032258064516129,0.9009336973741868,,,0,0.0,0.0,0.0,0.0,0.0

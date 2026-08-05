@@ -4,745 +4,1029 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
+import sys
 import uuid
+
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 
 # ============================================================
-# Project configuration
+# Project paths
 # ============================================================
 
-ROOT_DIR = Path(__file__).resolve().parents[1]
-APP_PATH = ROOT_DIR / "web_app" / "app.py"
+ROOT_DIR = (
+    Path(__file__)
+    .resolve()
+    .parents[1]
+)
 
-EXPECTED_CLASSES = {
+APP_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "app.py"
+)
+
+if str(ROOT_DIR) not in sys.path:
+
+    sys.path.insert(
+        0,
+        str(ROOT_DIR),
+    )
+
+
+# ============================================================
+# Canonical temporal implementation
+# ============================================================
+
+from temporal_fusion import (
+    LABELS,
+    TEMPORAL_PROBABILITY_WINDOW,
+    StaleGenerationError,
+    TemporalFusionEngine,
+    aggregate_probability_history,
+    confidence_level,
+    normalise_probability_dict,
+    summarise_probability_dict,
+    validate_probability_distribution,
+)
+
+
+EXPECTED_LABELS = (
     "focused",
     "distracted",
     "fatigued",
     "overloaded",
-}
+)
 
 
 # ============================================================
-# Module loader
+# Lightweight web module loader
 # ============================================================
 
 def load_web_app_module() -> ModuleType:
     """
-    Load web_app/app.py directly from its file path.
+    Import web_app/app.py without running the FastAPI lifespan.
 
-    The module is loaded without starting the FastAPI lifespan, so these
-    tests remain lightweight and do not initialise large pretrained models.
+    The module is inserted into sys.modules before execution because
+    SessionState is a dataclass and Python's dataclass machinery expects
+    its defining module to be registered.
     """
 
     assert APP_PATH.exists(), (
-        f"Missing web application: {APP_PATH}"
+        f"Missing web backend: {APP_PATH}"
     )
 
     module_name = (
-        "sensefuze_web_app_unit_"
+        "sensefuze_unit_web_"
         + uuid.uuid4().hex
     )
 
-    spec = importlib.util.spec_from_file_location(
-        module_name,
-        APP_PATH,
+    spec = (
+        importlib.util.spec_from_file_location(
+            module_name,
+            APP_PATH,
+        )
     )
 
     assert spec is not None
     assert spec.loader is not None
 
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    module = (
+        importlib.util.module_from_spec(
+            spec
+        )
+    )
+
+    sys.modules[
+        module_name
+    ] = module
+
+    try:
+
+        spec.loader.exec_module(
+            module
+        )
+
+    except Exception:
+
+        sys.modules.pop(
+            module_name,
+            None,
+        )
+
+        raise
 
     return module
 
 
-# ============================================================
-# Confidence-level tests
-# ============================================================
+@pytest.fixture(
+    scope="module"
+)
+def web_app() -> ModuleType:
 
-def test_confidence_level_logic():
-    print(
-        "\n[UNIT] Testing confidence-level thresholds..."
-    )
-
-    app = load_web_app_module()
-
-    assert app.get_confidence_level(0.40) == "High"
-    assert app.get_confidence_level(0.35) == "High"
-
-    assert app.get_confidence_level(0.20) == "Medium"
-    assert app.get_confidence_level(0.15) == "Medium"
-
-    assert app.get_confidence_level(0.1499) == "Low"
-    assert app.get_confidence_level(0.05) == "Low"
-    assert app.get_confidence_level(0.00) == "Low"
-
-    print(
-        "       PASS: High / Medium / Low thresholds "
-        "behave correctly."
+    return (
+        load_web_app_module()
     )
 
 
 # ============================================================
-# Keystroke tests
+# Canonical constants
 # ============================================================
 
-def test_keystroke_count_extraction():
-    print(
-        "\n[UNIT] Testing keystroke key-down counting..."
+def test_canonical_behavioural_labels():
+
+    assert tuple(
+        LABELS
+    ) == EXPECTED_LABELS
+
+
+def test_temporal_window_is_five():
+
+    assert (
+        TEMPORAL_PROBABILITY_WINDOW
+        == 5
     )
 
-    app = load_web_app_module()
 
-    events = [
-        {"type": "down", "key": "a"},
-        {"type": "up", "key": "a"},
-        {"type": "down", "key": "b"},
-        {"type": "up", "key": "b"},
-        {"type": "down", "key": "space"},
+# ============================================================
+# Probability normalisation
+# ============================================================
+
+def test_probability_normalisation():
+
+    probabilities = (
+        normalise_probability_dict(
+            {
+                "focused":
+                    4.0,
+
+                "distracted":
+                    2.0,
+
+                "fatigued":
+                    1.0,
+
+                "overloaded":
+                    1.0,
+            },
+            labels=LABELS,
+        )
+    )
+
+    assert (
+        tuple(
+            probabilities.keys()
+        )
+        == EXPECTED_LABELS
+    )
+
+    assert math.isclose(
+        sum(
+            probabilities.values()
+        ),
+        1.0,
+        abs_tol=1e-12,
+    )
+
+    assert math.isclose(
+        probabilities[
+            "focused"
+        ],
+        0.5,
+        abs_tol=1e-12,
+    )
+
+
+def test_probability_normalisation_clamps_invalid_values():
+
+    probabilities = (
+        normalise_probability_dict(
+            {
+                "focused":
+                    float("nan"),
+
+                "distracted":
+                    float("inf"),
+
+                "fatigued":
+                    -10.0,
+
+                "overloaded":
+                    2.0,
+            },
+            labels=LABELS,
+        )
+    )
+
+    assert probabilities == {
+        "focused":
+            0.0,
+
+        "distracted":
+            0.0,
+
+        "fatigued":
+            0.0,
+
+        "overloaded":
+            1.0,
+    }
+
+
+def test_zero_distribution_becomes_uniform():
+
+    probabilities = (
+        normalise_probability_dict(
+            {
+                label:
+                    0.0
+                for label
+                in LABELS
+            },
+            labels=LABELS,
+        )
+    )
+
+    for label in LABELS:
+
+        assert math.isclose(
+            probabilities[
+                label
+            ],
+            0.25,
+            abs_tol=1e-12,
+        )
+
+
+def test_probability_validator_accepts_valid_distribution():
+
+    validation = (
+        validate_probability_distribution(
+            {
+                "focused":
+                    0.25,
+
+                "distracted":
+                    0.25,
+
+                "fatigued":
+                    0.25,
+
+                "overloaded":
+                    0.25,
+            },
+            labels=LABELS,
+        )
+    )
+
+    assert validation[
+        "valid"
     ]
 
-    result = app.extract_keystroke_count(
-        json.dumps(events)
-    )
-
-    assert result == 3
-
-    print(
-        f"       PASS: Expected 3 key-down events, "
-        f"received {result}."
+    assert math.isclose(
+        validation[
+            "probability_sum"
+        ],
+        1.0,
+        abs_tol=1e-12,
     )
 
 
-def test_invalid_keystroke_json_returns_zero():
-    print(
-        "\n[UNIT] Testing malformed keystroke JSON handling..."
+def test_probability_validator_rejects_invalid_sum():
+
+    validation = (
+        validate_probability_distribution(
+            {
+                "focused":
+                    0.8,
+
+                "distracted":
+                    0.8,
+
+                "fatigued":
+                    0.0,
+
+                "overloaded":
+                    0.0,
+            },
+            labels=LABELS,
+        )
     )
 
-    app = load_web_app_module()
-
-    result = app.extract_keystroke_count(
-        "invalid-json"
-    )
-
-    assert result == 0
-
-    print(
-        "       PASS: Invalid JSON safely produces "
-        "zero keypresses."
-    )
-
-
-def test_empty_keystroke_list_returns_zero():
-    print(
-        "\n[UNIT] Testing empty keystroke input..."
-    )
-
-    app = load_web_app_module()
-
-    result = app.extract_keystroke_count(
-        "[]"
-    )
-
-    assert result == 0
-
-    print(
-        "       PASS: Empty event list produces "
-        "zero keypresses."
-    )
+    assert not validation[
+        "valid"
+    ]
 
 
 # ============================================================
-# Fallback prediction tests
+# Confidence
 # ============================================================
 
-def test_fallback_prediction_outputs_valid_distribution():
-    print(
-        "\n[UNIT] Testing fallback behavioural "
-        "probability distribution..."
-    )
-
-    app = load_web_app_module()
-
-    probabilities = app.fallback_prediction(
+@pytest.mark.parametrize(
+    (
+        "gap",
+        "expected",
+    ),
+    [
         (
-            "I feel tired and distracted while trying "
-            "to complete this task."
-        )
-    )
-
-    assert set(probabilities.keys()) == EXPECTED_CLASSES
-
-    total_probability = sum(
-        probabilities.values()
-    )
-
-    assert abs(
-        total_probability - 1.0
-    ) < 1e-6
-
-    for label, probability in probabilities.items():
-
-        assert 0.0 <= probability <= 1.0, (
-            f"Invalid probability for {label}: "
-            f"{probability}"
-        )
-
-    print(
-        "       PASS: Four behavioural classes returned "
-        f"and probabilities sum to "
-        f"{total_probability:.6f}."
-    )
-
-
-def test_fallback_prediction_can_emphasise_fatigued():
-    print(
-        "\n[UNIT] Testing fatigue cue handling "
-        "in fallback prediction..."
-    )
-
-    app = load_web_app_module()
-
-    probabilities = app.fallback_prediction(
-        "I am extremely tired, sleepy and exhausted."
-    )
-
-    assert probabilities["fatigued"] > 0.20
-
-    print(
-        "       PASS: Fatigue-related text increases "
-        f"fatigued probability to "
-        f"{probabilities['fatigued']:.4f}."
-    )
-
-
-# ============================================================
-# Probability normalisation tests
-# ============================================================
-
-def test_probability_normalisation_sums_to_one():
-    print(
-        "\n[UNIT] Testing probability normalisation..."
-    )
-
-    app = load_web_app_module()
-
-    probabilities = (
-        app.normalise_probability_distribution(
-            {
-                "focused": 4.0,
-                "distracted": 2.0,
-                "fatigued": 1.0,
-                "overloaded": 1.0,
-            }
-        )
-    )
-
-    assert set(probabilities) == EXPECTED_CLASSES
-
-    assert abs(
-        sum(probabilities.values()) - 1.0
-    ) < 1e-9
-
-    assert abs(
-        probabilities["focused"] - 0.50
-    ) < 1e-9
-
-    print(
-        "       PASS: Arbitrary non-negative scores are "
-        "normalised to a valid four-class distribution."
-    )
-
-
-def test_probability_normalisation_handles_zero_distribution():
-    print(
-        "\n[UNIT] Testing zero-distribution fallback..."
-    )
-
-    app = load_web_app_module()
-
-    probabilities = (
-        app.normalise_probability_distribution(
-            {
-                "focused": 0.0,
-                "distracted": 0.0,
-                "fatigued": 0.0,
-                "overloaded": 0.0,
-            }
-        )
-    )
-
-    for label in EXPECTED_CLASSES:
-        assert abs(
-            probabilities[label] - 0.25
-        ) < 1e-9
-
-    print(
-        "       PASS: Zero-valued distribution becomes "
-        "a uniform four-class distribution."
-    )
-
-
-# ============================================================
-# Temporal probability aggregation tests
-# ============================================================
-
-def test_temporal_probability_aggregation_uses_mean():
-    print(
-        "\n[UNIT] Testing temporal mean-probability "
-        "aggregation..."
-    )
-
-    app = load_web_app_module()
-
-    session_id = (
-        "unit-temporal-mean-"
-        + uuid.uuid4().hex
-    )
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    first = {
-        "focused": 0.80,
-        "distracted": 0.10,
-        "fatigued": 0.05,
-        "overloaded": 0.05,
-    }
-
-    second = {
-        "focused": 0.20,
-        "distracted": 0.60,
-        "fatigued": 0.10,
-        "overloaded": 0.10,
-    }
-
-    aggregated_1, count_1 = (
-        app.add_temporal_probability(
-            session_id,
-            first,
-        )
-    )
-
-    aggregated_2, count_2 = (
-        app.add_temporal_probability(
-            session_id,
-            second,
-        )
-    )
-
-    assert count_1 == 1
-    assert count_2 == 2
-
-    assert abs(
-        aggregated_1["focused"] - 0.80
-    ) < 1e-9
-
-    # Mean:
-    # focused    = (0.80 + 0.20) / 2 = 0.50
-    # distracted = (0.10 + 0.60) / 2 = 0.35
-
-    assert abs(
-        aggregated_2["focused"] - 0.50
-    ) < 1e-9
-
-    assert abs(
-        aggregated_2["distracted"] - 0.35
-    ) < 1e-9
-
-    assert abs(
-        sum(aggregated_2.values()) - 1.0
-    ) < 1e-9
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    print(
-        "       PASS: Temporal aggregation computes "
-        "the arithmetic mean of recent probability vectors."
-    )
-
-
-def test_temporal_probability_window_keeps_latest_five():
-    print(
-        "\n[UNIT] Testing rolling temporal window limit..."
-    )
-
-    app = load_web_app_module()
-
-    session_id = (
-        "unit-window-"
-        + uuid.uuid4().hex
-    )
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    # Observation 1 strongly favours focused.
-    app.add_temporal_probability(
-        session_id,
-        {
-            "focused": 1.0,
-            "distracted": 0.0,
-            "fatigued": 0.0,
-            "overloaded": 0.0,
-        },
-    )
-
-    # Observations 2-6 strongly favour distracted.
-    for _ in range(5):
-
-        aggregated, count = (
-            app.add_temporal_probability(
-                session_id,
-                {
-                    "focused": 0.0,
-                    "distracted": 1.0,
-                    "fatigued": 0.0,
-                    "overloaded": 0.0,
-                },
-            )
-        )
+            0.00,
+            "Low",
+        ),
+        (
+            0.149999,
+            "Low",
+        ),
+        (
+            0.15,
+            "Medium",
+        ),
+        (
+            0.20,
+            "Medium",
+        ),
+        (
+            0.349999,
+            "Medium",
+        ),
+        (
+            0.35,
+            "High",
+        ),
+        (
+            0.80,
+            "High",
+        ),
+    ],
+)
+def test_confidence_thresholds(
+    gap: float,
+    expected: str,
+):
 
     assert (
-        count
-        == app.TEMPORAL_PROBABILITY_WINDOW
-    )
-
-    # The initial focused observation has been removed.
-    assert abs(
-        aggregated["focused"] - 0.0
-    ) < 1e-9
-
-    assert abs(
-        aggregated["distracted"] - 1.0
-    ) < 1e-9
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    print(
-        "       PASS: Temporal history retains only "
-        "the latest five prediction vectors."
+        confidence_level(
+            gap
+        )
+        == expected
     )
 
 
-def test_temporal_sessions_are_isolated():
-    print(
-        "\n[UNIT] Testing session-isolated temporal histories..."
-    )
+def test_probability_summary():
 
-    app = load_web_app_module()
-
-    session_a = (
-        "unit-session-a-"
-        + uuid.uuid4().hex
-    )
-
-    session_b = (
-        "unit-session-b-"
-        + uuid.uuid4().hex
-    )
-
-    app.clear_temporal_session(
-        session_a
-    )
-
-    app.clear_temporal_session(
-        session_b
-    )
-
-    result_a, count_a = (
-        app.add_temporal_probability(
-            session_a,
+    summary = (
+        summarise_probability_dict(
             {
-                "focused": 1.0,
-                "distracted": 0.0,
-                "fatigued": 0.0,
-                "overloaded": 0.0,
+                "focused":
+                    0.62,
+
+                "distracted":
+                    0.14,
+
+                "fatigued":
+                    0.12,
+
+                "overloaded":
+                    0.12,
             },
-        )
-    )
-
-    result_b, count_b = (
-        app.add_temporal_probability(
-            session_b,
-            {
-                "focused": 0.0,
-                "distracted": 0.0,
-                "fatigued": 1.0,
-                "overloaded": 0.0,
-            },
-        )
-    )
-
-    assert count_a == 1
-    assert count_b == 1
-
-    assert result_a["focused"] == 1.0
-    assert result_b["fatigued"] == 1.0
-
-    app.clear_temporal_session(
-        session_a
-    )
-
-    app.clear_temporal_session(
-        session_b
-    )
-
-    print(
-        "       PASS: Browser/session probability histories "
-        "remain independent."
-    )
-
-
-def test_temporal_session_reset_clears_history():
-    print(
-        "\n[UNIT] Testing temporal history reset..."
-    )
-
-    app = load_web_app_module()
-
-    session_id = (
-        "unit-reset-"
-        + uuid.uuid4().hex
-    )
-
-    app.add_temporal_probability(
-        session_id,
-        {
-            "focused": 0.70,
-            "distracted": 0.10,
-            "fatigued": 0.10,
-            "overloaded": 0.10,
-        },
-    )
-
-    assert (
-        session_id
-        in app.SESSION_PROBABILITY_HISTORY
-    )
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    assert (
-        session_id
-        not in app.SESSION_PROBABILITY_HISTORY
-    )
-
-    assert (
-        session_id
-        not in app.SESSION_LAST_SEEN
-    )
-
-    print(
-        "       PASS: Temporal session state is completely cleared."
-    )
-
-
-# ============================================================
-# Final output contract
-# ============================================================
-
-def test_prediction_normalisation_returns_temporal_primary_state():
-    print(
-        "\n[UNIT] Testing final temporal prediction contract..."
-    )
-
-    app = load_web_app_module()
-
-    session_id = (
-        "unit-normalise-"
-        + uuid.uuid4().hex
-    )
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    raw_result_1 = {
-        "prediction": "focused",
-        "probabilities": {
-            "focused": 0.60,
-            "distracted": 0.20,
-            "fatigued": 0.12,
-            "overloaded": 0.08,
-        },
-        "device": "cpu",
-        "feature_dimension": 100,
-        "used_modalities": {
-            "text": True,
-            "keystroke": True,
-            "audio": True,
-            "image": True,
-        },
-        "webcam_prediction": None,
-    }
-
-    first_result = (
-        app.normalise_prediction_result(
-            raw=raw_result_1,
-            session_id=session_id,
+            labels=LABELS,
         )
     )
 
     assert (
-        first_result["current_state"]
+        summary[
+            "current_state"
+        ]
         == "focused"
     )
 
-    assert (
-        first_result["prediction"]
-        == "focused"
+    assert math.isclose(
+        summary[
+            "confidence"
+        ],
+        0.62,
+        abs_tol=1e-12,
     )
 
-    assert abs(
-        first_result["confidence"] - 0.60
-    ) < 1e-9
+    assert (
+        summary[
+            "second_class"
+        ]
+        == "distracted"
+    )
 
-    assert abs(
-        first_result["confidence_gap"] - 0.40
-    ) < 1e-9
+    assert math.isclose(
+        summary[
+            "confidence_gap"
+        ],
+        0.48,
+        abs_tol=1e-12,
+    )
 
     assert (
-        first_result["confidence_level"]
+        summary[
+            "confidence_level"
+        ]
         == "High"
     )
 
-    assert (
-        first_result["raw_prediction"]
-        == "focused"
+
+# ============================================================
+# Temporal arithmetic aggregation
+# ============================================================
+
+def test_temporal_aggregation_uses_arithmetic_mean():
+
+    history = [
+        {
+            "focused":
+                0.80,
+            "distracted":
+                0.10,
+            "fatigued":
+                0.05,
+            "overloaded":
+                0.05,
+        },
+        {
+            "focused":
+                0.20,
+            "distracted":
+                0.60,
+            "fatigued":
+                0.10,
+            "overloaded":
+                0.10,
+        },
+    ]
+
+    result = (
+        aggregate_probability_history(
+            history,
+            labels=LABELS,
+        )
+    )
+
+    probabilities = (
+        result[
+            "probabilities"
+        ]
+    )
+
+    assert math.isclose(
+        probabilities[
+            "focused"
+        ],
+        0.50,
+        abs_tol=1e-12,
+    )
+
+    assert math.isclose(
+        probabilities[
+            "distracted"
+        ],
+        0.35,
+        abs_tol=1e-12,
+    )
+
+    assert math.isclose(
+        probabilities[
+            "fatigued"
+        ],
+        0.075,
+        abs_tol=1e-12,
+    )
+
+    assert math.isclose(
+        probabilities[
+            "overloaded"
+        ],
+        0.075,
+        abs_tol=1e-12,
+    )
+
+
+# ============================================================
+# TemporalFusionEngine
+# ============================================================
+
+def test_temporal_engine_first_observation_equals_raw():
+
+    engine = (
+        TemporalFusionEngine()
+    )
+
+    raw = {
+        "focused":
+            0.70,
+
+        "distracted":
+            0.10,
+
+        "fatigued":
+            0.10,
+
+        "overloaded":
+            0.10,
+    }
+
+    result = (
+        engine.append(
+            raw
+        )
     )
 
     assert (
-        first_result["temporal_samples"]
+        result[
+            "temporal_samples"
+        ]
+        == 1
+    )
+
+    assert not result[
+        "temporal_window_full"
+    ]
+
+    assert (
+        result[
+            "probabilities"
+        ]
+        == raw
+    )
+
+
+def test_temporal_engine_retains_latest_five_only():
+
+    engine = (
+        TemporalFusionEngine()
+    )
+
+    engine.append(
+        {
+            "focused":
+                1.0,
+            "distracted":
+                0.0,
+            "fatigued":
+                0.0,
+            "overloaded":
+                0.0,
+        }
+    )
+
+    result = None
+
+    for _ in range(
+        5
+    ):
+
+        result = (
+            engine.append(
+                {
+                    "focused":
+                        0.0,
+                    "distracted":
+                        1.0,
+                    "fatigued":
+                        0.0,
+                    "overloaded":
+                        0.0,
+                }
+            )
+        )
+
+    assert result is not None
+
+    assert (
+        result[
+            "temporal_samples"
+        ]
+        == 5
+    )
+
+    assert result[
+        "temporal_window_full"
+    ]
+
+    assert math.isclose(
+        result[
+            "probabilities"
+        ][
+            "focused"
+        ],
+        0.0,
+        abs_tol=1e-12,
+    )
+
+    assert math.isclose(
+        result[
+            "probabilities"
+        ][
+            "distracted"
+        ],
+        1.0,
+        abs_tol=1e-12,
+    )
+
+
+def test_temporal_reset_increments_generation():
+
+    engine = (
+        TemporalFusionEngine()
+    )
+
+    assert (
+        engine.capture_generation()
+        == 0
+    )
+
+    engine.append(
+        {
+            "focused":
+                0.7,
+            "distracted":
+                0.1,
+            "fatigued":
+                0.1,
+            "overloaded":
+                0.1,
+        }
+    )
+
+    generation = (
+        engine.reset()
+    )
+
+    assert generation == 1
+
+    assert (
+        engine.capture_generation()
         == 1
     )
 
     assert (
-        first_result["temporal_window"]
-        == app.TEMPORAL_PROBABILITY_WINDOW
-    )
-
-    assert (
-        first_result["temporal_aggregation"]
-        == "rolling_mean_probability"
-    )
-
-    assert (
-        first_result["current_state"]
-        in EXPECTED_CLASSES
-    )
-
-    app.clear_temporal_session(
-        session_id
-    )
-
-    print(
-        "       PASS: Final output exposes raw and temporally "
-        "aggregated prediction information."
+        engine.sample_count
+        == 0
     )
 
 
-def test_temporal_final_state_can_differ_from_latest_raw_state():
-    print(
-        "\n[UNIT] Testing temporal result against "
-        "latest raw observation..."
+def test_stale_generation_is_rejected():
+
+    engine = (
+        TemporalFusionEngine()
     )
 
-    app = load_web_app_module()
-
-    session_id = (
-        "unit-raw-vs-aggregate-"
-        + uuid.uuid4().hex
+    stale_generation = (
+        engine.capture_generation()
     )
 
-    app.clear_temporal_session(
-        session_id
-    )
+    engine.reset()
 
-    focused_observation = {
-        "prediction": "focused",
-        "probabilities": {
-            "focused": 0.80,
-            "distracted": 0.10,
-            "fatigued": 0.05,
-            "overloaded": 0.05,
-        },
-        "device": "cpu",
-        "feature_dimension": 100,
-        "used_modalities": {
-            "text": True,
-            "keystroke": True,
-            "audio": True,
-            "image": True,
-        },
-        "webcam_prediction": None,
-    }
+    with pytest.raises(
+        StaleGenerationError
+    ):
 
-    distracted_observation = {
-        "prediction": "distracted",
-        "probabilities": {
-            "focused": 0.30,
-            "distracted": 0.50,
-            "fatigued": 0.10,
-            "overloaded": 0.10,
-        },
-        "device": "cpu",
-        "feature_dimension": 100,
-        "used_modalities": {
-            "text": True,
-            "keystroke": True,
-            "audio": True,
-            "image": True,
-        },
-        "webcam_prediction": None,
-    }
-
-    # Three focused observations establish temporal history.
-    for _ in range(3):
-
-        app.normalise_prediction_result(
-            raw=focused_observation,
-            session_id=session_id,
+        engine.append(
+            {
+                "focused":
+                    0.7,
+                "distracted":
+                    0.1,
+                "fatigued":
+                    0.1,
+                "overloaded":
+                    0.1,
+            },
+            expected_generation=(
+                stale_generation
+            ),
         )
 
-    # Latest raw observation switches to distracted.
-    result = app.normalise_prediction_result(
-        raw=distracted_observation,
-        session_id=session_id,
+    assert (
+        engine.sample_count
+        == 0
+    )
+
+
+def test_temporal_engines_are_isolated():
+
+    first = (
+        TemporalFusionEngine()
+    )
+
+    second = (
+        TemporalFusionEngine()
+    )
+
+    first_result = (
+        first.append(
+            {
+                "focused":
+                    1.0,
+                "distracted":
+                    0.0,
+                "fatigued":
+                    0.0,
+                "overloaded":
+                    0.0,
+            }
+        )
+    )
+
+    second_result = (
+        second.append(
+            {
+                "focused":
+                    0.0,
+                "distracted":
+                    0.0,
+                "fatigued":
+                    1.0,
+                "overloaded":
+                    0.0,
+            }
+        )
     )
 
     assert (
-        result["raw_prediction"]
-        == "distracted"
-    )
-
-    # Temporal mean should remain focused.
-    assert (
-        result["current_state"]
+        first_result[
+            "current_state"
+        ]
         == "focused"
     )
 
     assert (
-        result["temporal_samples"]
-        == 4
+        second_result[
+            "current_state"
+        ]
+        == "fatigued"
     )
 
-    app.clear_temporal_session(
-        session_id
+    assert (
+        first.sample_count
+        == 1
     )
 
-    print(
-        "       PASS: Final temporal result is not simply "
-        "the latest raw prediction."
+    assert (
+        second.sample_count
+        == 1
+    )
+
+
+# ============================================================
+# Web keystroke helpers
+# ============================================================
+
+def build_events(
+    count: int,
+) -> list[
+    dict[str, object]
+]:
+
+    events: list[
+        dict[str, object]
+    ] = []
+
+    for index in range(
+        count
+    ):
+
+        timestamp = (
+            index
+            * 0.10
+        )
+
+        events.append(
+            {
+                "type":
+                    "down",
+
+                "key":
+                    chr(
+                        ord("a")
+                        + (
+                            index
+                            % 26
+                        )
+                    ),
+
+                "timestamp_perf":
+                    timestamp,
+
+                "timestamp_epoch":
+                    timestamp,
+            }
+        )
+
+        events.append(
+            {
+                "type":
+                    "up",
+
+                "key":
+                    chr(
+                        ord("a")
+                        + (
+                            index
+                            % 26
+                        )
+                    ),
+
+                "timestamp_perf":
+                    timestamp
+                    + 0.04,
+
+                "timestamp_epoch":
+                    timestamp
+                    + 0.04,
+            }
+        )
+
+    return events
+
+
+def test_web_parse_keystrokes(
+    web_app: ModuleType,
+):
+
+    events = (
+        build_events(
+            20
+        )
+    )
+
+    parsed = (
+        web_app.parse_keystrokes(
+            json.dumps(
+                events
+            )
+        )
+    )
+
+    assert (
+        parsed
+        == events
+    )
+
+    assert (
+        web_app.count_keydowns(
+            parsed
+        )
+        == 20
+    )
+
+
+def test_web_parse_invalid_keystrokes_returns_empty(
+    web_app: ModuleType,
+):
+
+    assert (
+        web_app.parse_keystrokes(
+            "invalid-json"
+        )
+        == []
+    )
+
+    assert (
+        web_app.parse_keystrokes(
+            "{}"
+        )
+        == []
+    )
+
+
+def test_web_keystroke_feature_construction(
+    web_app: ModuleType,
+):
+
+    events = (
+        build_events(
+            20
+        )
+    )
+
+    features = (
+        web_app.build_live_keystroke_features(
+            "this is a natural typing test",
+            events,
+        )
+    )
+
+    assert (
+        features[
+            "keydown_count"
+        ]
+        == 20
+    )
+
+    assert (
+        features[
+            "word_count"
+        ]
+        == 6
+    )
+
+    assert (
+        features[
+            "total_duration_sec"
+        ]
+        > 0
+    )
+
+    assert (
+        features[
+            "typing_speed_kps"
+        ]
+        > 0
+    )
+
+    assert (
+        features[
+            "hold_mean"
+        ]
+        > 0
+    )
+
+
+def test_web_keystroke_feature_threshold(
+    web_app: ModuleType,
+):
+
+    with pytest.raises(
+        ValueError
+    ):
+
+        web_app.build_live_keystroke_features(
+            "insufficient",
+            build_events(
+                19
+            ),
+        )
+
+
+# ============================================================
+# Session and upload helpers
+# ============================================================
+
+def test_validate_session_id(
+    web_app: ModuleType,
+):
+
+    assert (
+        web_app.validate_session_id(
+            "valid-session"
+        )
+        == "valid-session"
+    )
+
+    with pytest.raises(
+        Exception
+    ) as exc_info:
+
+        web_app.validate_session_id(
+            "   "
+        )
+
+    assert (
+        getattr(
+            exc_info.value,
+            "status_code",
+            None,
+        )
+        == 400
+    )
+
+
+def test_safe_suffix(
+    web_app: ModuleType,
+):
+
+    assert (
+        web_app.safe_suffix(
+            "sample.wav",
+            ".bin",
+        )
+        == ".wav"
+    )
+
+    assert (
+        web_app.safe_suffix(
+            "sample",
+            ".bin",
+        )
+        == ".bin"
+    )
+
+    assert (
+        web_app.safe_suffix(
+            (
+                "sample."
+                + "x" * 30
+            ),
+            ".bin",
+        )
+        == ".bin"
     )

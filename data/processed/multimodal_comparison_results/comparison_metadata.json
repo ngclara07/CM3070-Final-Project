@@ -1,8 +1,55 @@
 {
     "dataset": "data\\processed\\multimodal_features.csv",
-    "num_samples": 309,
-    "cv_splits": 5,
+    "num_observations": 309,
+    "num_development_observations": 247,
+    "num_heldout_observations": 62,
+    "canonical_labels": [
+        "focused",
+        "distracted",
+        "fatigued",
+        "overloaded"
+    ],
+    "temporal_backend": "temporal_fusion.TemporalFusionEngine",
+    "temporal_probability_window": 5,
+    "temporal_aggregation": "equal arithmetic mean of canonical class probabilities",
+    "temporal_retraining": false,
+    "model_selection_metric": "cv_macro_f1_mean",
+    "outer_split": {
+        "method": "StratifiedGroupKFold",
+        "fold_count": 5,
+        "group_column": "session_id",
+        "development_groups": 247,
+        "heldout_groups": 62
+    },
+    "inner_cross_validation": {
+        "method": "StratifiedGroupKFold",
+        "fold_count": 5,
+        "development_partition_only": true
+    },
+    "temporal_sequence_structure": {
+        "temporal_group_columns": [
+            "session_id"
+        ],
+        "order_column": null,
+        "sequence_count": 309,
+        "minimum_sequence_length": 1,
+        "maximum_sequence_length": 1,
+        "mean_sequence_length": 1.0,
+        "sequences_reaching_full_temporal_window": 0,
+        "mixed_label_sequences": 0,
+        "mixed_label_warning": false
+    },
+    "metadata_columns": {
+        "split_group_column": "session_id",
+        "trial_column": null,
+        "generation_column": null,
+        "order_column": null,
+        "temporal_group_columns": [
+            "session_id"
+        ]
+    },
     "n_estimators_or_iterations": 100,
+    "permutation_repeats": 5,
     "models": [
         "logistic_regression",
         "random_forest",
@@ -27,5 +74,12 @@
         "keystroke_audio_image": 1599,
         "text_audio_image": 2345,
         "multimodal_all": 2367
-    }
+    },
+    "methodological_notes": [
+        "The held-out test partition is not used for candidate-model selection.",
+        "Where repeated participant/session observations exist, group-aware splitting prevents train/test leakage.",
+        "Temporal aggregation uses exactly the shared TemporalFusionEngine.",
+        "Raw and temporal metrics use the same trained classifier probabilities.",
+        "Full-window temporal metrics include only observations where the canonical five-observation window is full."
+    ]
 }

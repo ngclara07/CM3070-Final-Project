@@ -1,0 +1,10 @@
+{
+    "sequence_count": 62,
+    "possible_transitions": 0,
+    "raw_switches": 0,
+    "temporal_switches": 0,
+    "raw_switch_rate": 0.0,
+    "temporal_switch_rate": 0.0,
+    "absolute_switch_rate_reduction": 0.0,
+    "relative_switch_rate_reduction": 0.0
+}

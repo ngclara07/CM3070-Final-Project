@@ -1,0 +1,130 @@
+{
+    "evaluation_name": "SenseFuzeAI Multimodal Raw-vs-Temporal Evaluation",
+    "input_file": "data\\processed\\multimodal_comparison_results\\multimodal_all_catboost_heldout_predictions.csv",
+    "output_directory": "evaluation_results\\multimodal_all_catboost",
+    "canonical_labels": [
+        "focused",
+        "distracted",
+        "fatigued",
+        "overloaded"
+    ],
+    "temporal_backend": "temporal_fusion.TemporalFusionEngine",
+    "temporal_window": 5,
+    "total_observations": 62,
+    "valid_ground_truth_observations": 62,
+    "behavioural_accuracy_status": "evaluated",
+    "behavioural_accuracy_note": "Accuracy metrics were calculated against available ground-truth labels.",
+    "input_schema": {
+        "ground_truth_column": "label",
+        "raw_probability_source": "raw_probabilities",
+        "logged_temporal_probability_source": "temporal_probabilities",
+        "group_columns": [
+            "session_id"
+        ],
+        "order_column": null,
+        "session_column": "session_id",
+        "trial_column": null,
+        "generation_column": null,
+        "logged_raw_state_column": "raw_fusion_state",
+        "logged_temporal_state_column": "final_state",
+        "runtime_column": null
+    },
+    "raw_fusion": {
+        "labelled_observations": 62,
+        "accuracy": 1.0,
+        "balanced_accuracy": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "multiclass_log_loss": 2.7888021131563083,
+        "multiclass_brier_score": 0.017448062995299888,
+        "expected_calibration_error": 0.09887013806745171
+    },
+    "temporal_fusion_all_samples": {
+        "labelled_observations": 62,
+        "accuracy": 1.0,
+        "balanced_accuracy": 1.0,
+        "macro_precision": 1.0,
+        "macro_recall": 1.0,
+        "macro_f1": 1.0,
+        "weighted_f1": 1.0,
+        "multiclass_log_loss": 2.7888021131563083,
+        "multiclass_brier_score": 0.017448062995299888,
+        "expected_calibration_error": 0.09887013806745171
+    },
+    "temporal_fusion_full_window": null,
+    "raw_vs_temporal": {
+        "behavioural_accuracy_available": true,
+        "raw_switch_rate": 0.0,
+        "temporal_switch_rate": 0.0,
+        "absolute_switch_rate_reduction": 0.0,
+        "relative_switch_rate_reduction": 0.0,
+        "raw_accuracy": 1.0,
+        "temporal_accuracy": 1.0,
+        "accuracy_difference": 0.0,
+        "raw_macro_f1": 1.0,
+        "temporal_macro_f1": 1.0,
+        "macro_f1_difference": 0.0,
+        "raw_log_loss": 2.7888021131563083,
+        "temporal_log_loss": 2.7888021131563083,
+        "log_loss_difference": 0.0,
+        "raw_brier_score": 0.017448062995299888,
+        "temporal_brier_score": 0.017448062995299888
+    },
+    "stability": {
+        "sequence_count": 62,
+        "possible_transitions": 0,
+        "raw_switches": 0,
+        "temporal_switches": 0,
+        "raw_switch_rate": 0.0,
+        "temporal_switch_rate": 0.0,
+        "absolute_switch_rate_reduction": 0.0,
+        "relative_switch_rate_reduction": 0.0
+    },
+    "descriptive_statistics": {
+        "raw_state_counts": {
+            "focused": 16,
+            "distracted": 16,
+            "fatigued": 15,
+            "overloaded": 15
+        },
+        "temporal_state_counts": {
+            "focused": 16,
+            "distracted": 16,
+            "fatigued": 15,
+            "overloaded": 15
+        },
+        "raw_confidence_mean": 0.9011298619325485,
+        "raw_confidence_std": 0.05501232034059701,
+        "temporal_confidence_mean": 0.9011298619325485,
+        "temporal_confidence_std": 0.05501232034059701,
+        "raw_confidence_gap_mean": 0.8584340637652182,
+        "temporal_confidence_gap_mean": 0.8584340637652182,
+        "full_window_observations": 0
+    },
+    "runtime_statistics": null,
+    "temporal_probability_parity": {
+        "observations": 62,
+        "tolerance": 1e-09,
+        "all_within_tolerance": true,
+        "within_tolerance_count": 62,
+        "within_tolerance_rate": 1.0,
+        "argmax_match_count": 62,
+        "argmax_match_rate": 1.0,
+        "maximum_absolute_probability_error": 0.0,
+        "mean_absolute_probability_error": 0.0
+    },
+    "logged_raw_state_parity": {
+        "column": "raw_fusion_state",
+        "compared": 62,
+        "matches": 62,
+        "match_rate": 1.0
+    },
+    "logged_temporal_state_parity": {
+        "column": "final_state",
+        "compared": 62,
+        "matches": 62,
+        "match_rate": 1.0
+    }
+}
