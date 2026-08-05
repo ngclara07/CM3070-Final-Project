@@ -248,10 +248,6 @@ Main live GUI:
 ```bash
 python live_fusion_gui.py
 ```
-
----
-
-
 ---
 
 ### 6. Temporal Fusion Layer
@@ -271,17 +267,17 @@ The temporal layer operates on the four canonical behavioural probabilities:
 
 The canonical temporal window contains the latest five valid multimodal observations.
 
-For observation \(t\), the temporally aggregated probability for class \(c\) is computed as the arithmetic mean of the available class-probability estimates within the current temporal window:
+For observation $t$, the temporally aggregated probability for class $c$ is computed as the arithmetic mean of the available class-probability estimates within the current temporal window:
 
-$$
+```math
 P_t^{\mathrm{temporal}}(c)
 =
 \frac{1}{N}
 \sum_{i=1}^{N}
 P_{t-i+1}^{\mathrm{raw}}(c)
-$$
+```
 
-where \(N\) is the number of available recent predictions in the temporal window, with \(1 \leq N \leq 5\).
+where $N$ is the number of available recent predictions in the temporal window, with $ 1 \leq N \leq 5\ $.
 
 The first observation therefore uses one probability vector, the second uses two, and so forth until the five-observation window is full. Once full, the oldest probability vector is discarded when a new observation is added.
 
