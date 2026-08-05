@@ -277,7 +277,7 @@ P_t^{\mathrm{temporal}}(c)
 P_{t-i+1}^{\mathrm{raw}}(c)
 ```
 
-where $N$ is the number of available recent predictions in the temporal window, with $ 1 \leq N \leq 5\ $.
+where $N$ is the number of available recent predictions in the temporal window, with 1 ≤ N ≤ 5.
 
 The first observation therefore uses one probability vector, the second uses two, and so forth until the five-observation window is full. Once full, the oldest probability vector is discarded when a new observation is added.
 
