@@ -271,17 +271,17 @@ The temporal layer operates on the four canonical behavioural probabilities:
 
 The canonical temporal window contains the latest five valid multimodal observations.
 
-For observation \(t\), the temporally aggregated probability for class \(c\) is the arithmetic mean of the available probability vectors within the current window:
+For observation \(t\), the temporally aggregated probability for class \(c\) is computed as the arithmetic mean of the available class-probability estimates within the current temporal window:
 
-\[
-P_t^{temporal}(c)
+$$
+P_t^{\mathrm{temporal}}(c)
 =
 \frac{1}{N}
 \sum_{i=1}^{N}
-P_i^{raw}(c),
-\]
+P_{t-i+1}^{\mathrm{raw}}(c)
+$$
 
-where \(1 \leq N \leq 5\).
+where \(N\) is the number of available recent predictions in the temporal window, with \(1 \leq N \leq 5\).
 
 The first observation therefore uses one probability vector, the second uses two, and so forth until the five-observation window is full. Once full, the oldest probability vector is discarded when a new observation is added.
 
