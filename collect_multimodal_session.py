@@ -777,39 +777,175 @@ def show_guidance() -> None:
 
 root = tk.Tk()
 root.title("SenseFuzeAI Guided Session-Aligned Data Collector")
-root.geometry("1120x930")
+
+# Start maximized
+try:
+    root.state("zoomed")
+except tk.TclError:
+    pass
+
+# ------------------------------------------------------------
+# Responsive initial window size
+# ------------------------------------------------------------
+
+screen_width = root.winfo_screenwidth()
+screen_height = root.winfo_screenheight()
+
+# Keep some space for OS taskbar/title bar.
+window_width = min(1250, screen_width - 80)
+window_height = min(880, screen_height - 100)
+
+# Do not allow excessively small windows.
+window_width = max(window_width, 900)
+window_height = max(window_height, 650)
+
+# Centre window on screen.
+x_position = max((screen_width - window_width) // 2, 0)
+y_position = max((screen_height - window_height) // 2, 0)
+
+root.geometry(
+    f"{window_width}x{window_height}+{x_position}+{y_position}"
+)
+
+root.minsize(850, 600)
+
+
+# ============================================================
+# SCROLLABLE MAIN WINDOW
+# ============================================================
+
+outer_frame = tk.Frame(root)
+outer_frame.pack(fill="both", expand=True)
+
+canvas = tk.Canvas(
+    outer_frame,
+    highlightthickness=0,
+)
+
+main_scrollbar = tk.Scrollbar(
+    outer_frame,
+    orient="vertical",
+    command=canvas.yview,
+)
+
+canvas.configure(yscrollcommand=main_scrollbar.set)
+
+main_scrollbar.pack(side="right", fill="y")
+canvas.pack(side="left", fill="both", expand=True)
+
+# All normal GUI controls are placed inside this frame.
+main_frame = tk.Frame(canvas)
+
+canvas_window = canvas.create_window(
+    (0, 0),
+    window=main_frame,
+    anchor="nw",
+)
+
+
+def update_scroll_region(event=None):
+    """Update scrollable area whenever widgets change size."""
+    canvas.configure(scrollregion=canvas.bbox("all"))
+
+
+def resize_main_frame(event):
+    """
+    Force the embedded frame to use the full available
+    canvas width.
+    """
+    canvas.itemconfigure(
+        canvas_window,
+        width=event.width,
+    )
+
+
+main_frame.bind("<Configure>", update_scroll_region)
+canvas.bind("<Configure>", resize_main_frame)
+
+
+# ------------------------------------------------------------
+# Mouse-wheel scrolling
+# ------------------------------------------------------------
+
+def on_mousewheel(event):
+    canvas.yview_scroll(
+        int(-1 * (event.delta / 120)),
+        "units",
+    )
+
+
+def bind_mousewheel(event):
+    canvas.bind_all("<MouseWheel>", on_mousewheel)
+
+
+def unbind_mousewheel(event):
+    canvas.unbind_all("<MouseWheel>")
+
+
+canvas.bind("<Enter>", bind_mousewheel)
+canvas.bind("<Leave>", unbind_mousewheel)
+
+
+# ============================================================
+# TITLE
+# ============================================================
 
 title_label = tk.Label(
-    root,
+    main_frame,
     text="SenseFuzeAI Guided Session-Aligned Data Collector",
     font=("Arial", 18, "bold"),
 )
-title_label.pack(pady=10)
+
+title_label.pack(
+    pady=(12, 8),
+)
+
 
 instruction_label = tk.Label(
-    root,
+    main_frame,
     text=(
         "Collect session-aligned multimodal samples with guided instructions. "
-        "This version saves raw keystrokes, extracted biometric features, and feature rows "
-        "to retroactive_keystroke_features.csv."
+        "This version saves raw keystrokes, extracted biometric features, "
+        "and feature rows to retroactive_keystroke_features.csv."
     ),
     font=("Arial", 11),
-    wraplength=1040,
+    wraplength=1100,
+    justify="center",
 )
-instruction_label.pack(pady=5)
 
-label_frame = tk.Frame(root)
-label_frame.pack(pady=8)
+instruction_label.pack(
+    padx=30,
+    pady=(0, 8),
+)
+
+
+# ============================================================
+# BEHAVIOUR LABEL
+# ============================================================
+
+label_frame = tk.Frame(main_frame)
+
+label_frame.pack(
+    pady=(4, 8),
+)
+
 
 tk.Label(
     label_frame,
     text="Behaviour label:",
     font=("Arial", 11, "bold"),
-).grid(row=0, column=0, padx=8)
+).grid(
+    row=0,
+    column=0,
+    padx=8,
+)
+
 
 label_var = tk.StringVar(value="focused")
 
+
 for index, behaviour in enumerate(BEHAVIOUR_CLASSES, start=1):
+
     tk.Radiobutton(
         label_frame,
         text=behaviour,
@@ -817,44 +953,98 @@ for index, behaviour in enumerate(BEHAVIOUR_CLASSES, start=1):
         value=behaviour,
         font=("Arial", 10),
         command=update_guided_instructions,
-    ).grid(row=0, column=index, padx=8)
+    ).grid(
+        row=0,
+        column=index,
+        padx=8,
+    )
+
+
+# ============================================================
+# GUIDED INSTRUCTIONS
+# ============================================================
 
 guidance_title = tk.Label(
-    root,
+    main_frame,
     text="Guided collection instructions",
     font=("Arial", 11, "bold"),
 )
-guidance_title.pack(anchor="w", padx=25, pady=(8, 2))
+
+guidance_title.pack(
+    anchor="w",
+    padx=30,
+    pady=(6, 2),
+)
+
 
 guidance_box = scrolledtext.ScrolledText(
-    root,
-    width=130,
-    height=12,
+    main_frame,
+    height=9,
     font=("Consolas", 9),
     bg="#f7f7f7",
+    wrap=tk.WORD,
 )
-guidance_box.pack(padx=25, pady=5)
+
+guidance_box.pack(
+    fill="x",
+    padx=30,
+    pady=(2, 6),
+)
+
+
+# ============================================================
+# TYPED TEXT
+# ============================================================
 
 text_label = tk.Label(
-    root,
+    main_frame,
     text="Typed text input",
     font=("Arial", 11, "bold"),
 )
-text_label.pack(anchor="w", padx=25, pady=(10, 2))
+
+text_label.pack(
+    anchor="w",
+    padx=30,
+    pady=(6, 2),
+)
+
 
 text_box = scrolledtext.ScrolledText(
-    root,
-    width=130,
-    height=7,
+    main_frame,
+    height=5,
     font=("Consolas", 10),
+    wrap=tk.WORD,
 )
-text_box.pack(padx=25, pady=5)
+
+text_box.pack(
+    fill="x",
+    padx=30,
+    pady=(2, 6),
+)
+
 
 text_box.bind("<KeyPress>", on_key_press)
 text_box.bind("<KeyRelease>", on_key_release)
 
-file_frame = tk.Frame(root)
-file_frame.pack(pady=8)
+
+# ============================================================
+# FILE SELECTION
+# ============================================================
+
+file_frame = tk.Frame(main_frame)
+
+file_frame.pack(
+    fill="x",
+    padx=30,
+    pady=6,
+)
+
+# Let filename column expand.
+file_frame.columnconfigure(
+    1,
+    weight=1,
+)
+
 
 audio_button = tk.Button(
     file_frame,
@@ -862,16 +1052,30 @@ audio_button = tk.Button(
     command=choose_audio_file,
     width=22,
 )
-audio_button.grid(row=0, column=0, padx=8, pady=4)
+
+audio_button.grid(
+    row=0,
+    column=0,
+    padx=(0, 12),
+    pady=4,
+    sticky="w",
+)
+
 
 audio_label = tk.Label(
     file_frame,
     text="No audio file selected.",
-    width=112,
     anchor="w",
     fg="gray",
 )
-audio_label.grid(row=0, column=1, padx=8, pady=4)
+
+audio_label.grid(
+    row=0,
+    column=1,
+    pady=4,
+    sticky="ew",
+)
+
 
 image_button = tk.Button(
     file_frame,
@@ -879,34 +1083,72 @@ image_button = tk.Button(
     command=choose_image_file,
     width=22,
 )
-image_button.grid(row=1, column=0, padx=8, pady=4)
+
+image_button.grid(
+    row=1,
+    column=0,
+    padx=(0, 12),
+    pady=4,
+    sticky="w",
+)
+
 
 image_label = tk.Label(
     file_frame,
     text="No image file selected.",
-    width=112,
     anchor="w",
     fg="gray",
 )
-image_label.grid(row=1, column=1, padx=8, pady=4)
+
+image_label.grid(
+    row=1,
+    column=1,
+    pady=4,
+    sticky="ew",
+)
+
+
+# ============================================================
+# NOTES
+# ============================================================
 
 notes_label = tk.Label(
-    root,
+    main_frame,
     text="Optional notes",
     font=("Arial", 11, "bold"),
 )
-notes_label.pack(anchor="w", padx=25, pady=(8, 2))
+
+notes_label.pack(
+    anchor="w",
+    padx=30,
+    pady=(6, 2),
+)
+
 
 notes_box = scrolledtext.ScrolledText(
-    root,
-    width=130,
-    height=3,
+    main_frame,
+    height=2,
     font=("Consolas", 10),
+    wrap=tk.WORD,
 )
-notes_box.pack(padx=25, pady=5)
 
-button_frame = tk.Frame(root)
-button_frame.pack(pady=10)
+notes_box.pack(
+    fill="x",
+    padx=30,
+    pady=(2, 6),
+)
+
+
+# ============================================================
+# ACTION BUTTONS
+# ============================================================
+
+button_frame = tk.Frame(main_frame)
+
+button_frame.pack(
+    pady=(8, 10),
+)
+
 
 save_button = tk.Button(
     button_frame,
@@ -914,7 +1156,13 @@ save_button = tk.Button(
     command=save_session,
     width=22,
 )
-save_button.grid(row=0, column=0, padx=8)
+
+save_button.grid(
+    row=0,
+    column=0,
+    padx=8,
+)
+
 
 reset_button = tk.Button(
     button_frame,
@@ -922,7 +1170,13 @@ reset_button = tk.Button(
     command=reset_session_state,
     width=16,
 )
-reset_button.grid(row=0, column=1, padx=8)
+
+reset_button.grid(
+    row=0,
+    column=1,
+    padx=8,
+)
+
 
 guidance_button = tk.Button(
     button_frame,
@@ -930,22 +1184,44 @@ guidance_button = tk.Button(
     command=show_guidance,
     width=16,
 )
-guidance_button.grid(row=0, column=2, padx=8)
+
+guidance_button.grid(
+    row=0,
+    column=2,
+    padx=8,
+)
+
+
+# ============================================================
+# COLLECTION STATUS
+# ============================================================
 
 status_label = tk.Label(
-    root,
+    main_frame,
     text="Collection status",
     font=("Arial", 11, "bold"),
 )
-status_label.pack(anchor="w", padx=25, pady=(8, 2))
+
+status_label.pack(
+    anchor="w",
+    padx=30,
+    pady=(6, 2),
+)
+
 
 status_box = scrolledtext.ScrolledText(
-    root,
-    width=130,
-    height=7,
+    main_frame,
+    height=6,
     font=("Consolas", 10),
+    wrap=tk.WORD,
 )
-status_box.pack(padx=25, pady=8)
+
+status_box.pack(
+    fill="x",
+    padx=30,
+    pady=(2, 15),
+)
+
 
 status_box.insert(
     tk.END,
@@ -961,6 +1237,14 @@ status_box.insert(
     "6. Rhythm, burstiness, and fits-starts indicators.\n",
 )
 
+
+# ============================================================
+# INITIALISE
+# ============================================================
+
 update_guided_instructions()
+
+# Ensure scroll region is calculated after widgets are rendered.
+root.after(100, update_scroll_region)
 
 root.mainloop()
