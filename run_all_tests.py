@@ -25,6 +25,27 @@ The current canonical processing architecture is:
             |
             +--> Offline evaluation
 
+
+The project also contains a separate external keystroke-dataset comparison
+pipeline:
+
+    EmoSurv IEEE keystrokes
+            |
+            +--> canonical 23-feature representation
+            |
+    SenseFuzeAI raw keystrokes
+            |
+            +--> same canonical 23-feature representation
+            |
+            v
+    Harmonised keystroke datasets
+            |
+            +--> EmoSurv baseline
+            +--> SenseFuzeAI-only
+            +--> augmented training
+            +--> cross-dataset evaluation
+
+
 This test runner verifies that:
 
     1. temporal_fusion.py is mathematically correct;
@@ -72,7 +93,16 @@ This test runner verifies that:
    18. the project pytest suite is executed when tests/ exists;
 
    19. optionally, FinalMultimodalInference can be fully instantiated to
-       verify the large pretrained/model artifact dependency chain.
+       verify the large pretrained/model artifact dependency chain;
+
+   20. build_keystroke_dataset_comparison.py reuses the canonical EmoSurv
+       feature/window representation and preserves dataset provenance;
+
+   21. train_keystroke_dataset_comparison.py retains the A-F experimental
+       design, group-aware frozen splits and paired bootstrap comparison;
+
+   22. the pytest suite verifies the harmonised datasets, leakage prevention,
+       identical held-out evaluation sets and experiment artifacts.
 
 
 =============================================================================
@@ -134,7 +164,6 @@ from pathlib import Path
 from typing import (
     Any,
     Callable,
-    Iterable,
     Optional,
 )
 
@@ -185,6 +214,16 @@ EVALUATION_FILE = (
 COMPARISON_FILE = (
     ROOT_DIR
     / "train_multimodal_comparison.py"
+)
+
+KEYSTROKE_DATASET_BUILDER_FILE = (
+    ROOT_DIR
+    / "build_keystroke_dataset_comparison.py"
+)
+
+KEYSTROKE_DATASET_TRAINER_FILE = (
+    ROOT_DIR
+    / "train_keystroke_dataset_comparison.py"
 )
 
 TESTS_DIR = (
@@ -269,9 +308,7 @@ class TestRunner:
         verbose: bool = False,
     ) -> None:
 
-        self.verbose = (
-            verbose
-        )
+        self.verbose = verbose
 
         self.results: list[
             CheckResult
@@ -298,35 +335,21 @@ class TestRunner:
                 or "Passed."
             )
 
-            status = (
-                "PASS"
-            )
+            status = "PASS"
 
         except SkipCheck as exc:
 
-            status = (
-                "SKIP"
-            )
-
-            detail = str(
-                exc
-            )
+            status = "SKIP"
+            detail = str(exc)
 
         except WarningCheck as exc:
 
-            status = (
-                "WARN"
-            )
-
-            detail = str(
-                exc
-            )
+            status = "WARN"
+            detail = str(exc)
 
         except Exception as exc:
 
-            status = (
-                "FAIL"
-            )
+            status = "FAIL"
 
             detail = (
                 f"{type(exc).__name__}: "
@@ -345,38 +368,20 @@ class TestRunner:
             - started
         )
 
-        result = (
-            CheckResult(
-                name=name,
-                category=category,
-                status=status,
-                duration_seconds=duration,
-                detail=detail,
-            )
+        result = CheckResult(
+            name=name,
+            category=category,
+            status=status,
+            duration_seconds=duration,
+            detail=detail,
         )
 
         self.results.append(
             result
         )
 
-        icon = {
-            "PASS":
-                "PASS",
-
-            "FAIL":
-                "FAIL",
-
-            "WARN":
-                "WARN",
-
-            "SKIP":
-                "SKIP",
-        }[
-            status
-        ]
-
         print(
-            f"[{icon:4s}] "
+            f"[{status:4s}] "
             f"{category:18s} "
             f"{name}"
             f" ({duration:.3f}s)"
@@ -401,17 +406,10 @@ class TestRunner:
     ) -> dict[str, int]:
 
         counts = {
-            "PASS":
-                0,
-
-            "FAIL":
-                0,
-
-            "WARN":
-                0,
-
-            "SKIP":
-                0,
+            "PASS": 0,
+            "FAIL": 0,
+            "WARN": 0,
+            "SKIP": 0,
         }
 
         for result in self.results:
@@ -551,10 +549,8 @@ def read_source(
         path
     )
 
-    return (
-        path.read_text(
-            encoding="utf-8"
-        )
+    return path.read_text(
+        encoding="utf-8"
     )
 
 
@@ -562,10 +558,8 @@ def parse_python_ast(
     path: Path,
 ) -> ast.Module:
 
-    source = (
-        read_source(
-            path
-        )
+    source = read_source(
+        path
     )
 
     return ast.parse(
@@ -583,7 +577,6 @@ def dotted_name(
     Convert an AST Name/Attribute chain to a dotted string.
 
     Example:
-
         self.predictor.predict
     """
 
@@ -599,10 +592,8 @@ def dotted_name(
         ast.Attribute,
     ):
 
-        prefix = (
-            dotted_name(
-                node.value
-            )
+        prefix = dotted_name(
+            node.value
         )
 
         if prefix:
@@ -747,10 +738,7 @@ def top_level_literal(
                     == variable_name
                 ):
 
-                    value_node = (
-                        node.value
-                    )
-
+                    value_node = node.value
                     break
 
         elif (
@@ -768,18 +756,14 @@ def top_level_literal(
             == variable_name
         ):
 
-            value_node = (
-                node.value
-            )
+            value_node = node.value
 
         if value_node is not None:
 
             try:
 
-                return (
-                    ast.literal_eval(
-                        value_node
-                    )
+                return ast.literal_eval(
+                    value_node
                 )
 
             except Exception as exc:
@@ -826,10 +810,8 @@ def collect_fastapi_routes(
 
                 continue
 
-            decorator_name = (
-                dotted_name(
-                    decorator.func
-                )
+            decorator_name = dotted_name(
+                decorator.func
             )
 
             if decorator_name not in {
@@ -846,11 +828,9 @@ def collect_fastapi_routes(
 
                 continue
 
-            route_node = (
-                decorator.args[
-                    0
-                ]
-            )
+            route_node = decorator.args[
+                0
+            ]
 
             if not (
                 isinstance(
@@ -907,10 +887,8 @@ def find_call_keywords(
 
             continue
 
-        name = (
-            dotted_name(
-                node.func
-            )
+        name = dotted_name(
+            node.func
         )
 
         if name != dotted_callable_name:
@@ -946,10 +924,8 @@ def contains_named_call(
 
             continue
 
-        name = (
-            dotted_name(
-                node.func
-            )
+        name = dotted_name(
+            node.func
         )
 
         if (
@@ -998,9 +974,7 @@ def import_temporal_module() -> Any:
 
 def test_temporal_constants() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     assert_equal(
         tuple(
@@ -1040,41 +1014,25 @@ def test_temporal_constants() -> str:
 
 def test_probability_normalisation() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     normalised = (
         module
         .normalise_probability_dict(
             {
-                "focused":
-                    60.0,
-
-                "distracted":
-                    20.0,
-
-                "fatigued":
-                    10.0,
-
-                "overloaded":
-                    10.0,
+                "focused": 60.0,
+                "distracted": 20.0,
+                "fatigued": 10.0,
+                "overloaded": 10.0,
             }
         )
     )
 
     expected = {
-        "focused":
-            0.60,
-
-        "distracted":
-            0.20,
-
-        "fatigued":
-            0.10,
-
-        "overloaded":
-            0.10,
+        "focused": 0.60,
+        "distracted": 0.20,
+        "fatigued": 0.10,
+        "overloaded": 0.10,
     }
 
     assert_probability_dict_close(
@@ -1101,41 +1059,25 @@ def test_probability_normalisation() -> str:
 
 def test_invalid_probability_policy() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     result = (
         module
         .normalise_probability_dict(
             {
-                "focused":
-                    float("nan"),
-
-                "distracted":
-                    float("inf"),
-
-                "fatigued":
-                    -5.0,
-
-                "overloaded":
-                    2.0,
+                "focused": float("nan"),
+                "distracted": float("inf"),
+                "fatigued": -5.0,
+                "overloaded": 2.0,
             }
         )
     )
 
     expected = {
-        "focused":
-            0.0,
-
-        "distracted":
-            0.0,
-
-        "fatigued":
-            0.0,
-
-        "overloaded":
-            1.0,
+        "focused": 0.0,
+        "distracted": 0.0,
+        "fatigued": 0.0,
+        "overloaded": 1.0,
     }
 
     assert_probability_dict_close(
@@ -1147,8 +1089,7 @@ def test_invalid_probability_policy() -> str:
         module
         .normalise_probability_dict(
             {
-                label:
-                    0.0
+                label: 0.0
                 for label
                 in EXPECTED_LABELS
             }
@@ -1156,8 +1097,7 @@ def test_invalid_probability_policy() -> str:
     )
 
     uniform = {
-        label:
-            0.25
+        label: 0.25
         for label
         in EXPECTED_LABELS
     }
@@ -1175,9 +1115,7 @@ def test_invalid_probability_policy() -> str:
 
 def test_confidence_thresholds() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     assertions = [
         (
@@ -1208,10 +1146,8 @@ def test_confidence_thresholds() -> str:
 
     for gap, expected in assertions:
 
-        actual = (
-            module.confidence_level(
-                gap
-            )
+        actual = module.confidence_level(
+            gap
         )
 
         assert_equal(
@@ -1231,75 +1167,38 @@ def test_confidence_thresholds() -> str:
 
 def test_temporal_arithmetic_mean() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     history = [
         {
-            "focused":
-                0.60,
-
-            "distracted":
-                0.20,
-
-            "fatigued":
-                0.10,
-
-            "overloaded":
-                0.10,
+            "focused": 0.60,
+            "distracted": 0.20,
+            "fatigued": 0.10,
+            "overloaded": 0.10,
         },
         {
-            "focused":
-                0.62,
-
-            "distracted":
-                0.18,
-
-            "fatigued":
-                0.10,
-
-            "overloaded":
-                0.10,
+            "focused": 0.62,
+            "distracted": 0.18,
+            "fatigued": 0.10,
+            "overloaded": 0.10,
         },
         {
-            "focused":
-                0.64,
-
-            "distracted":
-                0.16,
-
-            "fatigued":
-                0.10,
-
-            "overloaded":
-                0.10,
+            "focused": 0.64,
+            "distracted": 0.16,
+            "fatigued": 0.10,
+            "overloaded": 0.10,
         },
         {
-            "focused":
-                0.66,
-
-            "distracted":
-                0.14,
-
-            "fatigued":
-                0.10,
-
-            "overloaded":
-                0.10,
+            "focused": 0.66,
+            "distracted": 0.14,
+            "fatigued": 0.10,
+            "overloaded": 0.10,
         },
         {
-            "focused":
-                0.68,
-
-            "distracted":
-                0.12,
-
-            "fatigued":
-                0.10,
-
-            "overloaded":
-                0.10,
+            "focused": 0.68,
+            "distracted": 0.12,
+            "fatigued": 0.10,
+            "overloaded": 0.10,
         },
     ]
 
@@ -1311,17 +1210,10 @@ def test_temporal_arithmetic_mean() -> str:
     )
 
     expected = {
-        "focused":
-            0.64,
-
-        "distracted":
-            0.16,
-
-        "fatigued":
-            0.10,
-
-        "overloaded":
-            0.10,
+        "focused": 0.64,
+        "distracted": 0.16,
+        "fatigued": 0.10,
+        "overloaded": 0.10,
     }
 
     assert_probability_dict_close(
@@ -1394,13 +1286,9 @@ def test_temporal_arithmetic_mean() -> str:
 
 def test_temporal_window_rollover() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
-    engine = (
-        module.TemporalFusionEngine()
-    )
+    engine = module.TemporalFusionEngine()
 
     one_hot = {
         "focused":
@@ -1449,12 +1337,10 @@ def test_temporal_window_rollover() -> str:
 
     for label in sequence:
 
-        result = (
-            engine.append(
-                one_hot[
-                    label
-                ]
-            )
+        result = engine.append(
+            one_hot[
+                label
+            ]
         )
 
     assert_true(
@@ -1469,17 +1355,10 @@ def test_temporal_window_rollover() -> str:
     )
 
     expected = {
-        "focused":
-            0.20,
-
-        "distracted":
-            0.20,
-
-        "fatigued":
-            0.20,
-
-        "overloaded":
-            0.40,
+        "focused": 0.20,
+        "distracted": 0.20,
+        "fatigued": 0.20,
+        "overloaded": 0.40,
     }
 
     assert_probability_dict_close(
@@ -1507,13 +1386,9 @@ def test_temporal_window_rollover() -> str:
 
 def test_reset_and_stale_generation() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
-    engine = (
-        module.TemporalFusionEngine()
-    )
+    engine = module.TemporalFusionEngine()
 
     generation_zero = (
         engine.capture_generation()
@@ -1631,9 +1506,7 @@ def test_temporal_consumer_parity() -> str:
     numerically identical outputs.
     """
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     desktop_engine = (
         module.TemporalFusionEngine()
@@ -1643,10 +1516,8 @@ def test_temporal_consumer_parity() -> str:
         module.TemporalFusionEngine()
     )
 
-    generator = (
-        random.Random(
-            42
-        )
+    generator = random.Random(
+        42
     )
 
     reset_points = {
@@ -1777,9 +1648,7 @@ def test_temporal_consumer_parity() -> str:
 
 def test_probability_validator() -> str:
 
-    module = (
-        import_temporal_module()
-    )
+    module = import_temporal_module()
 
     valid = (
         module
@@ -1846,10 +1715,8 @@ def assert_no_local_temporal_math(
     filename: str,
 ) -> None:
 
-    functions = (
-        top_level_function_names(
-            tree
-        )
+    functions = top_level_function_names(
+        tree
     )
 
     duplicates = (
@@ -1869,17 +1736,13 @@ def assert_no_local_temporal_math(
 
 def test_final_inference_source_contract() -> str:
 
-    tree = (
-        parse_python_ast(
-            FINAL_INFERENCE_FILE
-        )
+    tree = parse_python_ast(
+        FINAL_INFERENCE_FILE
     )
 
-    imported = (
-        imported_names_from(
-            tree,
-            "temporal_fusion",
-        )
+    imported = imported_names_from(
+        tree,
+        "temporal_fusion",
     )
 
     required_imports = {
@@ -1922,18 +1785,14 @@ def test_final_inference_source_contract() -> str:
         ),
     )
 
-    inference_class = (
-        find_class(
-            tree,
-            "FinalMultimodalInference",
-        )
+    inference_class = find_class(
+        tree,
+        "FinalMultimodalInference",
     )
 
-    predict_method = (
-        class_method(
-            inference_class,
-            "predict",
-        )
+    predict_method = class_method(
+        inference_class,
+        "predict",
     )
 
     argument_names = [
@@ -2002,17 +1861,13 @@ def test_final_inference_source_contract() -> str:
 
 def test_live_gui_source_contract() -> str:
 
-    tree = (
-        parse_python_ast(
-            LIVE_GUI_FILE
-        )
+    tree = parse_python_ast(
+        LIVE_GUI_FILE
     )
 
-    imported = (
-        imported_names_from(
-            tree,
-            "temporal_fusion",
-        )
+    imported = imported_names_from(
+        tree,
+        "temporal_fusion",
     )
 
     required = {
@@ -2079,11 +1934,9 @@ def test_live_gui_source_contract() -> str:
         "Desktop minimum key-down threshold changed.",
     )
 
-    app_class = (
-        find_class(
-            tree,
-            "FusionDemoApp",
-        )
+    app_class = find_class(
+        tree,
+        "FusionDemoApp",
     )
 
     for method in (
@@ -2098,11 +1951,9 @@ def test_live_gui_source_contract() -> str:
             method,
         )
 
-    predictor_calls = (
-        find_call_keywords(
-            tree,
-            "self.predictor.predict",
-        )
+    predictor_calls = find_call_keywords(
+        tree,
+        "self.predictor.predict",
     )
 
     assert_true(
@@ -2144,23 +1995,17 @@ def test_live_gui_source_contract() -> str:
 
 def test_web_backend_source_contract() -> str:
 
-    tree = (
-        parse_python_ast(
-            WEB_APP_FILE
-        )
+    tree = parse_python_ast(
+        WEB_APP_FILE
     )
 
-    source = (
-        read_source(
-            WEB_APP_FILE
-        )
+    source = read_source(
+        WEB_APP_FILE
     )
 
-    imported = (
-        imported_names_from(
-            tree,
-            "temporal_fusion",
-        )
+    imported = imported_names_from(
+        tree,
+        "temporal_fusion",
     )
 
     required_imports = {
@@ -2198,11 +2043,9 @@ def test_web_backend_source_contract() -> str:
         ),
     )
 
-    session_class = (
-        find_class(
-            tree,
-            "SessionState",
-        )
+    session_class = find_class(
+        tree,
+        "SessionState",
     )
 
     session_source = (
@@ -2222,10 +2065,8 @@ def test_web_backend_source_contract() -> str:
         ),
     )
 
-    routes = (
-        collect_fastapi_routes(
-            tree
-        )
+    routes = collect_fastapi_routes(
+        tree
     )
 
     required_routes = {
@@ -2280,11 +2121,9 @@ def test_web_backend_source_contract() -> str:
         ),
     )
 
-    predictor_calls = (
-        find_call_keywords(
-            tree,
-            "predictor.predict",
-        )
+    predictor_calls = find_call_keywords(
+        tree,
+        "predictor.predict",
     )
 
     expected_keywords = {
@@ -2315,17 +2154,13 @@ def test_web_backend_source_contract() -> str:
 
 def test_evaluation_source_contract() -> str:
 
-    tree = (
-        parse_python_ast(
-            EVALUATION_FILE
-        )
+    tree = parse_python_ast(
+        EVALUATION_FILE
     )
 
-    imported = (
-        imported_names_from(
-            tree,
-            "temporal_fusion",
-        )
+    imported = imported_names_from(
+        tree,
+        "temporal_fusion",
     )
 
     assert_true(
@@ -2355,10 +2190,8 @@ def test_evaluation_source_contract() -> str:
         ),
     )
 
-    source = (
-        read_source(
-            EVALUATION_FILE
-        )
+    source = read_source(
+        EVALUATION_FILE
     )
 
     required_terms = {
@@ -2371,7 +2204,8 @@ def test_evaluation_source_contract() -> str:
 
     missing_terms = {
         term
-        for term in required_terms
+        for term
+        in required_terms
         if term
         not in source
     }
@@ -2393,23 +2227,17 @@ def test_evaluation_source_contract() -> str:
 
 def test_comparison_source_contract() -> str:
 
-    tree = (
-        parse_python_ast(
-            COMPARISON_FILE
-        )
+    tree = parse_python_ast(
+        COMPARISON_FILE
     )
 
-    source = (
-        read_source(
-            COMPARISON_FILE
-        )
+    source = read_source(
+        COMPARISON_FILE
     )
 
-    imported = (
-        imported_names_from(
-            tree,
-            "temporal_fusion",
-        )
+    imported = imported_names_from(
+        tree,
+        "temporal_fusion",
     )
 
     assert_true(
@@ -2473,15 +2301,205 @@ def test_comparison_source_contract() -> str:
 
 
 # =============================================================================
+# KEYSTROKE DATASET COMPARISON SOURCE CONTRACTS
+# =============================================================================
+
+def test_keystroke_dataset_builder_source_contract() -> str:
+
+    tree = parse_python_ast(
+        KEYSTROKE_DATASET_BUILDER_FILE
+    )
+
+    source = read_source(
+        KEYSTROKE_DATASET_BUILDER_FILE
+    )
+
+    imported = imported_names_from(
+        tree,
+        "keystroke_live_gui_emosurv_ieee",
+    )
+
+    required_imports = {
+        "FEATURE_COLUMNS",
+        "WINDOW_SIZE",
+        "WINDOW_STEP",
+        "MIN_WINDOW_SIZE",
+        "extract_live_features",
+        "build_window_dataset",
+        "load_emosurv_datasets",
+        "assign_behaviour_proxy_labels",
+    }
+
+    missing_imports = (
+        required_imports
+        - imported
+    )
+
+    assert_true(
+        not missing_imports,
+        (
+            "build_keystroke_dataset_comparison.py "
+            "is missing canonical EmoSurv "
+            "feature/window imports:\n"
+            f"{sorted(missing_imports)}"
+        ),
+    )
+
+    assert_true(
+        contains_named_call(
+            tree,
+            "extract_live_features",
+        ),
+        (
+            "SenseFuzeAI harmonisation does not "
+            "appear to call the canonical "
+            "extract_live_features() implementation."
+        ),
+    )
+
+    required_terms = {
+        "dataset_source",
+        "participant_id",
+        "session_id",
+        "sample_id",
+        "label_origin",
+        "combined_harmonised_3class.csv",
+        "combined_harmonised_4class.csv",
+    }
+
+    missing_terms = {
+        term
+        for term
+        in required_terms
+        if term
+        not in source
+    }
+
+    assert_true(
+        not missing_terms,
+        (
+            "Keystroke dataset builder is missing "
+            "required harmonisation/provenance "
+            "concepts:\n"
+            f"{sorted(missing_terms)}"
+        ),
+    )
+
+    return (
+        "Common EmoSurv/SenseFuzeAI 23-feature "
+        "harmonisation and provenance contract verified."
+    )
+
+
+def test_keystroke_dataset_trainer_source_contract() -> str:
+
+    tree = parse_python_ast(
+        KEYSTROKE_DATASET_TRAINER_FILE
+    )
+
+    source = read_source(
+        KEYSTROKE_DATASET_TRAINER_FILE
+    )
+
+    assert_true(
+        tree is not None,
+        (
+            "Unable to parse "
+            "train_keystroke_dataset_comparison.py."
+        ),
+    )
+
+    required_terms = {
+        "A_emosurv_baseline",
+        "B_sensefuzeai_only",
+        "C_augmented_to_emosurv_test",
+        "D_emosurv_to_sensefuzeai",
+        "E_augmented_to_sensefuzeai_test",
+        "F_sensefuzeai_to_emosurv",
+        "participant_id",
+        "session_id",
+        "split_manifest",
+        "macro_f1",
+        "balanced_accuracy",
+        "--rebuild-splits",
+    }
+
+    missing_terms = {
+        term
+        for term
+        in required_terms
+        if term
+        not in source
+    }
+
+    assert_true(
+        not missing_terms,
+        (
+            "Keystroke comparison trainer is "
+            "missing required experiment/split "
+            "concepts:\n"
+            f"{sorted(missing_terms)}"
+        ),
+    )
+
+    group_aware_present = (
+        "GroupShuffleSplit"
+        in source
+        or
+        "StratifiedGroupKFold"
+        in source
+        or
+        "group-aware"
+        in source.lower()
+        or
+        "group_aware"
+        in source.lower()
+    )
+
+    assert_true(
+        group_aware_present,
+        (
+            "Keystroke dataset comparison no longer "
+            "appears to use group-aware splitting."
+        ),
+    )
+
+    assert_true(
+        "bootstrap"
+        in source.lower(),
+        (
+            "Paired bootstrap uncertainty analysis "
+            "no longer appears in the keystroke "
+            "dataset-comparison trainer."
+        ),
+    )
+
+    assert_true(
+        "train_test_split"
+        not in source,
+        (
+            "Row-level train_test_split appears in "
+            "train_keystroke_dataset_comparison.py. "
+            "Participant/session-aware grouping "
+            "must be retained."
+        ),
+    )
+
+    return (
+        "A-F experiment design, frozen split, "
+        "group-aware evaluation and bootstrap "
+        "comparison contract verified."
+    )
+
+
+# =============================================================================
 # JAVASCRIPT CONTRACT TEST
 # =============================================================================
 
 def test_javascript_source_contract() -> str:
 
-    source = (
-        read_source(
-            WEB_SCRIPT_FILE
-        )
+    source = read_source(
+        WEB_SCRIPT_FILE
     )
 
     required_fragments = [
@@ -2601,10 +2619,8 @@ def run_node_syntax_check(
         WEB_SCRIPT_FILE
     )
 
-    node = (
-        shutil.which(
-            "node"
-        )
+    node = shutil.which(
+        "node"
     )
 
     if not node:
@@ -2624,23 +2640,21 @@ def run_node_syntax_check(
             message
         )
 
-    completed = (
-        subprocess.run(
-            [
-                node,
-                "--check",
-                str(
-                    WEB_SCRIPT_FILE
-                ),
-            ],
-            cwd=ROOT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=(
-                timeout_seconds
+    completed = subprocess.run(
+        [
+            node,
+            "--check",
+            str(
+                WEB_SCRIPT_FILE
             ),
-            check=False,
-        )
+        ],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        timeout=(
+            timeout_seconds
+        ),
+        check=False,
     )
 
     if completed.returncode != 0:
@@ -2729,25 +2743,23 @@ def run_pytest_suite(
             message
         )
 
-    completed = (
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                str(
-                    TESTS_DIR
-                ),
-                "-q",
-            ],
-            cwd=ROOT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=(
-                timeout_seconds
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            str(
+                TESTS_DIR
             ),
-            check=False,
-        )
+            "-q",
+        ],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        timeout=(
+            timeout_seconds
+        ),
+        check=False,
     )
 
     output = (
@@ -2812,21 +2824,19 @@ def run_model_initialisation_smoke(
         "print('device=', m.device)"
     )
 
-    completed = (
-        subprocess.run(
-            [
-                sys.executable,
-                "-c",
-                command,
-            ],
-            cwd=ROOT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=(
-                timeout_seconds
-            ),
-            check=False,
-        )
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            command,
+        ],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        timeout=(
+            timeout_seconds
+        ),
+        check=False,
     )
 
     output = (
@@ -2878,22 +2888,20 @@ def run_temporal_self_test_subprocess(
         TEMPORAL_FUSION_FILE
     )
 
-    completed = (
-        subprocess.run(
-            [
-                sys.executable,
-                str(
-                    TEMPORAL_FUSION_FILE
-                ),
-            ],
-            cwd=ROOT_DIR,
-            capture_output=True,
-            text=True,
-            timeout=(
-                timeout_seconds
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(
+                TEMPORAL_FUSION_FILE
             ),
-            check=False,
-        )
+        ],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        timeout=(
+            timeout_seconds
+        ),
+        check=False,
     )
 
     output = (
@@ -2947,9 +2955,7 @@ def save_report(
         exist_ok=True,
     )
 
-    counts = (
-        runner.counts()
-    )
+    counts = runner.counts()
 
     payload = {
         "project":
@@ -3000,6 +3006,24 @@ def save_report(
 
             "min_keydowns":
                 EXPECTED_MIN_KEYDOWNS,
+
+            "keystroke_dataset_comparison": {
+                "builder":
+                    str(
+                        KEYSTROKE_DATASET_BUILDER_FILE.name
+                    ),
+
+                "trainer":
+                    str(
+                        KEYSTROKE_DATASET_TRAINER_FILE.name
+                    ),
+
+                "primary_analysis":
+                    "three_class",
+
+                "exploratory_analysis":
+                    "four_class",
+            },
         },
 
         "options": {
@@ -3054,12 +3078,10 @@ def save_report(
 
 def build_argument_parser() -> argparse.ArgumentParser:
 
-    parser = (
-        argparse.ArgumentParser(
-            description=(
-                "Run canonical SenseFuzeAI "
-                "software and temporal-fusion tests."
-            )
+    parser = argparse.ArgumentParser(
+        description=(
+            "Run canonical SenseFuzeAI software, "
+            "temporal-fusion and dataset-comparison tests."
         )
     )
 
@@ -3145,13 +3167,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
 
-    parser = (
-        build_argument_parser()
-    )
+    parser = build_argument_parser()
 
-    args = (
-        parser.parse_args()
-    )
+    args = parser.parse_args()
 
     if (
         args.subprocess_timeout
@@ -3171,11 +3189,9 @@ def main() -> None:
             "--model-timeout must be positive."
         )
 
-    runner = (
-        TestRunner(
-            verbose=(
-                args.verbose
-            )
+    runner = TestRunner(
+        verbose=(
+            args.verbose
         )
     )
 
@@ -3210,15 +3226,15 @@ def main() -> None:
         WEB_APP_FILE,
         EVALUATION_FILE,
         COMPARISON_FILE,
+        KEYSTROKE_DATASET_BUILDER_FILE,
+        KEYSTROKE_DATASET_TRAINER_FILE,
     ]
 
     for path in python_files:
 
-        relative_name = (
-            str(
-                path.relative_to(
-                    ROOT_DIR
-                )
+        relative_name = str(
+            path.relative_to(
+                ROOT_DIR
             )
         )
 
@@ -3337,6 +3353,22 @@ def main() -> None:
         test_comparison_source_contract,
     )
 
+    # -------------------------------------------------------------------------
+    # New EmoSurv / SenseFuzeAI keystroke dataset-comparison contracts
+    # -------------------------------------------------------------------------
+
+    runner.run(
+        "keystroke dataset harmonisation contract",
+        "dataset-comparison",
+        test_keystroke_dataset_builder_source_contract,
+    )
+
+    runner.run(
+        "keystroke dataset comparison split contract",
+        "dataset-comparison",
+        test_keystroke_dataset_trainer_source_contract,
+    )
+
     runner.run(
         "JavaScript client contract",
         "architecture",
@@ -3363,6 +3395,17 @@ def main() -> None:
 
     # =========================================================================
     # 5. Project pytest suite
+    #
+    # This automatically discovers:
+    #
+    #   tests/test_01_unit.py
+    #   tests/test_02_integration.py
+    #   tests/test_03_system.py
+    #   tests/test_04_acceptance.py
+    #   tests/test_05_keystroke_dataset_comparison.py
+    #   tests/test_sensefuzeai.py
+    #
+    # and any future test_*.py files.
     # =========================================================================
 
     runner.run(
@@ -3401,9 +3444,7 @@ def main() -> None:
     # Summary
     # =========================================================================
 
-    counts = (
-        runner.counts()
-    )
+    counts = runner.counts()
 
     save_report(
         path=(
