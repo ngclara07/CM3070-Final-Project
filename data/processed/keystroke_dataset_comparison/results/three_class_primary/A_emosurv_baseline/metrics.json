@@ -1,0 +1,28 @@
+{
+    "accuracy": 0.6050420168067226,
+    "balanced_accuracy": 0.6182901558225112,
+    "macro_precision": 0.6302938196555218,
+    "macro_recall": 0.6182901558225112,
+    "macro_f1": 0.5833557184338104,
+    "weighted_precision": 0.7360791124960622,
+    "weighted_recall": 0.6050420168067226,
+    "weighted_f1": 0.6401651800057679,
+    "log_loss": 0.9014739269235361,
+    "multiclass_brier_score": 0.5242215756124511,
+    "experiment": "A_emosurv_baseline",
+    "train_rows": 453,
+    "test_rows": 119,
+    "train_participants": 44,
+    "test_participants": 12,
+    "train_sessions": 126,
+    "test_sessions": 31,
+    "train_sources": {
+        "emosurv": 453
+    },
+    "test_sources": {
+        "emosurv": 119
+    },
+    "fit_runtime_seconds": 0.5614343000343069,
+    "inference_runtime_seconds": 0.1257315999828279,
+    "inference_runtime_per_sample_ms": 1.0565680670825874
+}

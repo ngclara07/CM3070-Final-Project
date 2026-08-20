@@ -63,11 +63,31 @@ venv/
 
 /data/processed/archive/
 
+
+# Keystroke baseline results
+
 !/data/processed/keystroke_baseline_results/
 !/data/processed/keystroke_baseline_results/**
 
+
+# Keystroke dataset comparison
+# Commit ONLY the results/ subdirectory
+
+!/data/processed/keystroke_dataset_comparison/
+
+/data/processed/keystroke_dataset_comparison/*
+
+!/data/processed/keystroke_dataset_comparison/results/
+!/data/processed/keystroke_dataset_comparison/results/**
+
+
+# Multimodal comparison results
+
 !/data/processed/multimodal_comparison_results/
 !/data/processed/multimodal_comparison_results/**
+
+
+# Multimodal evaluation summary
 
 !/data/processed/multimodal_evaluation_summary/
 !/data/processed/multimodal_evaluation_summary/**

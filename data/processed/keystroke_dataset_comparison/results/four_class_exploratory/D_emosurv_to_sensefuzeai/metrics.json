@@ -1,0 +1,28 @@
+{
+    "accuracy": 0.4,
+    "balanced_accuracy": 0.45,
+    "macro_precision": 0.1971595655806182,
+    "macro_recall": 0.45,
+    "macro_f1": 0.27231715652768285,
+    "weighted_precision": 0.18223336118072958,
+    "weighted_recall": 0.4,
+    "weighted_f1": 0.2489131920710868,
+    "log_loss": 1.4976374533952523,
+    "multiclass_brier_score": 0.785832394374273,
+    "experiment": "D_emosurv_to_sensefuzeai",
+    "train_rows": 1387,
+    "test_rows": 120,
+    "train_participants": 66,
+    "test_participants": 1,
+    "train_sessions": 301,
+    "test_sessions": 62,
+    "train_sources": {
+        "emosurv": 1387
+    },
+    "test_sources": {
+        "sensefuzeai": 120
+    },
+    "fit_runtime_seconds": 0.7178453999804333,
+    "inference_runtime_seconds": 0.13112219993490726,
+    "inference_runtime_per_sample_ms": 1.0926849994575605
+}

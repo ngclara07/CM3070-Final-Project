@@ -1,0 +1,29 @@
+{
+    "accuracy": 0.5798319327731093,
+    "balanced_accuracy": 0.5988141855268688,
+    "macro_precision": 0.5842142353770261,
+    "macro_recall": 0.5988141855268688,
+    "macro_f1": 0.558588365039978,
+    "weighted_precision": 0.6740632828184128,
+    "weighted_recall": 0.5798319327731093,
+    "weighted_f1": 0.6031549096065226,
+    "log_loss": 0.9723775679304564,
+    "multiclass_brier_score": 0.5488199269720719,
+    "experiment": "C_augmented_to_emosurv_test",
+    "train_rows": 805,
+    "test_rows": 119,
+    "train_participants": 45,
+    "test_participants": 12,
+    "train_sessions": 311,
+    "test_sessions": 31,
+    "train_sources": {
+        "emosurv": 453,
+        "sensefuzeai": 352
+    },
+    "test_sources": {
+        "emosurv": 119
+    },
+    "fit_runtime_seconds": 0.6716165000107139,
+    "inference_runtime_seconds": 0.11790050007402897,
+    "inference_runtime_per_sample_ms": 0.9907605048237729
+}

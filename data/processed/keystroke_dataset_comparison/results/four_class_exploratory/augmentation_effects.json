@@ -1,0 +1,22 @@
+{
+    "A_vs_C": {
+        "model_a_macro_f1": 0.5462031248115811,
+        "model_b_macro_f1": 0.5213774741802841,
+        "observed_delta": -0.024825650631296936,
+        "ci95_lower": -0.04424509409868227,
+        "ci95_upper": -0.004662287030537483,
+        "bootstrap_repetitions": 1000,
+        "bootstrap_group_count": 17,
+        "interpretation": "Effect of adding SenseFuzeAI training data when evaluated on the exact same held-out EmoSurv participants."
+    },
+    "D_vs_E": {
+        "model_a_macro_f1": 0.27231715652768285,
+        "model_b_macro_f1": 0.956999773708911,
+        "observed_delta": 0.6846826171812281,
+        "ci95_lower": 0.627005519235763,
+        "ci95_upper": 0.751055921388738,
+        "bootstrap_repetitions": 1000,
+        "bootstrap_group_count": 62,
+        "interpretation": "Effect of adding SenseFuzeAI training data when evaluated on the exact same SenseFuzeAI holdout."
+    }
+}

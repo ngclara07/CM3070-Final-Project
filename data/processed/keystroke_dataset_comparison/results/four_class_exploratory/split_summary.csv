@@ -1,0 +1,6 @@
+partition,rows,participants,sessions,group_column
+emosurv_train,1387,66,301,participant_id
+emosurv_test,450,17,83,participant_id
+sensefuzeai_train,475,1,247,session_id
+sensefuzeai_test,120,1,62,session_id
+combined_train,1862,67,548,mixed_training_sources
