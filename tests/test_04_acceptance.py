@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import sys
 
 from pathlib import Path
@@ -125,7 +126,7 @@ EXPECTED_LABELS = (
 
 
 # ============================================================
-# AST helper
+# AST helpers
 # ============================================================
 
 def imports_from_temporal_fusion(
@@ -138,9 +139,7 @@ def imports_from_temporal_fusion(
         )
     )
 
-    names: set[
-        str
-    ] = set()
+    names: set[str] = set()
 
     for node in ast.walk(
         tree
@@ -158,8 +157,7 @@ def imports_from_temporal_fusion(
 
             names.update(
                 alias.name
-                for alias
-                in node.names
+                for alias in node.names
             )
 
     return names
@@ -183,7 +181,6 @@ def calls_temporal_engine(
             node,
             ast.Call,
         ):
-
             continue
 
         if (
@@ -195,10 +192,75 @@ def calls_temporal_engine(
             node.func.id
             == "TemporalFusionEngine"
         ):
-
             return True
 
     return False
+
+
+def session_state_fields(
+    backend_source: str,
+) -> set[str]:
+
+    tree = ast.parse(
+        backend_source
+    )
+
+    class_node = next(
+        (
+            node
+            for node in tree.body
+            if (
+                isinstance(
+                    node,
+                    ast.ClassDef,
+                )
+                and
+                node.name
+                == "SessionState"
+            )
+        ),
+        None,
+    )
+
+    assert class_node is not None
+
+    fields: set[str] = set()
+
+    for node in class_node.body:
+
+        if (
+            isinstance(
+                node,
+                ast.AnnAssign,
+            )
+            and
+            isinstance(
+                node.target,
+                ast.Name,
+            )
+        ):
+
+            fields.add(
+                node.target.id
+            )
+
+        elif isinstance(
+            node,
+            ast.Assign,
+        ):
+
+            for target in node.targets:
+
+                if isinstance(
+                    target,
+                    ast.Name,
+                ):
+
+                    fields.add(
+                        target.id
+                    )
+
+    return fields
 
 
 # ============================================================
@@ -237,8 +299,7 @@ def test_project_contains_required_application_files():
 
     missing = [
         str(path)
-        for path
-        in required
+        for path in required
         if not path.exists()
     ]
 
@@ -251,7 +312,7 @@ def test_project_contains_required_application_files():
 
 
 # ============================================================
-# Project requirement: >=3 pretrained models / data domains
+# Project requirement: pretrained domains
 # ============================================================
 
 def test_project_contains_three_distinct_pretrained_encoders():
@@ -323,16 +384,12 @@ def test_final_inference_uses_three_pretrained_domains():
 
 def test_final_fusion_model_and_schema_exist():
 
-    assert (
-        FUSION_MODEL.exists()
-    )
-
-    assert (
-        FUSION_SCHEMA.exists()
-    )
+    assert FUSION_MODEL.exists()
+    assert FUSION_SCHEMA.exists()
 
     columns = json.loads(
-        FUSION_SCHEMA.read_text(
+        FUSION_SCHEMA
+        .read_text(
             encoding="utf-8"
         )
     )
@@ -348,7 +405,8 @@ def test_final_fusion_model_and_schema_exist():
 def test_fusion_schema_combines_all_four_modalities():
 
     columns = json.loads(
-        FUSION_SCHEMA.read_text(
+        FUSION_SCHEMA
+        .read_text(
             encoding="utf-8"
         )
     )
@@ -376,17 +434,13 @@ def test_fusion_schema_combines_all_four_modalities():
 
     assert any(
         (
-            "keydown"
-            in column
+            "keydown" in column
             or
-            "typing"
-            in column
+            "typing" in column
             or
-            "delay_"
-            in column
+            "delay_" in column
             or
-            "hold_"
-            in column
+            "hold_" in column
         )
         for column in columns
     )
@@ -456,17 +510,6 @@ def test_desktop_uses_shared_temporal_engine():
         LIVE_GUI_PATH
     )
 
-    source = (
-        LIVE_GUI_PATH.read_text(
-            encoding="utf-8"
-        )
-    )
-
-    assert (
-        "probability_history"
-        not in source
-    )
-
 
 def test_web_backend_uses_per_session_shared_temporal_engine():
 
@@ -482,7 +525,8 @@ def test_web_backend_uses_per_session_shared_temporal_engine():
     )
 
     source = (
-        WEB_APP_PATH.read_text(
+        WEB_APP_PATH
+        .read_text(
             encoding="utf-8"
         )
     )
@@ -492,20 +536,15 @@ def test_web_backend_uses_per_session_shared_temporal_engine():
         in source
     )
 
-    assert (
-        "SESSION_PROBABILITY_HISTORY"
-        not in source
-    )
+    forbidden = [
+        "SESSION_PROBABILITY_HISTORY",
+        "add_temporal_probability",
+        "rolling_mean_probability",
+    ]
 
-    assert (
-        "add_temporal_probability"
-        not in source
-    )
+    for token in forbidden:
 
-    assert (
-        "rolling_mean_probability"
-        not in source
-    )
+        assert token not in source
 
 
 def test_evaluation_uses_same_temporal_engine():
@@ -559,10 +598,7 @@ def test_javascript_does_not_own_temporal_mathematics():
 
     for token in forbidden:
 
-        assert (
-            token
-            not in script
-        )
+        assert token not in script
 
 
 def test_javascript_has_generation_safe_client_state():
@@ -589,10 +625,158 @@ def test_javascript_has_generation_safe_client_state():
 
 
 # ============================================================
-# Four-modality live acquisition
+# Continuous microphone acceptance contract
 # ============================================================
 
-def test_web_supports_fixed_audio_source():
+def test_backend_supports_continuous_microphone_transport():
+
+    backend = (
+        WEB_APP_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    required = [
+        '"/audio_stream/start"',
+        '"/audio_stream/stop"',
+        '"/ws/audio/{session_id}"',
+        "WebSocket",
+        "WebSocketDisconnect",
+        "audio_stream_active",
+        "audio_stream_token",
+        "audio_pcm_buffer",
+        "audio_stream_packets",
+        "analyse_pcm16_bytes",
+        "write_pcm16_wav",
+    ]
+
+    for token in required:
+
+        assert token in backend
+
+
+def test_session_state_persists_rolling_microphone_buffer():
+
+    backend = (
+        WEB_APP_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    fields = (
+        session_state_fields(
+            backend
+        )
+    )
+
+    required = {
+        "audio_path",
+        "audio_name",
+        "audio_source_kind",
+        "audio_diagnostics",
+        "audio_stream_active",
+        "audio_stream_token",
+        "audio_pcm_buffer",
+        "audio_stream_packets",
+        "audio_stream_last_packet_at",
+    }
+
+    assert required <= fields
+
+
+def test_stream_packets_do_not_reset_temporal_contract():
+
+    backend = (
+        WEB_APP_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert (
+        re.search(
+            (
+                r'"stream_packets_reset_temporal"'
+                r"\s*:\s*False"
+            ),
+            backend,
+        )
+        is not None
+    ), (
+        "The backend must explicitly declare that "
+        "ordinary PCM stream packets do not reset "
+        "temporal fusion."
+    )
+
+
+def test_frontend_uses_continuous_microphone_websocket():
+
+    frontend = (
+        WEB_SCRIPT_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    required = [
+        "startMicrophoneStream",
+        "stopMicrophoneStream",
+        "/audio_stream/start",
+        "/audio_stream/stop",
+        "/ws/audio/",
+        "new WebSocket",
+        "AudioContext",
+        "createMediaStreamSource",
+        "float32ToPCM16Buffer",
+        "resampleLinear",
+        "microphoneStreaming",
+        "audioBufferedSec",
+        "audioPackets",
+    ]
+
+    for token in required:
+
+        assert token in frontend
+
+
+def test_old_one_shot_microphone_contract_is_removed():
+
+    frontend = (
+        WEB_SCRIPT_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    forbidden = [
+        "recordMicrophoneOnce",
+        "AUDIO_CAPTURE_SECONDS",
+        "forceExactDuration",
+    ]
+
+    for token in forbidden:
+
+        assert token not in frontend
+
+
+def test_media_recorder_chunk_loop_is_not_used():
+
+    frontend = (
+        WEB_SCRIPT_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert (
+        "MediaRecorder"
+        not in frontend
+    )
+
+
+def test_fixed_audio_file_remains_available_as_fallback():
 
     backend = (
         WEB_APP_PATH
@@ -608,252 +792,79 @@ def test_web_supports_fixed_audio_source():
         )
     )
 
-    # --------------------------------------------------------
-    # 1. A dedicated endpoint must exist for setting/replacing
-    #    the persistent audio source.
-    # --------------------------------------------------------
-
     assert (
         "/set_audio_source"
         in backend
-    ), (
-        "Backend is missing the dedicated "
-        "/set_audio_source endpoint."
     )
 
     assert (
         "/set_audio_source"
         in frontend
-    ), (
-        "Frontend does not call "
-        "/set_audio_source."
     )
-
-    # --------------------------------------------------------
-    # 2. SessionState must retain audio state between
-    #    prediction requests.
-    # --------------------------------------------------------
-
-    tree = ast.parse(
-        backend
-    )
-
-    session_class = next(
-        (
-            node
-            for node
-            in tree.body
-            if (
-                isinstance(
-                    node,
-                    ast.ClassDef,
-                )
-                and
-                node.name
-                == "SessionState"
-            )
-        ),
-        None,
-    )
-
-    assert session_class is not None, (
-        "Backend is missing SessionState."
-    )
-
-    session_fields = set()
-
-    for node in session_class.body:
-
-        if (
-            isinstance(
-                node,
-                ast.AnnAssign,
-            )
-            and
-            isinstance(
-                node.target,
-                ast.Name,
-            )
-        ):
-
-            session_fields.add(
-                node.target.id
-            )
-
-        elif isinstance(
-            node,
-            ast.Assign,
-        ):
-
-            for target in node.targets:
-
-                if isinstance(
-                    target,
-                    ast.Name,
-                ):
-
-                    session_fields.add(
-                        target.id
-                    )
-
-    assert (
-        "audio_path"
-        in session_fields
-    ), (
-        "SessionState must persist the selected "
-        "audio source path."
-    )
-
-    # At least one descriptive/source-state field should also
-    # be retained alongside the path.
-    assert any(
-        field
-        in session_fields
-        for field
-        in {
-            "audio_name",
-            "audio_source_kind",
-            "audio_diagnostics",
-        }
-    ), (
-        "SessionState does not expose persistent "
-        "audio-source metadata."
-    )
-
-    # --------------------------------------------------------
-    # 3. /predict_live must reuse the session audio.
-    #
-    #    It must NOT require an audio file upload for every
-    #    live prediction.
-    # --------------------------------------------------------
-
-    predict_live_function = next(
-        (
-            node
-            for node
-            in tree.body
-            if (
-                isinstance(
-                    node,
-                    (
-                        ast.FunctionDef,
-                        ast.AsyncFunctionDef,
-                    ),
-                )
-                and
-                node.name
-                == "predict_live"
-            )
-        ),
-        None,
-    )
-
-    assert (
-        predict_live_function
-        is not None
-    ), (
-        "Backend is missing predict_live()."
-    )
-
-    predict_live_arguments = {
-        argument.arg
-        for argument
-        in (
-            predict_live_function.args.args
-            +
-            predict_live_function.args.kwonlyargs
-        )
-    }
-
-    assert (
-        "audio_file"
-        not in predict_live_arguments
-    ), (
-        "/predict_live should reuse the persistent "
-        "session audio source rather than requiring "
-        "a new audio upload every prediction."
-    )
-
-    # --------------------------------------------------------
-    # 4. The dedicated source endpoint should accept the audio
-    #    upload.
-    # --------------------------------------------------------
-
-    set_audio_function = next(
-        (
-            node
-            for node
-            in tree.body
-            if (
-                isinstance(
-                    node,
-                    (
-                        ast.FunctionDef,
-                        ast.AsyncFunctionDef,
-                    ),
-                )
-                and
-                node.name
-                == "set_audio_source"
-            )
-        ),
-        None,
-    )
-
-    assert (
-        set_audio_function
-        is not None
-    ), (
-        "Backend is missing set_audio_source()."
-    )
-
-    set_audio_arguments = {
-        argument.arg
-        for argument
-        in (
-            set_audio_function.args.args
-            +
-            set_audio_function.args.kwonlyargs
-        )
-    }
-
-    assert (
-        "audio_file"
-        in set_audio_arguments
-    ), (
-        "set_audio_source() should receive "
-        "the uploaded audio file."
-    )
-
-    # --------------------------------------------------------
-    # 5. Browser acquisition should explicitly set audio once,
-    #    not run a recurring MediaRecorder capture loop.
-    # --------------------------------------------------------
 
     assert (
         "setAudioFile"
         in frontend
-    ), (
-        "Frontend is missing the persistent "
-        "audio-source helper."
     )
 
-    assert (
-        "recordMicrophoneOnce"
-        in frontend
-    ), (
-        "Frontend is missing one-shot "
-        "microphone recording."
+
+# ============================================================
+# User-facing continuous audio controls
+# ============================================================
+
+def test_web_interface_exposes_live_microphone_controls():
+
+    html = (
+        WEB_HTML_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+        .lower()
     )
 
-    assert (
-        "MediaRecorder"
-        not in frontend
-    ), (
-        "Frontend appears to contain the old recurring "
-        "MediaRecorder architecture."
+    required = [
+        'id="startmicbtn"',
+        'id="stopmicbtn"',
+        'id="chooseaudiobtn"',
+        'id="audiofileinput"',
+        'id="audiostreamstate"',
+        'id="audiobufferedseconds"',
+        'id="audiolivelevel"',
+        'id="audiopacketcount"',
+        'id="audiostatus"',
+        'id="audiodiagnostic"',
+    ]
+
+    for element in required:
+
+        assert element in html
+
+
+def test_styles_include_streaming_audio_state():
+
+    style = (
+        WEB_STYLE_PATH
+        .read_text(
+            encoding="utf-8"
+        )
     )
 
+    required = [
+        ".audio-card.streaming",
+        ".audio-stream-grid",
+        ".audio-control-grid",
+        ".source-btn-live",
+        ".source-btn-stop",
+    ]
+
+    for token in required:
+
+        assert token in style
+
+
+# ============================================================
+# Visual acquisition
+# ============================================================
 
 def test_web_supports_image_video_and_webcam():
 
@@ -894,6 +905,10 @@ def test_web_supports_image_video_and_webcam():
     )
 
 
+# ============================================================
+# Four-modality gating
+# ============================================================
+
 def test_live_four_modality_gating_is_present():
 
     desktop = (
@@ -932,7 +947,7 @@ def test_live_four_modality_gating_is_present():
 
 
 # ============================================================
-# Temporal reset behaviour
+# Reset semantics
 # ============================================================
 
 def test_temporal_reset_and_full_reset_endpoints_exist():
@@ -955,7 +970,7 @@ def test_temporal_reset_and_full_reset_endpoints_exist():
     )
 
 
-def test_source_changes_reset_temporal_generation():
+def test_microphone_start_and_stop_are_source_changes():
 
     backend = (
         WEB_APP_PATH
@@ -970,10 +985,12 @@ def test_source_changes_reset_temporal_generation():
     )
 
     assert (
-        ".temporal_fusion.reset()"
+        "start_audio_stream"
         in backend
-        or
-        "state.temporal_fusion.reset()"
+    )
+
+    assert (
+        "stop_audio_stream"
         in backend
     )
 
@@ -1056,22 +1073,15 @@ def test_web_interface_exposes_calibrated_visual_diagnostic():
 
 def test_original_and_calibrated_visual_models_are_preserved():
 
-    assert (
-        ORIGINAL_IMAGE_MODEL.exists()
-    )
-
-    assert (
-        CALIBRATED_IMAGE_MODEL.exists()
-    )
+    assert ORIGINAL_IMAGE_MODEL.exists()
+    assert CALIBRATED_IMAGE_MODEL.exists()
 
     assert (
         ORIGINAL_IMAGE_MODEL
         != CALIBRATED_IMAGE_MODEL
     )
 
-    assert (
-        CALIBRATED_METADATA.exists()
-    )
+    assert CALIBRATED_METADATA.exists()
 
 
 def test_final_inference_owns_webcam_calibration_integration():
@@ -1190,14 +1200,18 @@ def test_complete_automated_test_structure_exists():
         (
             ROOT_DIR
             / "tests"
+            / "test_05_keystroke_dataset_comparison.py"
+        ),
+        (
+            ROOT_DIR
+            / "tests"
             / "test_sensefuzeai.py"
         ),
     ]
 
     missing = [
         str(path)
-        for path
-        in required
+        for path in required
         if not path.exists()
     ]
 

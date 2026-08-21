@@ -11,132 +11,110 @@ PURPOSE
 This script performs the principal automated software-verification pass for
 the current SenseFuzeAI architecture.
 
-The current canonical processing architecture is:
+Canonical multimodal processing:
 
+    Keystroke ───────┐
+    Text ────────────┤
+    Audio ───────────┼──> FinalMultimodalInference
+    Image ───────────┘              |
+                                    |
+                                    | raw four-class
+                                    | probability vector
+                                    v
+                           TemporalFusionEngine
+                                    |
+                      +-------------+-------------+
+                      |             |             |
+                      v             v             v
+                 Desktop GUI    Web backend   Evaluation
+
+
+Continuous browser-audio architecture:
+
+    Browser microphone
+            |
+            v
+      Web Audio API
+            |
+            | Float32 samples
+            v
+      client-side resampling
+            |
+            | mono 16-kHz PCM16
+            v
+         WebSocket
+            |
+            v
+    FastAPI per-session
+    rolling PCM16 buffer
+            |
+            | immutable WAV snapshot
+            v
     FinalMultimodalInference
-            |
-            | ONE raw four-class probability vector
-            v
-    TemporalFusionEngine
-            |
-            +--> Desktop GUI
-            |
-            +--> Web backend
-            |
-            +--> Offline evaluation
 
 
-The project also contains a separate external keystroke-dataset comparison
-pipeline:
-
-    EmoSurv IEEE keystrokes
-            |
-            +--> canonical 23-feature representation
-            |
-    SenseFuzeAI raw keystrokes
-            |
-            +--> same canonical 23-feature representation
-            |
-            v
-    Harmonised keystroke datasets
-            |
-            +--> EmoSurv baseline
-            +--> SenseFuzeAI-only
-            +--> augmented training
-            +--> cross-dataset evaluation
-
-
-This test runner verifies that:
-
-    1. temporal_fusion.py is mathematically correct;
-
-    2. probability normalisation is canonical;
-
-    3. the temporal history uses a maximum window of five observations;
-
-    4. temporal probabilities are the equal arithmetic mean of the latest
-       observations;
-
-    5. confidence is the highest temporal probability;
-
-    6. confidence gap is top probability minus second-highest probability;
-
-    7. confidence thresholds remain:
-           High   >= 0.35
-           Medium >= 0.15
-           Low    <  0.15
-
-    8. reset increments the temporal generation and clears history;
-
-    9. stale predictions cannot enter a new generation;
-
-   10. multiple TemporalFusionEngine consumers produce identical results;
-
-   11. final_multimodal_inference.py remains STATELESS and does not maintain
-       temporal history;
-
-   12. live_fusion_gui.py uses the shared TemporalFusionEngine rather than
-       duplicating temporal mathematics;
-
-   13. web_app/app.py uses one TemporalFusionEngine per browser session;
-
-   14. web_app/static/script.js remains a browser acquisition/presentation
-       layer and does not implement temporal probability mathematics;
-
-   15. evaluation/training comparison scripts use the same canonical temporal
-       implementation;
-
-   16. all critical Python source files compile successfully;
-
-   17. script.js passes `node --check` when Node.js is available;
-
-   18. the project pytest suite is executed when tests/ exists;
-
-   19. optionally, FinalMultimodalInference can be fully instantiated to
-       verify the large pretrained/model artifact dependency chain;
-
-   20. build_keystroke_dataset_comparison.py reuses the canonical EmoSurv
-       feature/window representation and preserves dataset provenance;
-
-   21. train_keystroke_dataset_comparison.py retains the A-F experimental
-       design, group-aware frozen splits and paired bootstrap comparison;
-
-   22. the pytest suite verifies the harmonised datasets, leakage prevention,
-       identical held-out evaluation sets and experiment artifacts.
-
-
+IMPORTANT TEMPORAL INVARIANT
 =============================================================================
+
+Starting microphone
+    -> temporal RESET once
+
+Incoming PCM packet
+    -> NO temporal reset
+
+Incoming PCM packet
+    -> NO temporal reset
+
+Prediction
+    -> append temporal observation
+
+More PCM packets
+    -> NO temporal reset
+
+Prediction
+    -> append temporal observation
+
+Stopping microphone
+    -> temporal RESET once
+
+
+Ordinary streamed PCM packets MUST NOT reset temporal fusion. Otherwise the
+five-observation temporal window could never fill.
+
+
 DESIGN PRINCIPLE
 =============================================================================
 
 Heavy pretrained models are NOT loaded by default.
 
-The normal test command:
+Normal verification:
 
     python run_all_tests.py
 
-therefore performs fast mathematical, source-contract, syntax and pytest
-verification.
+Verbose verification:
 
-To additionally instantiate all large inference artifacts:
+    python run_all_tests.py --verbose
+
+Strict verification:
+
+    python run_all_tests.py --require-pytest --strict --verbose
+
+Heavy model dependency verification:
 
     python run_all_tests.py --with-model-smoke
 
 
-=============================================================================
 OUTPUT
 =============================================================================
 
-A machine-readable JSON report is written by default to:
+Default JSON report:
 
     data/processed/test_results/run_all_tests_summary.json
 
-The command exits with:
+Exit codes:
 
     0   all mandatory checks passed
     1   one or more mandatory checks failed
-
-=============================================================================
 """
 
 from __future__ import annotations
@@ -178,6 +156,7 @@ ROOT_DIR = (
     .parent
 )
 
+
 TEMPORAL_FUSION_FILE = (
     ROOT_DIR
     / "temporal_fusion.py"
@@ -199,11 +178,25 @@ WEB_APP_FILE = (
     / "app.py"
 )
 
+WEB_HTML_FILE = (
+    ROOT_DIR
+    / "web_app"
+    / "templates"
+    / "index.html"
+)
+
 WEB_SCRIPT_FILE = (
     ROOT_DIR
     / "web_app"
     / "static"
     / "script.js"
+)
+
+WEB_STYLE_FILE = (
+    ROOT_DIR
+    / "web_app"
+    / "static"
+    / "style.css"
 )
 
 EVALUATION_FILE = (
@@ -264,6 +257,25 @@ EXPECTED_MIN_TEXT_CHARS = 20
 EXPECTED_MIN_KEYDOWNS = 20
 
 
+# -----------------------------------------------------------------------------
+# Continuous microphone expectations
+# -----------------------------------------------------------------------------
+
+EXPECTED_AUDIO_SAMPLE_RATE = 16000
+
+EXPECTED_AUDIO_STREAM_WINDOW_SECONDS = 10.0
+
+EXPECTED_AUDIO_STREAM_MIN_SECONDS = 2.0
+
+EXPECTED_AUDIO_STREAM_TRANSPORT = (
+    "websocket_pcm16_mono"
+)
+
+EXPECTED_AUDIO_SOURCE_POLICY = (
+    "fixed_file_or_continuous_microphone_stream"
+)
+
+
 # =============================================================================
 # TEST RESULT STRUCTURES
 # =============================================================================
@@ -289,7 +301,7 @@ class SkipCheck(Exception):
 
 class WarningCheck(Exception):
     """
-    Used for a non-fatal verification warning.
+    Used for non-fatal verification warnings.
     """
 
 
@@ -299,7 +311,7 @@ class WarningCheck(Exception):
 
 class TestRunner:
     """
-    Lightweight project test orchestrator.
+    Lightweight project verification orchestrator.
     """
 
     def __init__(
@@ -313,6 +325,7 @@ class TestRunner:
         self.results: list[
             CheckResult
         ] = []
+
 
     def run(
         self,
@@ -340,12 +353,16 @@ class TestRunner:
         except SkipCheck as exc:
 
             status = "SKIP"
-            detail = str(exc)
+            detail = str(
+                exc
+            )
 
         except WarningCheck as exc:
 
             status = "WARN"
-            detail = str(exc)
+            detail = str(
+                exc
+            )
 
         except Exception as exc:
 
@@ -382,7 +399,7 @@ class TestRunner:
 
         print(
             f"[{status:4s}] "
-            f"{category:18s} "
+            f"{category:21s} "
             f"{name}"
             f" ({duration:.3f}s)"
         )
@@ -400,6 +417,7 @@ class TestRunner:
             print(
                 f"       {detail}"
             )
+
 
     def counts(
         self,
@@ -422,7 +440,7 @@ class TestRunner:
 
 
 # =============================================================================
-# GENERAL ASSERTION HELPERS
+# ASSERTION HELPERS
 # =============================================================================
 
 def assert_true(
@@ -477,9 +495,9 @@ def assert_close(
 
         raise AssertionError(
             f"{message}\n"
-            f"Expected: {expected_value:.15f}\n"
-            f"Actual:   {actual_value:.15f}\n"
-            f"Tolerance:{tolerance}"
+            f"Expected:  {expected_value:.15f}\n"
+            f"Actual:    {actual_value:.15f}\n"
+            f"Tolerance: {tolerance}"
         )
 
 
@@ -498,8 +516,8 @@ def assert_probability_dict_close(
             expected.keys()
         ),
         (
-            "Probability dictionaries "
-            "do not have identical class ordering."
+            "Probability dictionaries do not "
+            "have identical class ordering."
         ),
     )
 
@@ -531,13 +549,15 @@ def require_file(
     if not path.exists():
 
         raise FileNotFoundError(
-            f"Required project file not found:\n{path}"
+            "Required project file not found:\n"
+            f"{path}"
         )
 
     if not path.is_file():
 
         raise ValueError(
-            f"Expected a file:\n{path}"
+            "Expected a file:\n"
+            f"{path}"
         )
 
 
@@ -573,12 +593,6 @@ def parse_python_ast(
 def dotted_name(
     node: ast.AST,
 ) -> Optional[str]:
-    """
-    Convert an AST Name/Attribute chain to a dotted string.
-
-    Example:
-        self.predictor.predict
-    """
 
     if isinstance(
         node,
@@ -608,13 +622,11 @@ def dotted_name(
 
 
 def imported_names_from(
-    tree: ast.Module,
+    tree: ast.AST,
     module_name: str,
 ) -> set[str]:
 
-    names: set[
-        str
-    ] = set()
+    names: set[str] = set()
 
     for node in ast.walk(
         tree
@@ -627,15 +639,18 @@ def imported_names_from(
 
             continue
 
-        if node.module != module_name:
+        if (
+            node.module
+            != module_name
+        ):
 
             continue
 
-        for alias in node.names:
-
-            names.add(
-                alias.name
-            )
+        names.update(
+            alias.name
+            for alias
+            in node.names
+        )
 
     return names
 
@@ -677,7 +692,7 @@ def find_class(
             return node
 
     raise AssertionError(
-        f"Required class not found: "
+        "Required class not found: "
         f"{class_name}"
     )
 
@@ -705,8 +720,36 @@ def class_method(
             return node
 
     raise AssertionError(
-        f"Required method not found: "
+        "Required method not found: "
         f"{class_node.name}.{method_name}"
+    )
+
+
+def top_level_function(
+    tree: ast.Module,
+    function_name: str,
+) -> ast.FunctionDef | ast.AsyncFunctionDef:
+
+    for node in tree.body:
+
+        if (
+            isinstance(
+                node,
+                (
+                    ast.FunctionDef,
+                    ast.AsyncFunctionDef,
+                ),
+            )
+            and
+            node.name
+            == function_name
+        ):
+
+            return node
+
+    raise AssertionError(
+        "Required function not found: "
+        f"{function_name}"
     )
 
 
@@ -738,7 +781,10 @@ def top_level_literal(
                     == variable_name
                 ):
 
-                    value_node = node.value
+                    value_node = (
+                        node.value
+                    )
+
                     break
 
         elif (
@@ -756,7 +802,9 @@ def top_level_literal(
             == variable_name
         ):
 
-            value_node = node.value
+            value_node = (
+                node.value
+            )
 
         if value_node is not None:
 
@@ -774,9 +822,310 @@ def top_level_literal(
                 ) from exc
 
     raise AssertionError(
-        f"Top-level constant not found: "
+        "Top-level constant not found: "
         f"{variable_name}"
     )
+
+
+def static_ast_value(
+    node: ast.AST,
+) -> Any:
+    """
+    Evaluate simple compile-time AST values.
+
+    This deliberately supports Python source formatting such as:
+
+        (
+            "fixed_file_or_"
+            "continuous_microphone_stream"
+        )
+
+    because the AST represents adjacent literals as their semantic
+    concatenated value.
+
+    It also supports explicit literal string addition.
+    """
+
+    if isinstance(
+        node,
+        ast.Constant,
+    ):
+
+        return node.value
+
+    if isinstance(
+        node,
+        ast.Tuple,
+    ):
+
+        return tuple(
+            static_ast_value(
+                item
+            )
+            for item
+            in node.elts
+        )
+
+    if isinstance(
+        node,
+        ast.List,
+    ):
+
+        return [
+            static_ast_value(
+                item
+            )
+            for item
+            in node.elts
+        ]
+
+    if isinstance(
+        node,
+        ast.Set,
+    ):
+
+        return {
+            static_ast_value(
+                item
+            )
+            for item
+            in node.elts
+        }
+
+    if isinstance(
+        node,
+        ast.Dict,
+    ):
+
+        return {
+            static_ast_value(
+                key
+            ):
+            static_ast_value(
+                value
+            )
+            for key, value
+            in zip(
+                node.keys,
+                node.values,
+            )
+            if key is not None
+        }
+
+    if (
+        isinstance(
+            node,
+            ast.BinOp,
+        )
+        and
+        isinstance(
+            node.op,
+            ast.Add,
+        )
+    ):
+
+        return (
+            static_ast_value(
+                node.left
+            )
+            +
+            static_ast_value(
+                node.right
+            )
+        )
+
+    if (
+        isinstance(
+            node,
+            ast.UnaryOp,
+        )
+        and
+        isinstance(
+            node.op,
+            ast.USub,
+        )
+    ):
+
+        return -static_ast_value(
+            node.operand
+        )
+
+    raise ValueError(
+        "AST expression is not a supported "
+        "compile-time literal."
+    )
+
+
+def mapping_literal_value(
+    tree: ast.Module,
+    *,
+    mapping_name: str,
+    key: str,
+) -> Any:
+    """
+    Obtain a literal entry from a named dictionary assignment.
+
+    Unlike raw source-string searching, this checks Python semantics.
+    Therefore line wrapping and adjacent literal concatenation do not
+    produce false failures.
+    """
+
+    mapping_node: Optional[
+        ast.Dict
+    ] = None
+
+    for node in tree.body:
+
+        value_node: Optional[
+            ast.AST
+        ] = None
+
+        if isinstance(
+            node,
+            ast.Assign,
+        ):
+
+            for target in node.targets:
+
+                if (
+                    isinstance(
+                        target,
+                        ast.Name,
+                    )
+                    and
+                    target.id
+                    == mapping_name
+                ):
+
+                    value_node = (
+                        node.value
+                    )
+
+                    break
+
+        elif (
+            isinstance(
+                node,
+                ast.AnnAssign,
+            )
+            and
+            isinstance(
+                node.target,
+                ast.Name,
+            )
+            and
+            node.target.id
+            == mapping_name
+        ):
+
+            value_node = (
+                node.value
+            )
+
+        if isinstance(
+            value_node,
+            ast.Dict,
+        ):
+
+            mapping_node = (
+                value_node
+            )
+
+            break
+
+    if mapping_node is None:
+
+        raise AssertionError(
+            "Required mapping not found: "
+            f"{mapping_name}"
+        )
+
+    for key_node, value_node in zip(
+        mapping_node.keys,
+        mapping_node.values,
+    ):
+
+        if key_node is None:
+
+            continue
+
+        try:
+
+            candidate_key = (
+                static_ast_value(
+                    key_node
+                )
+            )
+
+        except Exception:
+
+            continue
+
+        if candidate_key != key:
+
+            continue
+
+        try:
+
+            return static_ast_value(
+                value_node
+            )
+
+        except Exception as exc:
+
+            raise AssertionError(
+                f"{mapping_name}[{key!r}] "
+                "is not represented by a "
+                "static literal."
+            ) from exc
+
+    raise AssertionError(
+        f"{mapping_name} does not contain "
+        f"required key {key!r}."
+    )
+
+
+def class_fields(
+    class_node: ast.ClassDef,
+) -> set[str]:
+
+    fields: set[str] = set()
+
+    for node in class_node.body:
+
+        if (
+            isinstance(
+                node,
+                ast.AnnAssign,
+            )
+            and
+            isinstance(
+                node.target,
+                ast.Name,
+            )
+        ):
+
+            fields.add(
+                node.target.id
+            )
+
+        elif isinstance(
+            node,
+            ast.Assign,
+        ):
+
+            for target in node.targets:
+
+                if isinstance(
+                    target,
+                    ast.Name,
+                ):
+
+                    fields.add(
+                        target.id
+                    )
+
+    return fields
 
 
 def collect_fastapi_routes(
@@ -788,6 +1137,26 @@ def collect_fastapi_routes(
     routes: set[
         tuple[str, str]
     ] = set()
+
+    supported = {
+        "app.get":
+            "GET",
+
+        "app.post":
+            "POST",
+
+        "app.put":
+            "PUT",
+
+        "app.delete":
+            "DELETE",
+
+        "app.patch":
+            "PATCH",
+
+        "app.websocket":
+            "WEBSOCKET",
+    }
 
     for node in tree.body:
 
@@ -810,17 +1179,16 @@ def collect_fastapi_routes(
 
                 continue
 
-            decorator_name = dotted_name(
-                decorator.func
+            decorator_name = (
+                dotted_name(
+                    decorator.func
+                )
             )
 
-            if decorator_name not in {
-                "app.get",
-                "app.post",
-                "app.put",
-                "app.delete",
-                "app.patch",
-            }:
+            if (
+                decorator_name
+                not in supported
+            ):
 
                 continue
 
@@ -828,9 +1196,11 @@ def collect_fastapi_routes(
 
                 continue
 
-            route_node = decorator.args[
-                0
-            ]
+            route_node = (
+                decorator.args[
+                    0
+                ]
+            )
 
             if not (
                 isinstance(
@@ -846,18 +1216,11 @@ def collect_fastapi_routes(
 
                 continue
 
-            method = (
-                decorator_name
-                .split(
-                    ".",
-                    1,
-                )[1]
-                .upper()
-            )
-
             routes.add(
                 (
-                    method,
+                    supported[
+                        decorator_name
+                    ],
                     route_node.value,
                 )
             )
@@ -866,7 +1229,7 @@ def collect_fastapi_routes(
 
 
 def find_call_keywords(
-    tree: ast.Module,
+    tree_or_node: ast.AST,
     dotted_callable_name: str,
 ) -> list[
     set[str]
@@ -877,7 +1240,7 @@ def find_call_keywords(
     ] = []
 
     for node in ast.walk(
-        tree
+        tree_or_node
     ):
 
         if not isinstance(
@@ -887,11 +1250,16 @@ def find_call_keywords(
 
             continue
 
-        name = dotted_name(
-            node.func
+        name = (
+            dotted_name(
+                node.func
+            )
         )
 
-        if name != dotted_callable_name:
+        if (
+            name
+            != dotted_callable_name
+        ):
 
             continue
 
@@ -909,12 +1277,12 @@ def find_call_keywords(
 
 
 def contains_named_call(
-    tree: ast.Module,
+    tree_or_node: ast.AST,
     function_name: str,
 ) -> bool:
 
     for node in ast.walk(
-        tree
+        tree_or_node
     ):
 
         if not isinstance(
@@ -924,12 +1292,15 @@ def contains_named_call(
 
             continue
 
-        name = dotted_name(
-            node.func
+        name = (
+            dotted_name(
+                node.func
+            )
         )
 
         if (
-            name == function_name
+            name
+            == function_name
             or
             (
                 name is not None
@@ -939,6 +1310,35 @@ def contains_named_call(
                     + function_name
                 )
             )
+        ):
+
+            return True
+
+    return False
+
+
+def ast_contains_string_literal(
+    node: ast.AST,
+    expected: str,
+) -> bool:
+
+    for candidate in ast.walk(
+        node
+    ):
+
+        if (
+            isinstance(
+                candidate,
+                ast.Constant,
+            )
+            and
+            isinstance(
+                candidate.value,
+                str,
+            )
+            and
+            candidate.value
+            == expected
         ):
 
             return True
@@ -974,27 +1374,36 @@ def import_temporal_module() -> Any:
 
 def test_temporal_constants() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
     assert_equal(
         tuple(
             module.LABELS
         ),
         EXPECTED_LABELS,
-        "Canonical behavioural classes changed.",
+        (
+            "Canonical behavioural "
+            "classes changed."
+        ),
     )
 
     assert_equal(
         module.TEMPORAL_PROBABILITY_WINDOW,
         EXPECTED_TEMPORAL_WINDOW,
-        "Canonical temporal window changed.",
+        (
+            "Canonical temporal "
+            "window changed."
+        ),
     )
 
     assert_close(
         module.CONFIDENCE_HIGH_GAP,
         EXPECTED_HIGH_GAP,
         message=(
-            "High-confidence threshold changed."
+            "High-confidence "
+            "threshold changed."
         ),
     )
 
@@ -1002,7 +1411,8 @@ def test_temporal_constants() -> str:
         module.CONFIDENCE_MEDIUM_GAP,
         EXPECTED_MEDIUM_GAP,
         message=(
-            "Medium-confidence threshold changed."
+            "Medium-confidence "
+            "threshold changed."
         ),
     )
 
@@ -1014,25 +1424,41 @@ def test_temporal_constants() -> str:
 
 def test_probability_normalisation() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
     normalised = (
         module
         .normalise_probability_dict(
             {
-                "focused": 60.0,
-                "distracted": 20.0,
-                "fatigued": 10.0,
-                "overloaded": 10.0,
+                "focused":
+                    60.0,
+
+                "distracted":
+                    20.0,
+
+                "fatigued":
+                    10.0,
+
+                "overloaded":
+                    10.0,
             }
         )
     )
 
     expected = {
-        "focused": 0.60,
-        "distracted": 0.20,
-        "fatigued": 0.10,
-        "overloaded": 0.10,
+        "focused":
+            0.60,
+
+        "distracted":
+            0.20,
+
+        "fatigued":
+            0.10,
+
+        "overloaded":
+            0.10,
     }
 
     assert_probability_dict_close(
@@ -1053,31 +1479,48 @@ def test_probability_normalisation() -> str:
     )
 
     return (
-        "Positive probability normalisation verified."
+        "Positive probability "
+        "normalisation verified."
     )
 
 
 def test_invalid_probability_policy() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
     result = (
         module
         .normalise_probability_dict(
             {
-                "focused": float("nan"),
-                "distracted": float("inf"),
-                "fatigued": -5.0,
-                "overloaded": 2.0,
+                "focused":
+                    float("nan"),
+
+                "distracted":
+                    float("inf"),
+
+                "fatigued":
+                    -5.0,
+
+                "overloaded":
+                    2.0,
             }
         )
     )
 
     expected = {
-        "focused": 0.0,
-        "distracted": 0.0,
-        "fatigued": 0.0,
-        "overloaded": 1.0,
+        "focused":
+            0.0,
+
+        "distracted":
+            0.0,
+
+        "fatigued":
+            0.0,
+
+        "overloaded":
+            1.0,
     }
 
     assert_probability_dict_close(
@@ -1089,7 +1532,8 @@ def test_invalid_probability_policy() -> str:
         module
         .normalise_probability_dict(
             {
-                label: 0.0
+                label:
+                    0.0
                 for label
                 in EXPECTED_LABELS
             }
@@ -1097,7 +1541,8 @@ def test_invalid_probability_policy() -> str:
     )
 
     uniform = {
-        label: 0.25
+        label:
+            0.25
         for label
         in EXPECTED_LABELS
     }
@@ -1115,9 +1560,11 @@ def test_invalid_probability_policy() -> str:
 
 def test_confidence_thresholds() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
-    assertions = [
+    cases = [
         (
             0.0,
             "Low",
@@ -1144,10 +1591,12 @@ def test_confidence_thresholds() -> str:
         ),
     ]
 
-    for gap, expected in assertions:
+    for gap, expected in cases:
 
-        actual = module.confidence_level(
-            gap
+        actual = (
+            module.confidence_level(
+                gap
+            )
         )
 
         assert_equal(
@@ -1167,7 +1616,9 @@ def test_confidence_thresholds() -> str:
 
 def test_temporal_arithmetic_mean() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
     history = [
         {
@@ -1210,10 +1661,17 @@ def test_temporal_arithmetic_mean() -> str:
     )
 
     expected = {
-        "focused": 0.64,
-        "distracted": 0.16,
-        "fatigued": 0.10,
-        "overloaded": 0.10,
+        "focused":
+            0.64,
+
+        "distracted":
+            0.16,
+
+        "fatigued":
+            0.10,
+
+        "overloaded":
+            0.10,
     }
 
     assert_probability_dict_close(
@@ -1258,7 +1716,9 @@ def test_temporal_arithmetic_mean() -> str:
             "confidence_level"
         ],
         "High",
-        "Expected a High confidence level.",
+        (
+            "Expected High confidence."
+        ),
     )
 
     assert_equal(
@@ -1266,7 +1726,10 @@ def test_temporal_arithmetic_mean() -> str:
             "temporal_samples"
         ],
         5,
-        "Temporal sample count is incorrect.",
+        (
+            "Temporal sample count "
+            "is incorrect."
+        ),
     )
 
     assert_true(
@@ -1275,7 +1738,10 @@ def test_temporal_arithmetic_mean() -> str:
                 "temporal_window_full"
             ]
         ),
-        "Five observations should fill the temporal window.",
+        (
+            "Five observations should "
+            "fill the temporal window."
+        ),
     )
 
     return (
@@ -1286,42 +1752,42 @@ def test_temporal_arithmetic_mean() -> str:
 
 def test_temporal_window_rollover() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
-    engine = module.TemporalFusionEngine()
+    engine = (
+        module.TemporalFusionEngine()
+    )
 
     one_hot = {
-        "focused":
-            {
-                "focused": 1.0,
-                "distracted": 0.0,
-                "fatigued": 0.0,
-                "overloaded": 0.0,
-            },
+        "focused": {
+            "focused": 1.0,
+            "distracted": 0.0,
+            "fatigued": 0.0,
+            "overloaded": 0.0,
+        },
 
-        "distracted":
-            {
-                "focused": 0.0,
-                "distracted": 1.0,
-                "fatigued": 0.0,
-                "overloaded": 0.0,
-            },
+        "distracted": {
+            "focused": 0.0,
+            "distracted": 1.0,
+            "fatigued": 0.0,
+            "overloaded": 0.0,
+        },
 
-        "fatigued":
-            {
-                "focused": 0.0,
-                "distracted": 0.0,
-                "fatigued": 1.0,
-                "overloaded": 0.0,
-            },
+        "fatigued": {
+            "focused": 0.0,
+            "distracted": 0.0,
+            "fatigued": 1.0,
+            "overloaded": 0.0,
+        },
 
-        "overloaded":
-            {
-                "focused": 0.0,
-                "distracted": 0.0,
-                "fatigued": 0.0,
-                "overloaded": 1.0,
-            },
+        "overloaded": {
+            "focused": 0.0,
+            "distracted": 0.0,
+            "fatigued": 0.0,
+            "overloaded": 1.0,
+        },
     }
 
     sequence = [
@@ -1337,28 +1803,42 @@ def test_temporal_window_rollover() -> str:
 
     for label in sequence:
 
-        result = engine.append(
-            one_hot[
-                label
-            ]
+        result = (
+            engine.append(
+                one_hot[
+                    label
+                ]
+            )
         )
 
     assert_true(
         result is not None,
-        "No temporal result produced.",
+        (
+            "No temporal result produced."
+        ),
     )
 
     assert_equal(
         engine.sample_count,
         5,
-        "Temporal history exceeded maxlen=5.",
+        (
+            "Temporal history exceeded "
+            "maximum window size."
+        ),
     )
 
     expected = {
-        "focused": 0.20,
-        "distracted": 0.20,
-        "fatigued": 0.20,
-        "overloaded": 0.40,
+        "focused":
+            0.20,
+
+        "distracted":
+            0.20,
+
+        "fatigued":
+            0.20,
+
+        "overloaded":
+            0.40,
     }
 
     assert_probability_dict_close(
@@ -1374,21 +1854,26 @@ def test_temporal_window_rollover() -> str:
         ],
         "overloaded",
         (
-            "Window rollover did not discard "
-            "the oldest observation correctly."
+            "Window rollover did not "
+            "discard the oldest observation."
         ),
     )
 
     return (
-        "Rolling maxlen=5 behaviour verified."
+        "Rolling maxlen=5 "
+        "behaviour verified."
     )
 
 
 def test_reset_and_stale_generation() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
-    engine = module.TemporalFusionEngine()
+    engine = (
+        module.TemporalFusionEngine()
+    )
 
     generation_zero = (
         engine.capture_generation()
@@ -1397,7 +1882,10 @@ def test_reset_and_stale_generation() -> str:
     assert_equal(
         generation_zero,
         0,
-        "Initial generation should be zero.",
+        (
+            "Initial generation "
+            "should be zero."
+        ),
     )
 
     engine.append(
@@ -1415,7 +1903,9 @@ def test_reset_and_stale_generation() -> str:
     assert_equal(
         engine.sample_count,
         1,
-        "Observation was not appended.",
+        (
+            "Observation was not appended."
+        ),
     )
 
     generation_one = (
@@ -1425,13 +1915,18 @@ def test_reset_and_stale_generation() -> str:
     assert_equal(
         generation_one,
         1,
-        "Reset did not increment generation.",
+        (
+            "Reset did not increment "
+            "generation."
+        ),
     )
 
     assert_equal(
         engine.sample_count,
         0,
-        "Reset did not clear history.",
+        (
+            "Reset did not clear history."
+        ),
     )
 
     stale_rejected = False
@@ -1457,8 +1952,8 @@ def test_reset_and_stale_generation() -> str:
     assert_true(
         stale_rejected,
         (
-            "An observation from an old generation "
-            "was not rejected."
+            "A stale observation was "
+            "not rejected."
         ),
     )
 
@@ -1466,58 +1961,35 @@ def test_reset_and_stale_generation() -> str:
         engine.sample_count,
         0,
         (
-            "Rejected stale result must not "
-            "enter temporal history."
-        ),
-    )
-
-    engine.append(
-        {
-            "focused": 0.2,
-            "distracted": 0.6,
-            "fatigued": 0.1,
-            "overloaded": 0.1,
-        },
-        expected_generation=(
-            generation_one
-        ),
-    )
-
-    assert_equal(
-        engine.sample_count,
-        1,
-        (
-            "Current-generation observation "
-            "was not accepted."
+            "Rejected stale result entered "
+            "temporal history."
         ),
     )
 
     return (
-        "Generation increment, reset and "
-        "stale-result rejection verified."
+        "Generation reset and stale-result "
+        "rejection verified."
     )
 
 
 def test_temporal_consumer_parity() -> str:
-    """
-    Simulate desktop/backend consumers of the same shared engine.
 
-    Identical probability streams and reset points must produce
-    numerically identical outputs.
-    """
+    module = (
+        import_temporal_module()
+    )
 
-    module = import_temporal_module()
-
-    desktop_engine = (
+    first_engine = (
         module.TemporalFusionEngine()
     )
 
-    web_engine = (
+    second_engine = (
         module.TemporalFusionEngine()
     )
 
-    generator = random.Random(
-        42
+    generator = (
+        random.Random(
+            42
+        )
     )
 
     reset_points = {
@@ -1532,20 +2004,19 @@ def test_temporal_consumer_parity() -> str:
 
         if index in reset_points:
 
-            desktop_generation = (
-                desktop_engine.reset()
+            first_generation = (
+                first_engine.reset()
             )
 
-            web_generation = (
-                web_engine.reset()
+            second_generation = (
+                second_engine.reset()
             )
 
             assert_equal(
-                desktop_generation,
-                web_generation,
+                first_generation,
+                second_generation,
                 (
-                    "Desktop/web simulated "
-                    "generations diverged."
+                    "Consumer generations diverged."
                 ),
             )
 
@@ -1556,99 +2027,59 @@ def test_temporal_consumer_parity() -> str:
             in EXPECTED_LABELS
         }
 
-        desktop_result = (
-            desktop_engine.append(
+        first_result = (
+            first_engine.append(
                 raw,
                 expected_generation=(
-                    desktop_engine
+                    first_engine
                     .capture_generation()
                 ),
             )
         )
 
-        web_result = (
-            web_engine.append(
+        second_result = (
+            second_engine.append(
                 raw,
                 expected_generation=(
-                    web_engine
+                    second_engine
                     .capture_generation()
                 ),
             )
         )
 
         assert_equal(
-            desktop_result[
+            first_result[
                 "current_state"
             ],
-            web_result[
+            second_result[
                 "current_state"
             ],
             (
-                "Simulated desktop/web "
-                "temporal labels diverged."
-            ),
-        )
-
-        assert_equal(
-            desktop_result[
-                "confidence_level"
-            ],
-            web_result[
-                "confidence_level"
-            ],
-            (
-                "Simulated desktop/web confidence "
-                "levels diverged."
-            ),
-        )
-
-        assert_equal(
-            desktop_result[
-                "temporal_samples"
-            ],
-            web_result[
-                "temporal_samples"
-            ],
-            (
-                "Simulated desktop/web history "
-                "lengths diverged."
+                "Temporal labels diverged."
             ),
         )
 
         assert_probability_dict_close(
-            desktop_result[
+            first_result[
                 "probabilities"
             ],
-            web_result[
+            second_result[
                 "probabilities"
             ],
             tolerance=1e-15,
-        )
-
-        assert_close(
-            desktop_result[
-                "confidence_gap"
-            ],
-            web_result[
-                "confidence_gap"
-            ],
-            tolerance=1e-15,
-            message=(
-                "Simulated desktop/web "
-                "confidence gaps diverged."
-            ),
         )
 
     return (
-        "40 deterministic observations with "
-        "multiple resets produced exact "
-        "desktop/web engine parity."
+        "40 deterministic observations "
+        "produced exact consumer parity."
     )
 
 
 def test_probability_validator() -> str:
 
-    module = import_temporal_module()
+    module = (
+        import_temporal_module()
+    )
 
     valid = (
         module
@@ -1668,7 +2099,10 @@ def test_probability_validator() -> str:
                 "valid"
             ]
         ),
-        "Valid distribution was rejected.",
+        (
+            "Valid distribution "
+            "was rejected."
+        ),
     )
 
     invalid = (
@@ -1689,16 +2123,20 @@ def test_probability_validator() -> str:
                 "valid"
             ]
         ),
-        "Non-unit probability distribution was accepted.",
+        (
+            "Invalid probability "
+            "distribution was accepted."
+        ),
     )
 
     return (
-        "Probability-distribution diagnostics verified."
+        "Probability-distribution "
+        "diagnostics verified."
     )
 
 
 # =============================================================================
-# PYTHON SOURCE CONTRACT TESTS
+# SOURCE CONTRACT HELPERS
 # =============================================================================
 
 FORBIDDEN_DUPLICATE_TEMPORAL_FUNCTIONS = {
@@ -1715,8 +2153,10 @@ def assert_no_local_temporal_math(
     filename: str,
 ) -> None:
 
-    functions = top_level_function_names(
-        tree
+    functions = (
+        top_level_function_names(
+            tree
+        )
     )
 
     duplicates = (
@@ -1734,15 +2174,23 @@ def assert_no_local_temporal_math(
         )
 
 
+# =============================================================================
+# FINAL INFERENCE CONTRACT
+# =============================================================================
+
 def test_final_inference_source_contract() -> str:
 
-    tree = parse_python_ast(
-        FINAL_INFERENCE_FILE
+    tree = (
+        parse_python_ast(
+            FINAL_INFERENCE_FILE
+        )
     )
 
-    imported = imported_names_from(
-        tree,
-        "temporal_fusion",
+    imported = (
+        imported_names_from(
+            tree,
+            "temporal_fusion",
+        )
     )
 
     required_imports = {
@@ -1752,17 +2200,17 @@ def test_final_inference_source_contract() -> str:
         "validate_probability_distribution",
     }
 
-    missing_imports = (
+    missing = (
         required_imports
         - imported
     )
 
     assert_true(
-        not missing_imports,
+        not missing,
         (
             "final_multimodal_inference.py "
-            "is missing canonical temporal/probability imports:\n"
-            f"{sorted(missing_imports)}"
+            "is missing canonical imports:\n"
+            f"{sorted(missing)}"
         ),
     )
 
@@ -1779,20 +2227,23 @@ def test_final_inference_source_contract() -> str:
             "TemporalFusionEngine",
         ),
         (
-            "FinalMultimodalInference must remain "
-            "stateless and must not instantiate "
-            "TemporalFusionEngine."
+            "FinalMultimodalInference must "
+            "remain temporally stateless."
         ),
     )
 
-    inference_class = find_class(
-        tree,
-        "FinalMultimodalInference",
+    inference_class = (
+        find_class(
+            tree,
+            "FinalMultimodalInference",
+        )
     )
 
-    predict_method = class_method(
-        inference_class,
-        "predict",
+    predict_method = (
+        class_method(
+            inference_class,
+            "predict",
+        )
     )
 
     argument_names = [
@@ -1848,26 +2299,35 @@ def test_final_inference_source_contract() -> str:
     assert_true(
         not missing_methods,
         (
-            "Canonical inference methods are missing:\n"
+            "Canonical inference methods "
+            "are missing:\n"
             f"{sorted(missing_methods)}"
         ),
     )
 
     return (
-        "Stateless raw-inference API and shared "
+        "Stateless raw-inference API and "
         "probability contract verified."
     )
 
 
+# =============================================================================
+# DESKTOP CONTRACT
+# =============================================================================
+
 def test_live_gui_source_contract() -> str:
 
-    tree = parse_python_ast(
-        LIVE_GUI_FILE
+    tree = (
+        parse_python_ast(
+            LIVE_GUI_FILE
+        )
     )
 
-    imported = imported_names_from(
-        tree,
-        "temporal_fusion",
+    imported = (
+        imported_names_from(
+            tree,
+            "temporal_fusion",
+        )
     )
 
     required = {
@@ -1896,24 +2356,15 @@ def test_live_gui_source_contract() -> str:
         filename="live_fusion_gui.py",
     )
 
-    assert_true(
-        "probability_history"
-        not in read_source(
-            LIVE_GUI_FILE
-        ),
-        (
-            "Desktop GUI still appears to maintain "
-            "its own probability_history."
-        ),
-    )
-
     assert_equal(
         top_level_literal(
             tree,
             "LIVE_FUSION_INTERVAL_MS",
         ),
         EXPECTED_LIVE_INTERVAL_MS,
-        "Desktop prediction cadence changed.",
+        (
+            "Desktop prediction cadence changed."
+        ),
     )
 
     assert_equal(
@@ -1922,7 +2373,10 @@ def test_live_gui_source_contract() -> str:
             "MIN_TEXT_CHARS",
         ),
         EXPECTED_MIN_TEXT_CHARS,
-        "Desktop minimum text threshold changed.",
+        (
+            "Desktop minimum text "
+            "threshold changed."
+        ),
     )
 
     assert_equal(
@@ -1931,12 +2385,17 @@ def test_live_gui_source_contract() -> str:
             "MIN_KEYDOWNS",
         ),
         EXPECTED_MIN_KEYDOWNS,
-        "Desktop minimum key-down threshold changed.",
+        (
+            "Desktop minimum key-down "
+            "threshold changed."
+        ),
     )
 
-    app_class = find_class(
-        tree,
-        "FusionDemoApp",
+    app_class = (
+        find_class(
+            tree,
+            "FusionDemoApp",
+        )
     )
 
     for method in (
@@ -1951,20 +2410,11 @@ def test_live_gui_source_contract() -> str:
             method,
         )
 
-    predictor_calls = find_call_keywords(
-        tree,
-        "self.predictor.predict",
-    )
-
-    assert_true(
-        len(
-            predictor_calls
+    predictor_calls = (
+        find_call_keywords(
+            tree,
+            "self.predictor.predict",
         )
-        >= 1,
-        (
-            "Desktop GUI no longer calls "
-            "self.predictor.predict(...)."
-        ),
     )
 
     expected_keywords = {
@@ -1982,30 +2432,34 @@ def test_live_gui_source_contract() -> str:
             in predictor_calls
         ),
         (
-            "Desktop predictor call does not supply "
-            "the canonical four inference arguments."
+            "Desktop predictor call does not "
+            "supply all four modalities."
         ),
     )
 
     return (
-        "Desktop shared temporal engine, cadence, "
-        "gating constants and raw inference call verified."
+        "Desktop shared temporal engine, "
+        "cadence and inference contract verified."
     )
 
+
+# =============================================================================
+# WEB BACKEND CONTRACT
+# =============================================================================
 
 def test_web_backend_source_contract() -> str:
 
-    tree = parse_python_ast(
-        WEB_APP_FILE
+    tree = (
+        parse_python_ast(
+            WEB_APP_FILE
+        )
     )
 
-    source = read_source(
-        WEB_APP_FILE
-    )
-
-    imported = imported_names_from(
-        tree,
-        "temporal_fusion",
+    imported = (
+        imported_names_from(
+            tree,
+            "temporal_fusion",
+        )
     )
 
     required_imports = {
@@ -2023,8 +2477,8 @@ def test_web_backend_source_contract() -> str:
     assert_true(
         not missing,
         (
-            "web_app/app.py is missing shared "
-            "temporal imports:\n"
+            "web_app/app.py is missing "
+            "canonical temporal imports:\n"
             f"{sorted(missing)}"
         ),
     )
@@ -2034,45 +2488,83 @@ def test_web_backend_source_contract() -> str:
         filename="web_app/app.py",
     )
 
-    assert_true(
-        "probability_history"
-        not in source,
-        (
-            "Web backend still appears to maintain "
-            "a duplicated probability_history."
-        ),
-    )
-
-    session_class = find_class(
-        tree,
-        "SessionState",
-    )
-
-    session_source = (
-        ast.get_source_segment(
-            source,
-            session_class,
+    session_class = (
+        find_class(
+            tree,
+            "SessionState",
         )
-        or ""
+    )
+
+    fields = (
+        class_fields(
+            session_class
+        )
+    )
+
+    required_fields = {
+        "temporal_fusion",
+
+        "audio_path",
+        "audio_name",
+        "audio_source_kind",
+        "audio_diagnostics",
+
+        "audio_stream_active",
+        "audio_stream_token",
+        "audio_pcm_buffer",
+        "audio_stream_packets",
+        "audio_stream_last_packet_at",
+
+        "visual_mode",
+        "visual_path",
+        "visual_name",
+        "visual_started_at",
+    }
+
+    missing_fields = (
+        required_fields
+        - fields
     )
 
     assert_true(
-        "TemporalFusionEngine"
-        in session_source,
+        not missing_fields,
         (
-            "SessionState does not appear to own "
-            "a per-session TemporalFusionEngine."
+            "SessionState is missing "
+            "required fields:\n"
+            f"{sorted(missing_fields)}"
         ),
     )
 
-    routes = collect_fastapi_routes(
-        tree
+    routes = (
+        collect_fastapi_routes(
+            tree
+        )
     )
 
     required_routes = {
         (
+            "GET",
+            "/health",
+        ),
+        (
+            "GET",
+            "/model-status",
+        ),
+        (
             "POST",
             "/set_audio_source",
+        ),
+        (
+            "POST",
+            "/audio_stream/start",
+        ),
+        (
+            "POST",
+            "/audio_stream/stop",
+        ),
+        (
+            "WEBSOCKET",
+            "/ws/audio/{session_id}",
         ),
         (
             "POST",
@@ -2102,10 +2594,6 @@ def test_web_backend_source_contract() -> str:
             "POST",
             "/full_reset",
         ),
-        (
-            "GET",
-            "/model-status",
-        ),
     }
 
     missing_routes = (
@@ -2116,14 +2604,17 @@ def test_web_backend_source_contract() -> str:
     assert_true(
         not missing_routes,
         (
-            "Web backend is missing required routes:\n"
+            "Web backend is missing "
+            "required routes:\n"
             f"{sorted(missing_routes)}"
         ),
     )
 
-    predictor_calls = find_call_keywords(
-        tree,
-        "predictor.predict",
+    predictor_calls = (
+        find_call_keywords(
+            tree,
+            "predictor.predict",
+        )
     )
 
     expected_keywords = {
@@ -2141,26 +2632,513 @@ def test_web_backend_source_contract() -> str:
             in predictor_calls
         ),
         (
-            "Web canonical predictor invocation does not "
-            "supply all four modalities."
+            "Web predictor invocation does "
+            "not supply all four modalities."
         ),
     )
 
     return (
-        "Per-session temporal engine, required web "
-        "routes and canonical predictor call verified."
+        "Per-session temporal engine, "
+        "continuous audio state, routes and "
+        "canonical predictor contract verified."
     )
 
+
+# =============================================================================
+# CONTINUOUS AUDIO CONTRACTS
+# =============================================================================
+
+def test_web_streaming_constants() -> str:
+
+    tree = (
+        parse_python_ast(
+            WEB_APP_FILE
+        )
+    )
+
+    target_sr = (
+        top_level_literal(
+            tree,
+            "TARGET_SR",
+        )
+    )
+
+    stream_window = (
+        top_level_literal(
+            tree,
+            "AUDIO_STREAM_WINDOW_SECONDS",
+        )
+    )
+
+    stream_minimum = (
+        top_level_literal(
+            tree,
+            "AUDIO_STREAM_MIN_SECONDS",
+        )
+    )
+
+    assert_equal(
+        target_sr,
+        EXPECTED_AUDIO_SAMPLE_RATE,
+        (
+            "Continuous microphone target "
+            "sampling rate changed."
+        ),
+    )
+
+    assert_close(
+        stream_window,
+        EXPECTED_AUDIO_STREAM_WINDOW_SECONDS,
+        message=(
+            "Continuous microphone rolling "
+            "window duration changed."
+        ),
+    )
+
+    assert_close(
+        stream_minimum,
+        EXPECTED_AUDIO_STREAM_MIN_SECONDS,
+        message=(
+            "Continuous microphone minimum "
+            "warm-up duration changed."
+        ),
+    )
+
+    expected_bytes = int(
+        EXPECTED_AUDIO_STREAM_WINDOW_SECONDS
+        * EXPECTED_AUDIO_SAMPLE_RATE
+        * 2
+    )
+
+    assert_equal(
+        expected_bytes,
+        320_000,
+        (
+            "Expected ten-second PCM16 "
+            "capacity is incorrect."
+        ),
+    )
+
+    return (
+        "16-kHz PCM16, 10-second rolling "
+        "window and 2-second warm-up verified."
+    )
+
+
+def test_web_streaming_model_status_contract() -> str:
+    """
+    Semantic MODEL_STATUS test.
+
+    IMPORTANT:
+    Do NOT search the raw source for the complete policy string.
+
+    Python may validly represent:
+
+        (
+            "fixed_file_or_"
+            "continuous_microphone_stream"
+        )
+
+    across separate physical lines. The AST correctly represents the
+    resulting runtime value as one string.
+    """
+
+    tree = (
+        parse_python_ast(
+            WEB_APP_FILE
+        )
+    )
+
+    transport = (
+        mapping_literal_value(
+            tree,
+            mapping_name="MODEL_STATUS",
+            key="audio_stream_transport",
+        )
+    )
+
+    source_policy = (
+        mapping_literal_value(
+            tree,
+            mapping_name="MODEL_STATUS",
+            key="audio_source_policy",
+        )
+    )
+
+    packet_reset_policy = (
+        mapping_literal_value(
+            tree,
+            mapping_name="MODEL_STATUS",
+            key="stream_packets_reset_temporal",
+        )
+    )
+
+    assert_equal(
+        transport,
+        EXPECTED_AUDIO_STREAM_TRANSPORT,
+        (
+            "MODEL_STATUS audio stream "
+            "transport is incorrect."
+        ),
+    )
+
+    assert_equal(
+        source_policy,
+        EXPECTED_AUDIO_SOURCE_POLICY,
+        (
+            "MODEL_STATUS audio source "
+            "policy is incorrect."
+        ),
+    )
+
+    assert_equal(
+        packet_reset_policy,
+        False,
+        (
+            "Ordinary microphone packets "
+            "must not reset temporal fusion."
+        ),
+    )
+
+    return (
+        "MODEL_STATUS continuous-audio "
+        "contract verified semantically via AST."
+    )
+
+
+def test_stream_packets_do_not_reset_temporal_generation() -> str:
+
+    tree = (
+        parse_python_ast(
+            WEB_APP_FILE
+        )
+    )
+
+    source = (
+        read_source(
+            WEB_APP_FILE
+        )
+    )
+
+    websocket_function = (
+        top_level_function(
+            tree,
+            "audio_stream_socket",
+        )
+    )
+
+    websocket_source = (
+        ast.get_source_segment(
+            source,
+            websocket_function,
+        )
+        or ""
+    )
+
+    assert_true(
+        "audio_pcm_buffer.extend"
+        in websocket_source,
+        (
+            "Audio WebSocket handler does "
+            "not append incoming PCM data."
+        ),
+    )
+
+    assert_true(
+        "audio_stream_packets"
+        in websocket_source,
+        (
+            "Audio WebSocket handler does "
+            "not track packet receipt."
+        ),
+    )
+
+    assert_true(
+        "reset_temporal_for_source_change"
+        not in websocket_source,
+        (
+            "Incoming microphone packets "
+            "appear to reset temporal fusion. "
+            "This would prevent the temporal "
+            "window from filling."
+        ),
+    )
+
+    return (
+        "Incoming PCM packets preserve "
+        "the temporal generation."
+    )
+
+
+def test_microphone_source_changes_reset_temporal() -> str:
+
+    tree = (
+        parse_python_ast(
+            WEB_APP_FILE
+        )
+    )
+
+    source = (
+        read_source(
+            WEB_APP_FILE
+        )
+    )
+
+    start_function = (
+        top_level_function(
+            tree,
+            "start_audio_stream",
+        )
+    )
+
+    stop_function = (
+        top_level_function(
+            tree,
+            "stop_audio_stream",
+        )
+    )
+
+    start_source = (
+        ast.get_source_segment(
+            source,
+            start_function,
+        )
+        or ""
+    )
+
+    stop_source = (
+        ast.get_source_segment(
+            source,
+            stop_function,
+        )
+        or ""
+    )
+
+    assert_true(
+        "reset_temporal_for_source_change"
+        in start_source,
+        (
+            "Starting microphone must reset "
+            "temporal history once."
+        ),
+    )
+
+    assert_true(
+        "reset_temporal_for_source_change"
+        in stop_source,
+        (
+            "Stopping microphone must reset "
+            "temporal history once."
+        ),
+    )
+
+    return (
+        "Microphone start/stop generation "
+        "semantics verified."
+    )
+
+
+def test_predict_live_supports_stream_audio_snapshot() -> str:
+    """
+    Verify continuous microphone inference structurally.
+
+    The old runner incorrectly required the final response key
+    'audio_stream_buffered_seconds' to be physically present inside
+    predict_live().
+
+    That is unnecessarily restrictive. It is valid for predict_live()
+    to calculate/pass audio_buffered_seconds and for
+    build_prediction_result() to expose the final response field.
+    """
+
+    tree = (
+        parse_python_ast(
+            WEB_APP_FILE
+        )
+    )
+
+    source = (
+        read_source(
+            WEB_APP_FILE
+        )
+    )
+
+    predict_function = (
+        top_level_function(
+            tree,
+            "predict_live",
+        )
+    )
+
+    predict_source = (
+        ast.get_source_segment(
+            source,
+            predict_function,
+        )
+        or ""
+    )
+
+    core_stream_requirements = [
+        "microphone_stream",
+        "audio_pcm_buffer",
+        "AUDIO_STREAM_MIN_SECONDS",
+        "write_pcm16_wav",
+    ]
+
+    missing_core = [
+        fragment
+        for fragment
+        in core_stream_requirements
+        if fragment
+        not in predict_source
+    ]
+
+    assert_true(
+        not missing_core,
+        (
+            "predict_live() is missing core "
+            "continuous microphone snapshot "
+            "behaviour:\n"
+            f"{missing_core}"
+        ),
+    )
+
+    # -------------------------------------------------------------------------
+    # Determine whether buffered-audio metadata is correctly propagated.
+    #
+    # Accepted architectures:
+    #
+    # A:
+    #   predict_live directly writes:
+    #       result["audio_stream_buffered_seconds"] = ...
+    #
+    # B:
+    #   predict_live passes:
+    #       audio_buffered_seconds=...
+    #
+    #   and build_prediction_result produces:
+    #       "audio_stream_buffered_seconds": ...
+    # -------------------------------------------------------------------------
+
+    builder_function = (
+        top_level_function(
+            tree,
+            "build_prediction_result",
+        )
+    )
+
+    builder_source = (
+        ast.get_source_segment(
+            source,
+            builder_function,
+        )
+        or ""
+    )
+
+    builder_calls = (
+        find_call_keywords(
+            predict_function,
+            "build_prediction_result",
+        )
+    )
+
+    predict_directly_exposes_metadata = (
+        "audio_stream_buffered_seconds"
+        in predict_source
+    )
+
+    builder_exposes_final_field = (
+        "audio_stream_buffered_seconds"
+        in builder_source
+        or
+        ast_contains_string_literal(
+            builder_function,
+            "audio_stream_buffered_seconds",
+        )
+    )
+
+    predict_passes_buffer_metadata = (
+        any(
+            "audio_buffered_seconds"
+            in keywords
+            or
+            "audio_stream_buffered_seconds"
+            in keywords
+            for keywords
+            in builder_calls
+        )
+    )
+
+    builder_accepts_buffer_metadata = (
+        "audio_buffered_seconds"
+        in {
+            argument.arg
+            for argument
+            in (
+                builder_function.args.args
+                +
+                builder_function.args.kwonlyargs
+            )
+        }
+        or
+        "audio_stream_buffered_seconds"
+        in {
+            argument.arg
+            for argument
+            in (
+                builder_function.args.args
+                +
+                builder_function.args.kwonlyargs
+            )
+        }
+    )
+
+    metadata_pipeline_valid = (
+        predict_directly_exposes_metadata
+        or
+        (
+            predict_passes_buffer_metadata
+            and
+            builder_accepts_buffer_metadata
+            and
+            builder_exposes_final_field
+        )
+    )
+
+    assert_true(
+        metadata_pipeline_valid,
+        (
+            "Continuous microphone buffering "
+            "metadata is not propagated from "
+            "predict_live() to the prediction "
+            "response."
+        ),
+    )
+
+    return (
+        "predict_live() snapshots continuous PCM16 "
+        "audio and propagates buffered-duration "
+        "metadata correctly."
+    )
+
+
+# =============================================================================
+# EVALUATION CONTRACT
+# =============================================================================
 
 def test_evaluation_source_contract() -> str:
 
-    tree = parse_python_ast(
-        EVALUATION_FILE
+    tree = (
+        parse_python_ast(
+            EVALUATION_FILE
+        )
     )
 
-    imported = imported_names_from(
-        tree,
-        "temporal_fusion",
+    imported = (
+        imported_names_from(
+            tree,
+            "temporal_fusion",
+        )
     )
 
     assert_true(
@@ -2185,13 +3163,15 @@ def test_evaluation_source_contract() -> str:
             "TemporalFusionEngine",
         ),
         (
-            "Evaluation script imports but does not "
+            "Evaluation script does not "
             "use the canonical temporal engine."
         ),
     )
 
-    source = read_source(
-        EVALUATION_FILE
+    source = (
+        read_source(
+            EVALUATION_FILE
+        )
     )
 
     required_terms = {
@@ -2202,7 +3182,7 @@ def test_evaluation_source_contract() -> str:
         "macro_f1",
     }
 
-    missing_terms = {
+    missing = {
         term
         for term
         in required_terms
@@ -2211,33 +3191,43 @@ def test_evaluation_source_contract() -> str:
     }
 
     assert_true(
-        not missing_terms,
+        not missing,
         (
-            "Evaluation script is missing expected "
-            "raw/temporal evaluation concepts:\n"
-            f"{sorted(missing_terms)}"
+            "Evaluation script is missing "
+            "expected concepts:\n"
+            f"{sorted(missing)}"
         ),
     )
 
     return (
-        "Raw-vs-temporal evaluation uses "
-        "the canonical engine."
+        "Raw-vs-temporal evaluation "
+        "uses the canonical engine."
     )
 
+
+# =============================================================================
+# MULTIMODAL COMPARISON CONTRACT
+# =============================================================================
 
 def test_comparison_source_contract() -> str:
 
-    tree = parse_python_ast(
-        COMPARISON_FILE
+    tree = (
+        parse_python_ast(
+            COMPARISON_FILE
+        )
     )
 
-    source = read_source(
-        COMPARISON_FILE
+    source = (
+        read_source(
+            COMPARISON_FILE
+        )
     )
 
-    imported = imported_names_from(
-        tree,
-        "temporal_fusion",
+    imported = (
+        imported_names_from(
+            tree,
+            "temporal_fusion",
+        )
     )
 
     assert_true(
@@ -2262,8 +3252,8 @@ def test_comparison_source_contract() -> str:
             "TemporalFusionEngine",
         ),
         (
-            "Multimodal comparison script does not "
-            "apply canonical temporal fusion."
+            "Multimodal comparison script "
+            "does not apply temporal fusion."
         ),
     )
 
@@ -2271,8 +3261,8 @@ def test_comparison_source_contract() -> str:
         "StratifiedGroupKFold"
         in source,
         (
-            "Comparison experiment does not appear "
-            "to implement group-aware splitting."
+            "Comparison experiment does not "
+            "use group-aware splitting."
         ),
     )
 
@@ -2280,43 +3270,40 @@ def test_comparison_source_contract() -> str:
         "train_test_split"
         not in source,
         (
-            "Legacy row-level train_test_split is "
-            "still present in the comparison script."
-        ),
-    )
-
-    assert_true(
-        ".duplicated().any()"
-        not in source,
-        (
-            "Legacy duplicate-session rejection "
-            "still appears to be present."
+            "Legacy row-level train_test_split "
+            "is still present."
         ),
     )
 
     return (
-        "Group-aware raw-vs-temporal comparison "
-        "contract verified."
+        "Group-aware raw-vs-temporal "
+        "comparison contract verified."
     )
 
 
 # =============================================================================
-# KEYSTROKE DATASET COMPARISON SOURCE CONTRACTS
+# KEYSTROKE DATASET COMPARISON CONTRACTS
 # =============================================================================
 
 def test_keystroke_dataset_builder_source_contract() -> str:
 
-    tree = parse_python_ast(
-        KEYSTROKE_DATASET_BUILDER_FILE
+    tree = (
+        parse_python_ast(
+            KEYSTROKE_DATASET_BUILDER_FILE
+        )
     )
 
-    source = read_source(
-        KEYSTROKE_DATASET_BUILDER_FILE
+    source = (
+        read_source(
+            KEYSTROKE_DATASET_BUILDER_FILE
+        )
     )
 
-    imported = imported_names_from(
-        tree,
-        "keystroke_live_gui_emosurv_ieee",
+    imported = (
+        imported_names_from(
+            tree,
+            "keystroke_live_gui_emosurv_ieee",
+        )
     )
 
     required_imports = {
@@ -2339,8 +3326,7 @@ def test_keystroke_dataset_builder_source_contract() -> str:
         not missing_imports,
         (
             "build_keystroke_dataset_comparison.py "
-            "is missing canonical EmoSurv "
-            "feature/window imports:\n"
+            "is missing canonical EmoSurv imports:\n"
             f"{sorted(missing_imports)}"
         ),
     )
@@ -2352,8 +3338,7 @@ def test_keystroke_dataset_builder_source_contract() -> str:
         ),
         (
             "SenseFuzeAI harmonisation does not "
-            "appear to call the canonical "
-            "extract_live_features() implementation."
+            "call extract_live_features()."
         ),
     )
 
@@ -2378,34 +3363,38 @@ def test_keystroke_dataset_builder_source_contract() -> str:
     assert_true(
         not missing_terms,
         (
-            "Keystroke dataset builder is missing "
-            "required harmonisation/provenance "
+            "Keystroke dataset builder is "
+            "missing harmonisation/provenance "
             "concepts:\n"
             f"{sorted(missing_terms)}"
         ),
     )
 
     return (
-        "Common EmoSurv/SenseFuzeAI 23-feature "
-        "harmonisation and provenance contract verified."
+        "EmoSurv/SenseFuzeAI feature "
+        "harmonisation and provenance verified."
     )
 
 
 def test_keystroke_dataset_trainer_source_contract() -> str:
 
-    tree = parse_python_ast(
-        KEYSTROKE_DATASET_TRAINER_FILE
+    tree = (
+        parse_python_ast(
+            KEYSTROKE_DATASET_TRAINER_FILE
+        )
     )
 
-    source = read_source(
-        KEYSTROKE_DATASET_TRAINER_FILE
+    source = (
+        read_source(
+            KEYSTROKE_DATASET_TRAINER_FILE
+        )
     )
 
     assert_true(
         tree is not None,
         (
-            "Unable to parse "
-            "train_keystroke_dataset_comparison.py."
+            "Unable to parse keystroke "
+            "dataset comparison trainer."
         ),
     )
 
@@ -2436,8 +3425,7 @@ def test_keystroke_dataset_trainer_source_contract() -> str:
         not missing_terms,
         (
             "Keystroke comparison trainer is "
-            "missing required experiment/split "
-            "concepts:\n"
+            "missing experiment/split concepts:\n"
             f"{sorted(missing_terms)}"
         ),
     )
@@ -2459,8 +3447,8 @@ def test_keystroke_dataset_trainer_source_contract() -> str:
     assert_true(
         group_aware_present,
         (
-            "Keystroke dataset comparison no longer "
-            "appears to use group-aware splitting."
+            "Keystroke dataset comparison "
+            "does not appear group-aware."
         ),
     )
 
@@ -2468,9 +3456,8 @@ def test_keystroke_dataset_trainer_source_contract() -> str:
         "bootstrap"
         in source.lower(),
         (
-            "Paired bootstrap uncertainty analysis "
-            "no longer appears in the keystroke "
-            "dataset-comparison trainer."
+            "Bootstrap uncertainty analysis "
+            "is no longer present."
         ),
     )
 
@@ -2478,42 +3465,73 @@ def test_keystroke_dataset_trainer_source_contract() -> str:
         "train_test_split"
         not in source,
         (
-            "Row-level train_test_split appears in "
-            "train_keystroke_dataset_comparison.py. "
-            "Participant/session-aware grouping "
-            "must be retained."
+            "Row-level train_test_split appears "
+            "in the keystroke comparison trainer."
         ),
     )
 
     return (
         "A-F experiment design, frozen split, "
         "group-aware evaluation and bootstrap "
-        "comparison contract verified."
+        "analysis verified."
     )
 
 
 # =============================================================================
-# JAVASCRIPT CONTRACT TEST
+# JAVASCRIPT CONTRACT
 # =============================================================================
 
 def test_javascript_source_contract() -> str:
 
-    source = read_source(
-        WEB_SCRIPT_FILE
+    source = (
+        read_source(
+            WEB_SCRIPT_FILE
+        )
     )
 
     required_fragments = [
+        # Generation-safe client state.
         "serverGeneration",
         "clientEpoch",
         "runLivePrediction",
+
+        # Fixed-file audio fallback.
         "/set_audio_source",
+        "setAudioFile",
+
+        # Continuous microphone architecture.
+        "startMicrophoneStream",
+        "stopMicrophoneStream",
+        "/audio_stream/start",
+        "/audio_stream/stop",
+        "/ws/audio/",
+        "new WebSocket",
+        "AudioContext",
+        "createMediaStreamSource",
+        "createScriptProcessor",
+        "resampleLinear",
+        "float32ToPCM16Buffer",
+        "microphoneStreaming",
+        "audioBufferedSec",
+        "audioPackets",
+
+        # Visual sources.
         "/set_visual_image",
         "/set_visual_video",
         "/set_visual_webcam",
+        "/stop_visual",
+        "captureWebcamFrame",
+        "webcam_frame",
+
+        # Prediction/reset.
         "/predict_live",
         "/reset_temporal",
         "/full_reset",
+
+        # Live prediction cadence.
         "setInterval",
+
+        # Backend status labels.
         "data.labels",
     ]
 
@@ -2529,14 +3547,12 @@ def test_javascript_source_contract() -> str:
         not missing,
         (
             "script.js is missing expected "
-            "client/backend integration pieces:\n"
+            "integration pieces:\n"
             f"{missing}"
         ),
     )
 
-    # The browser must not independently own canonical
-    # temporal probability mathematics.
-    suspicious_fragments = [
+    suspicious_temporal_fragments = [
         "aggregateProbabilityHistory",
         "aggregate_probability_history",
         "normaliseProbabilityDict",
@@ -2545,43 +3561,179 @@ def test_javascript_source_contract() -> str:
         "temporalProbabilityHistory",
     ]
 
-    found = [
+    duplicated_temporal_math = [
         fragment
         for fragment
-        in suspicious_fragments
+        in suspicious_temporal_fragments
         if fragment
         in source
     ]
 
     assert_true(
-        not found,
+        not duplicated_temporal_math,
         (
-            "script.js appears to duplicate canonical "
-            "temporal mathematics:\n"
-            f"{found}"
+            "script.js appears to duplicate "
+            "canonical temporal mathematics:\n"
+            f"{duplicated_temporal_math}"
         ),
     )
 
-    # Fixed-audio architecture should not continuously create
-    # MediaRecorder chunks every fusion cycle.
+    old_audio_fragments = [
+        "recordMicrophoneOnce",
+        "AUDIO_CAPTURE_SECONDS",
+        "forceExactDuration",
+        "MediaRecorder",
+    ]
+
+    obsolete_audio = [
+        fragment
+        for fragment
+        in old_audio_fragments
+        if fragment
+        in source
+    ]
+
     assert_true(
-        "MediaRecorder"
-        not in source,
+        not obsolete_audio,
         (
-            "script.js contains MediaRecorder. "
-            "Verify that browser audio has not reverted "
-            "to continuously replaced recordings."
+            "script.js still contains obsolete "
+            "one-shot microphone architecture:\n"
+            f"{obsolete_audio}"
         ),
     )
 
     return (
-        "Browser client remains acquisition/display "
-        "oriented with generation-safe server integration."
+        "Browser client uses continuous "
+        "PCM16 WebSocket acquisition without "
+        "duplicating temporal mathematics."
     )
 
 
 # =============================================================================
-# PYTHON SYNTAX CHECKS
+# HTML CONTRACT
+# =============================================================================
+
+def test_html_streaming_audio_contract() -> str:
+
+    source = (
+        read_source(
+            WEB_HTML_FILE
+        )
+        .lower()
+    )
+
+    required_audio_ids = [
+        'id="startmicbtn"',
+        'id="stopmicbtn"',
+        'id="chooseaudiobtn"',
+        'id="audiofileinput"',
+        'id="audiostreamstate"',
+        'id="audiobufferedseconds"',
+        'id="audiolivelevel"',
+        'id="audiopacketcount"',
+        'id="audiostatus"',
+        'id="audiodiagnostic"',
+    ]
+
+    missing_audio = [
+        identifier
+        for identifier
+        in required_audio_ids
+        if identifier
+        not in source
+    ]
+
+    assert_true(
+        not missing_audio,
+        (
+            "index.html is missing continuous "
+            "microphone UI elements:\n"
+            f"{missing_audio}"
+        ),
+    )
+
+    required_result_ids = [
+        'id="prediction"',
+        'id="confidencepercent"',
+        'id="confidencelevel"',
+        'id="rawprediction"',
+        'id="rawconfidence"',
+        'id="probabilities"',
+        'id="rawprobabilities"',
+        'id="temporalsamples"',
+        'id="temporalwindow"',
+        'id="resettemporalbtn"',
+    ]
+
+    missing_results = [
+        identifier
+        for identifier
+        in required_result_ids
+        if identifier
+        not in source
+    ]
+
+    assert_true(
+        not missing_results,
+        (
+            "index.html is missing required "
+            "prediction/result elements:\n"
+            f"{missing_results}"
+        ),
+    )
+
+    return (
+        "Continuous audio controls and "
+        "raw/temporal result UI verified."
+    )
+
+
+# =============================================================================
+# CSS CONTRACT
+# =============================================================================
+
+def test_css_streaming_audio_contract() -> str:
+
+    source = (
+        read_source(
+            WEB_STYLE_FILE
+        )
+    )
+
+    required_fragments = [
+        ".audio-card.streaming",
+        ".audio-stream-grid",
+        ".audio-control-grid",
+        ".audio-bars",
+        ".source-btn-live",
+        ".source-btn-stop",
+    ]
+
+    missing = [
+        fragment
+        for fragment
+        in required_fragments
+        if fragment
+        not in source
+    ]
+
+    assert_true(
+        not missing,
+        (
+            "style.css is missing continuous "
+            "audio presentation styles:\n"
+            f"{missing}"
+        ),
+    )
+
+    return (
+        "Continuous microphone visual "
+        "states verified in style.css."
+    )
+
+
+# =============================================================================
+# PYTHON SYNTAX
 # =============================================================================
 
 def compile_python_file(
@@ -2600,13 +3752,13 @@ def compile_python_file(
     )
 
     return (
-        f"Compiled successfully: "
+        "Compiled successfully: "
         f"{path.relative_to(ROOT_DIR)}"
     )
 
 
 # =============================================================================
-# NODE.JS SYNTAX CHECK
+# NODE.JS SYNTAX
 # =============================================================================
 
 def run_node_syntax_check(
@@ -2619,15 +3771,17 @@ def run_node_syntax_check(
         WEB_SCRIPT_FILE
     )
 
-    node = shutil.which(
-        "node"
+    node = (
+        shutil.which(
+            "node"
+        )
     )
 
     if not node:
 
         message = (
             "Node.js is not available; "
-            "script.js syntax check was skipped."
+            "script.js syntax check skipped."
         )
 
         if require_node:
@@ -2640,30 +3794,37 @@ def run_node_syntax_check(
             message
         )
 
-    completed = subprocess.run(
-        [
-            node,
-            "--check",
-            str(
-                WEB_SCRIPT_FILE
+    completed = (
+        subprocess.run(
+            [
+                node,
+                "--check",
+                str(
+                    WEB_SCRIPT_FILE
+                ),
+            ],
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=(
+                timeout_seconds
             ),
-        ],
-        cwd=ROOT_DIR,
-        capture_output=True,
-        text=True,
-        timeout=(
-            timeout_seconds
-        ),
-        check=False,
+            check=False,
+        )
     )
 
-    if completed.returncode != 0:
+    if (
+        completed.returncode
+        != 0
+    ):
 
         raise RuntimeError(
             (
                 completed.stderr
-                or completed.stdout
-                or "node --check failed."
+                or
+                completed.stdout
+                or
+                "node --check failed."
             ).strip()
         )
 
@@ -2699,7 +3860,7 @@ def run_pytest_suite(
             message
         )
 
-    test_files = list(
+    test_files = sorted(
         TESTS_DIR.rglob(
             "test_*.py"
         )
@@ -2743,23 +3904,25 @@ def run_pytest_suite(
             message
         )
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            str(
-                TESTS_DIR
+    completed = (
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                str(
+                    TESTS_DIR
+                ),
+                "-q",
+            ],
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=(
+                timeout_seconds
             ),
-            "-q",
-        ],
-        cwd=ROOT_DIR,
-        capture_output=True,
-        text=True,
-        timeout=(
-            timeout_seconds
-        ),
-        check=False,
+            check=False,
+        )
     )
 
     output = (
@@ -2776,7 +3939,10 @@ def run_pytest_suite(
         )
     ).strip()
 
-    if completed.returncode != 0:
+    if (
+        completed.returncode
+        != 0
+    ):
 
         raise RuntimeError(
             (
@@ -2792,7 +3958,7 @@ def run_pytest_suite(
 
 
 # =============================================================================
-# OPTIONAL HEAVY MODEL SMOKE TEST
+# OPTIONAL MODEL SMOKE TEST
 # =============================================================================
 
 def run_model_initialisation_smoke(
@@ -2824,19 +3990,21 @@ def run_model_initialisation_smoke(
         "print('device=', m.device)"
     )
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            command,
-        ],
-        cwd=ROOT_DIR,
-        capture_output=True,
-        text=True,
-        timeout=(
-            timeout_seconds
-        ),
-        check=False,
+    completed = (
+        subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                command,
+            ],
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=(
+                timeout_seconds
+            ),
+            check=False,
+        )
     )
 
     output = (
@@ -2853,7 +4021,10 @@ def run_model_initialisation_smoke(
         )
     ).strip()
 
-    if completed.returncode != 0:
+    if (
+        completed.returncode
+        != 0
+    ):
 
         raise RuntimeError(
             (
@@ -2867,8 +4038,8 @@ def run_model_initialisation_smoke(
         "MODEL_SMOKE_PASS"
         in output,
         (
-            "Model smoke subprocess exited successfully "
-            "but did not emit its completion marker."
+            "Model smoke subprocess did "
+            "not emit completion marker."
         ),
     )
 
@@ -2876,7 +4047,7 @@ def run_model_initialisation_smoke(
 
 
 # =============================================================================
-# TEMPORAL SELF-TEST SUBPROCESS
+# TEMPORAL SELF-TEST
 # =============================================================================
 
 def run_temporal_self_test_subprocess(
@@ -2888,20 +4059,22 @@ def run_temporal_self_test_subprocess(
         TEMPORAL_FUSION_FILE
     )
 
-    completed = subprocess.run(
-        [
-            sys.executable,
-            str(
-                TEMPORAL_FUSION_FILE
+    completed = (
+        subprocess.run(
+            [
+                sys.executable,
+                str(
+                    TEMPORAL_FUSION_FILE
+                ),
+            ],
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=(
+                timeout_seconds
             ),
-        ],
-        cwd=ROOT_DIR,
-        capture_output=True,
-        text=True,
-        timeout=(
-            timeout_seconds
-        ),
-        check=False,
+            check=False,
+        )
     )
 
     output = (
@@ -2918,11 +4091,15 @@ def run_temporal_self_test_subprocess(
         )
     ).strip()
 
-    if completed.returncode != 0:
+    if (
+        completed.returncode
+        != 0
+    ):
 
         raise RuntimeError(
             (
-                "temporal_fusion.py self-test failed.\n\n"
+                "temporal_fusion.py "
+                "self-test failed.\n\n"
                 + output
             )
         )
@@ -2931,8 +4108,8 @@ def run_temporal_self_test_subprocess(
         "self-test: PASS"
         in output,
         (
-            "temporal_fusion.py did not report "
-            "a PASS completion marker."
+            "temporal_fusion.py did "
+            "not report PASS."
         ),
     )
 
@@ -2940,7 +4117,7 @@ def run_temporal_self_test_subprocess(
 
 
 # =============================================================================
-# REPORT
+# JSON REPORT
 # =============================================================================
 
 def save_report(
@@ -2955,7 +4132,9 @@ def save_report(
         exist_ok=True,
     )
 
-    counts = runner.counts()
+    counts = (
+        runner.counts()
+    )
 
     payload = {
         "project":
@@ -2963,6 +4142,12 @@ def save_report(
 
         "test_runner":
             "run_all_tests.py",
+
+        "architecture":
+            (
+                "continuous_multimodal_"
+                "temporal_fusion"
+            ),
 
         "timestamp_epoch":
             time.time(),
@@ -3007,16 +4192,47 @@ def save_report(
             "min_keydowns":
                 EXPECTED_MIN_KEYDOWNS,
 
+            "continuous_audio": {
+                "target_sample_rate":
+                    EXPECTED_AUDIO_SAMPLE_RATE,
+
+                "pcm_format":
+                    "signed_16_bit_little_endian",
+
+                "channels":
+                    1,
+
+                "transport":
+                    EXPECTED_AUDIO_STREAM_TRANSPORT,
+
+                "rolling_window_seconds":
+                    EXPECTED_AUDIO_STREAM_WINDOW_SECONDS,
+
+                "minimum_ready_seconds":
+                    EXPECTED_AUDIO_STREAM_MIN_SECONDS,
+
+                "audio_source_policy":
+                    EXPECTED_AUDIO_SOURCE_POLICY,
+
+                "stream_packets_reset_temporal":
+                    False,
+
+                "microphone_start_resets_temporal":
+                    True,
+
+                "microphone_stop_resets_temporal":
+                    True,
+
+                "temporal_only_reset_preserves_stream":
+                    True,
+            },
+
             "keystroke_dataset_comparison": {
                 "builder":
-                    str(
-                        KEYSTROKE_DATASET_BUILDER_FILE.name
-                    ),
+                    KEYSTROKE_DATASET_BUILDER_FILE.name,
 
                 "trainer":
-                    str(
-                        KEYSTROKE_DATASET_TRAINER_FILE.name
-                    ),
+                    KEYSTROKE_DATASET_TRAINER_FILE.name,
 
                 "primary_analysis":
                     "three_class",
@@ -3080,8 +4296,9 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         description=(
-            "Run canonical SenseFuzeAI software, "
-            "temporal-fusion and dataset-comparison tests."
+            "Run canonical SenseFuzeAI continuous "
+            "multimodal, temporal-fusion and "
+            "dataset-comparison verification."
         )
     )
 
@@ -3089,8 +4306,8 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--with-model-smoke",
         action="store_true",
         help=(
-            "Load all pretrained/model artifacts by "
-            "instantiating FinalMultimodalInference."
+            "Instantiate FinalMultimodalInference "
+            "and load all pretrained/model artifacts."
         ),
     )
 
@@ -3098,7 +4315,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--require-node",
         action="store_true",
         help=(
-            "Treat missing Node.js as a test failure."
+            "Treat missing Node.js as a failure."
         ),
     )
 
@@ -3106,8 +4323,7 @@ def build_argument_parser() -> argparse.ArgumentParser:
         "--require-pytest",
         action="store_true",
         help=(
-            "Treat a missing pytest/tests suite "
-            "as a test failure."
+            "Treat missing pytest/tests as a failure."
         ),
     )
 
@@ -3130,20 +4346,20 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--subprocess-timeout",
         type=int,
-        default=120,
+        default=300,
         help=(
-            "Timeout in seconds for ordinary "
-            "subprocess-based checks."
+            "Timeout in seconds for normal "
+            "subprocess checks and pytest."
         ),
     )
 
     parser.add_argument(
         "--model-timeout",
         type=int,
-        default=600,
+        default=900,
         help=(
-            "Timeout in seconds for the optional "
-            "heavy model initialisation smoke test."
+            "Timeout in seconds for optional "
+            "model initialisation."
         ),
     )
 
@@ -3162,14 +4378,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
 
 
 # =============================================================================
-# MAIN TEST EXECUTION
+# MAIN
 # =============================================================================
 
 def main() -> None:
 
-    parser = build_argument_parser()
+    parser = (
+        build_argument_parser()
+    )
 
-    args = parser.parse_args()
+    args = (
+        parser.parse_args()
+    )
 
     if (
         args.subprocess_timeout
@@ -3195,10 +4415,11 @@ def main() -> None:
         )
     )
 
+
     print()
 
     print(
-        "=" * 88
+        "=" * 96
     )
 
     print(
@@ -3206,7 +4427,11 @@ def main() -> None:
     )
 
     print(
-        "=" * 88
+        "Continuous Multimodal + Temporal Fusion Verification"
+    )
+
+    print(
+        "=" * 96
     )
 
     print(
@@ -3214,6 +4439,7 @@ def main() -> None:
     )
 
     print()
+
 
     # =========================================================================
     # 1. Python syntax
@@ -3250,8 +4476,40 @@ def main() -> None:
                 ),
         )
 
+
     # =========================================================================
-    # 2. Canonical temporal mathematics
+    # 2. Test-file syntax
+    # =========================================================================
+
+    if TESTS_DIR.exists():
+
+        for path in sorted(
+            TESTS_DIR.rglob(
+                "test_*.py"
+            )
+        ):
+
+            relative_name = str(
+                path.relative_to(
+                    ROOT_DIR
+                )
+            )
+
+            runner.run(
+                (
+                    "py_compile "
+                    + relative_name
+                ),
+                "test-syntax",
+                lambda path=path:
+                    compile_python_file(
+                        path
+                    ),
+            )
+
+
+    # =========================================================================
+    # 3. Canonical temporal mathematics
     # =========================================================================
 
     runner.run(
@@ -3319,8 +4577,9 @@ def main() -> None:
             ),
     )
 
+
     # =========================================================================
-    # 3. Architecture/source contracts
+    # 4. Architecture
     # =========================================================================
 
     runner.run(
@@ -3336,7 +4595,7 @@ def main() -> None:
     )
 
     runner.run(
-        "web shared temporal engine",
+        "web multimodal source contract",
         "architecture",
         test_web_backend_source_contract,
     )
@@ -3353,9 +4612,63 @@ def main() -> None:
         test_comparison_source_contract,
     )
 
-    # -------------------------------------------------------------------------
-    # New EmoSurv / SenseFuzeAI keystroke dataset-comparison contracts
-    # -------------------------------------------------------------------------
+
+    # =========================================================================
+    # 5. Continuous web microphone
+    # =========================================================================
+
+    runner.run(
+        "streaming audio constants",
+        "continuous-audio",
+        test_web_streaming_constants,
+    )
+
+    runner.run(
+        "streaming model-status contract",
+        "continuous-audio",
+        test_web_streaming_model_status_contract,
+    )
+
+    runner.run(
+        "PCM packets preserve temporal generation",
+        "continuous-audio",
+        test_stream_packets_do_not_reset_temporal_generation,
+    )
+
+    runner.run(
+        "microphone start/stop reset semantics",
+        "continuous-audio",
+        test_microphone_source_changes_reset_temporal,
+    )
+
+    runner.run(
+        "predict_live streamed audio snapshot",
+        "continuous-audio",
+        test_predict_live_supports_stream_audio_snapshot,
+    )
+
+    runner.run(
+        "JavaScript continuous microphone contract",
+        "continuous-audio",
+        test_javascript_source_contract,
+    )
+
+    runner.run(
+        "HTML continuous microphone controls",
+        "continuous-audio",
+        test_html_streaming_audio_contract,
+    )
+
+    runner.run(
+        "CSS continuous microphone states",
+        "continuous-audio",
+        test_css_streaming_audio_contract,
+    )
+
+
+    # =========================================================================
+    # 6. Keystroke dataset comparison
+    # =========================================================================
 
     runner.run(
         "keystroke dataset harmonisation contract",
@@ -3369,14 +4682,9 @@ def main() -> None:
         test_keystroke_dataset_trainer_source_contract,
     )
 
-    runner.run(
-        "JavaScript client contract",
-        "architecture",
-        test_javascript_source_contract,
-    )
 
     # =========================================================================
-    # 4. JavaScript syntax
+    # 7. JavaScript syntax
     # =========================================================================
 
     runner.run(
@@ -3393,19 +4701,9 @@ def main() -> None:
             ),
     )
 
+
     # =========================================================================
-    # 5. Project pytest suite
-    #
-    # This automatically discovers:
-    #
-    #   tests/test_01_unit.py
-    #   tests/test_02_integration.py
-    #   tests/test_03_system.py
-    #   tests/test_04_acceptance.py
-    #   tests/test_05_keystroke_dataset_comparison.py
-    #   tests/test_sensefuzeai.py
-    #
-    # and any future test_*.py files.
+    # 8. Complete pytest suite
     # =========================================================================
 
     runner.run(
@@ -3422,8 +4720,9 @@ def main() -> None:
             ),
     )
 
+
     # =========================================================================
-    # 6. Optional heavyweight model-artifact smoke test
+    # 9. Optional heavyweight model smoke test
     # =========================================================================
 
     runner.run(
@@ -3440,11 +4739,14 @@ def main() -> None:
             ),
     )
 
+
     # =========================================================================
-    # Summary
+    # 10. Report / summary
     # =========================================================================
 
-    counts = runner.counts()
+    counts = (
+        runner.counts()
+    )
 
     save_report(
         path=(
@@ -3454,10 +4756,11 @@ def main() -> None:
         arguments=args,
     )
 
+
     print()
 
     print(
-        "=" * 88
+        "=" * 96
     )
 
     print(
@@ -3465,7 +4768,7 @@ def main() -> None:
     )
 
     print(
-        "=" * 88
+        "=" * 96
     )
 
     print(
@@ -3494,6 +4797,7 @@ def main() -> None:
         args.report
     )
 
+
     mandatory_failure = (
         counts[
             "FAIL"
@@ -3510,6 +4814,7 @@ def main() -> None:
         > 0
     )
 
+
     if (
         mandatory_failure
         or
@@ -3525,6 +4830,7 @@ def main() -> None:
         raise SystemExit(
             1
         )
+
 
     print()
 

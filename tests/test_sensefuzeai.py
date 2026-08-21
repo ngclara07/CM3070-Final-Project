@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
 import uuid
 
@@ -68,6 +69,13 @@ SCRIPT_PATH = (
     / "script.js"
 )
 
+STYLE_PATH = (
+    ROOT_DIR
+    / "web_app"
+    / "static"
+    / "style.css"
+)
+
 FUSION_SCHEMA_PATH = (
     ROOT_DIR
     / "models"
@@ -90,7 +98,7 @@ from temporal_fusion import (
 
 
 # ============================================================
-# Web module loader
+# Module loader
 # ============================================================
 
 def load_web_app_module() -> ModuleType:
@@ -101,7 +109,8 @@ def load_web_app_module() -> ModuleType:
     )
 
     spec = (
-        importlib.util.spec_from_file_location(
+        importlib.util
+        .spec_from_file_location(
             module_name,
             APP_PATH,
         )
@@ -111,7 +120,8 @@ def load_web_app_module() -> ModuleType:
     assert spec.loader is not None
 
     module = (
-        importlib.util.module_from_spec(
+        importlib.util
+        .module_from_spec(
             spec
         )
     )
@@ -138,6 +148,26 @@ def load_web_app_module() -> ModuleType:
     return module
 
 
+def cleanup_session(
+    module: ModuleType,
+    session_id: str,
+) -> None:
+
+    shutil.rmtree(
+        module.session_directory(
+            session_id
+        ),
+        ignore_errors=True,
+    )
+
+    with module.SESSION_LOCK:
+
+        module.SESSION_STATES.pop(
+            session_id,
+            None,
+        )
+
+
 # ============================================================
 # Major files
 # ============================================================
@@ -151,6 +181,7 @@ def test_required_project_files_exist():
         APP_PATH,
         HTML_PATH,
         SCRIPT_PATH,
+        STYLE_PATH,
         (
             ROOT_DIR
             / "evaluate_multimodal_results.py"
@@ -163,13 +194,12 @@ def test_required_project_files_exist():
 
     assert all(
         path.exists()
-        for path
-        in required
+        for path in required
     )
 
 
 # ============================================================
-# Canonical temporal smoke test
+# Canonical temporal smoke
 # ============================================================
 
 def test_temporal_fusion_smoke():
@@ -248,11 +278,10 @@ def test_temporal_reset_smoke():
 
     assert (
         engine.capture_generation()
-        == old_generation
-        + 1
+        == old_generation + 1
     )
 
-    try:
+    with pytest_raises_stale_generation():
 
         engine.append(
             {
@@ -270,15 +299,40 @@ def test_temporal_reset_smoke():
             ),
         )
 
-    except StaleGenerationError:
 
-        pass
+class pytest_raises_stale_generation:
+    """
+    Minimal local context manager so this smoke module does not
+    require importing pytest solely for a single assertion.
+    """
 
-    else:
+    def __enter__(
+        self,
+    ):
 
-        raise AssertionError(
-            "Stale temporal generation was accepted."
-        )
+        return self
+
+    def __exit__(
+        self,
+        exc_type,
+        exc_value,
+        traceback,
+    ) -> bool:
+
+        if exc_type is None:
+
+            raise AssertionError(
+                "Stale temporal generation was accepted."
+            )
+
+        if not issubclass(
+            exc_type,
+            StaleGenerationError,
+        ):
+
+            return False
+
+        return True
 
 
 def test_probability_normalisation_smoke():
@@ -315,13 +369,14 @@ def test_probability_normalisation_smoke():
 
 
 # ============================================================
-# Fusion schema smoke
+# Fusion schema
 # ============================================================
 
 def test_fusion_schema_is_multimodal():
 
     columns = json.loads(
-        FUSION_SCHEMA_PATH.read_text(
+        FUSION_SCHEMA_PATH
+        .read_text(
             encoding="utf-8"
         )
     )
@@ -349,17 +404,13 @@ def test_fusion_schema_is_multimodal():
 
     assert any(
         (
-            "keydown"
-            in column
+            "keydown" in column
             or
-            "typing"
-            in column
+            "typing" in column
             or
-            "delay_"
-            in column
+            "delay_" in column
             or
-            "hold_"
-            in column
+            "hold_" in column
         )
         for column in columns
     )
@@ -432,10 +483,10 @@ def test_desktop_and_web_use_shared_temporal_engine():
 
 
 # ============================================================
-# Web HTTP smoke
+# Web status smoke
 # ============================================================
 
-def test_web_health_and_status_routes():
+def test_web_health_and_streaming_status_routes():
 
     module = (
         load_web_app_module()
@@ -453,34 +504,39 @@ def test_web_health_and_status_routes():
 
     try:
 
-        module.predictor = (
-            object()
-        )
+        module.predictor = object()
 
         health = client.get(
             "/health"
         )
 
-        assert (
-            health.status_code
-            == 200
+        assert health.status_code == 200
+
+        health_data = (
+            health.json()
         )
 
         assert (
-            health.json()[
+            health_data[
                 "status"
             ]
             == "ok"
+        )
+
+        assert (
+            health_data[
+                "audio_stream_window_seconds"
+            ]
+            ==
+            module
+            .AUDIO_STREAM_WINDOW_SECONDS
         )
 
         status = client.get(
             "/model-status"
         )
 
-        assert (
-            status.status_code
-            == 200
-        )
+        assert status.status_code == 200
 
         data = status.json()
 
@@ -502,6 +558,31 @@ def test_web_health_and_status_routes():
             )
         )
 
+        assert (
+            data[
+                "audio_stream_transport"
+            ]
+            == "websocket_pcm16_mono"
+        )
+
+        assert (
+            data[
+                "audio_source_policy"
+            ]
+            ==
+            (
+                "fixed_file_or_continuous_"
+                "microphone_stream"
+            )
+        )
+
+        assert (
+            data[
+                "stream_packets_reset_temporal"
+            ]
+            is False
+        )
+
     finally:
 
         module.predictor = (
@@ -509,7 +590,114 @@ def test_web_health_and_status_routes():
         )
 
 
-def test_web_temporal_reset_route():
+# ============================================================
+# Continuous audio lifecycle smoke
+# ============================================================
+
+def test_continuous_audio_start_stop_smoke():
+
+    module = (
+        load_web_app_module()
+    )
+
+    client = (
+        TestClient(
+            module.app
+        )
+    )
+
+    session_id = (
+        "smoke-audio-"
+        + uuid.uuid4().hex
+    )
+
+    try:
+
+        start = client.post(
+            "/audio_stream/start",
+            data={
+                "session_id":
+                    session_id,
+            },
+        )
+
+        assert (
+            start.status_code
+            == 200
+        )
+
+        start_data = (
+            start.json()
+        )
+
+        assert start_data[
+            "stream_token"
+        ]
+
+        assert (
+            start_data[
+                "audio_source_kind"
+            ]
+            == "microphone_stream"
+        )
+
+        assert (
+            start_data[
+                "audio_ready"
+            ]
+            is False
+        )
+
+        first_generation = (
+            start_data[
+                "generation"
+            ]
+        )
+
+        stop = client.post(
+            "/audio_stream/stop",
+            data={
+                "session_id":
+                    session_id,
+            },
+        )
+
+        assert (
+            stop.status_code
+            == 200
+        )
+
+        stop_data = (
+            stop.json()
+        )
+
+        assert (
+            stop_data[
+                "audio_ready"
+            ]
+            is False
+        )
+
+        assert (
+            stop_data[
+                "generation"
+            ]
+            == first_generation + 1
+        )
+
+    finally:
+
+        cleanup_session(
+            module,
+            session_id,
+        )
+
+
+# ============================================================
+# Temporal reset route smoke
+# ============================================================
+
+def test_web_temporal_reset_preserves_microphone_state():
 
     module = (
         load_web_app_module()
@@ -526,73 +714,106 @@ def test_web_temporal_reset_route():
         + uuid.uuid4().hex
     )
 
-    with module.SESSION_LOCK:
+    try:
 
-        state = (
-            module.get_session(
-                session_id
+        with module.SESSION_LOCK:
+
+            state = (
+                module.get_session(
+                    session_id
+                )
             )
+
+            state.audio_source_kind = (
+                "microphone_stream"
+            )
+
+            state.audio_name = (
+                "Live microphone"
+            )
+
+            state.audio_stream_active = True
+
+            state.audio_stream_token = (
+                "smoke-token"
+            )
+
+            state.audio_pcm_buffer.extend(
+                b"\x00\x00" * 1000
+            )
+
+            state.temporal_fusion.append(
+                {
+                    "focused":
+                        0.7,
+                    "distracted":
+                        0.1,
+                    "fatigued":
+                        0.1,
+                    "overloaded":
+                        0.1,
+                }
+            )
+
+            old_generation = (
+                state
+                .temporal_fusion
+                .generation
+            )
+
+        response = client.post(
+            "/reset_temporal",
+            data={
+                "session_id":
+                    session_id,
+            },
         )
 
-        state.temporal_fusion.append(
-            {
-                "focused":
-                    0.7,
+        assert response.status_code == 200
 
-                "distracted":
-                    0.1,
+        data = response.json()
 
-                "fatigued":
-                    0.1,
-
-                "overloaded":
-                    0.1,
-            }
+        assert (
+            data[
+                "generation"
+            ]
+            == old_generation + 1
         )
 
-        old_generation = (
-            state
-            .temporal_fusion
-            .generation
+        assert (
+            data[
+                "temporal_samples"
+            ]
+            == 0
         )
 
-    response = client.post(
-        "/reset_temporal",
-        data={
-            "session_id":
-                session_id,
-        },
-    )
+        with module.SESSION_LOCK:
 
-    assert (
-        response.status_code
-        == 200
-    )
+            state = (
+                module.get_session(
+                    session_id
+                )
+            )
 
-    data = (
-        response.json()
-    )
+            assert state.audio_stream_active
 
-    assert (
-        data[
-            "generation"
-        ]
-        == old_generation
-        + 1
-    )
+            assert (
+                state.audio_stream_token
+                == "smoke-token"
+            )
 
-    assert (
-        data[
-            "temporal_samples"
-        ]
-        == 0
-    )
+            assert (
+                len(
+                    state.audio_pcm_buffer
+                )
+                > 0
+            )
 
-    with module.SESSION_LOCK:
+    finally:
 
-        module.SESSION_STATES.pop(
+        cleanup_session(
+            module,
             session_id,
-            None,
         )
 
 
@@ -603,13 +824,17 @@ def test_web_temporal_reset_route():
 def test_frontend_supports_complete_source_lifecycle():
 
     script = (
-        SCRIPT_PATH.read_text(
+        SCRIPT_PATH
+        .read_text(
             encoding="utf-8"
         )
     )
 
     required = [
         "/set_audio_source",
+        "/audio_stream/start",
+        "/audio_stream/stop",
+        "/ws/audio/",
         "/set_visual_image",
         "/set_visual_video",
         "/set_visual_webcam",
@@ -621,6 +846,9 @@ def test_frontend_supports_complete_source_lifecycle():
         "clientEpoch",
         "captureWebcamFrame",
         "webcam_frame",
+        "startMicrophoneStream",
+        "stopMicrophoneStream",
+        "float32ToPCM16Buffer",
     ]
 
     for token in required:
@@ -628,16 +856,37 @@ def test_frontend_supports_complete_source_lifecycle():
         assert token in script
 
 
-def test_frontend_does_not_contain_old_temporal_implementation():
+def test_frontend_does_not_contain_old_one_shot_microphone():
 
     script = (
-        SCRIPT_PATH.read_text(
+        SCRIPT_PATH
+        .read_text(
             encoding="utf-8"
         )
     )
 
     forbidden = [
+        "recordMicrophoneOnce",
+        "AUDIO_CAPTURE_SECONDS",
+        "forceExactDuration",
         "MediaRecorder",
+    ]
+
+    for token in forbidden:
+
+        assert token not in script
+
+
+def test_frontend_does_not_contain_old_temporal_implementation():
+
+    script = (
+        SCRIPT_PATH
+        .read_text(
+            encoding="utf-8"
+        )
+    )
+
+    forbidden = [
         "temporalProbabilityHistory",
         "aggregateProbabilityHistory",
         "confidenceLevelFromGap",
@@ -645,16 +894,39 @@ def test_frontend_does_not_contain_old_temporal_implementation():
 
     for token in forbidden:
 
-        assert (
-            token
-            not in script
+        assert token not in script
+
+
+def test_frontend_exposes_continuous_audio_ui():
+
+    html = (
+        HTML_PATH
+        .read_text(
+            encoding="utf-8"
         )
+        .lower()
+    )
+
+    required = [
+        'id="startmicbtn"',
+        'id="stopmicbtn"',
+        'id="audiostreamstate"',
+        'id="audiobufferedseconds"',
+        'id="audiolivelevel"',
+        'id="audiopacketcount"',
+        'id="audiodiagnostic"',
+    ]
+
+    for token in required:
+
+        assert token in html
 
 
 def test_frontend_exposes_raw_and_temporal_output():
 
     html = (
-        HTML_PATH.read_text(
+        HTML_PATH
+        .read_text(
             encoding="utf-8"
         )
         .lower()
