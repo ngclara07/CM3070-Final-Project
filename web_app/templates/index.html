@@ -11,9 +11,12 @@
     content="width=device-width, initial-scale=1.0"
   />
 
-  <title>
-    SenseFuzeAI Live Fusion
-  </title>
+  <meta
+    name="description"
+    content="SenseFuzeAI live multimodal behavioural inference system"
+  />
+
+  <title>SenseFuzeAI | Live Multimodal Fusion</title>
 
   <link
     rel="stylesheet"
@@ -24,43 +27,127 @@
 
 <body>
 
-  <div class="scene-bg"></div>
-  <div class="grid-floor"></div>
+  <!-- ========================================================= -->
+  <!-- DECORATIVE BACKGROUND -->
+  <!-- ========================================================= -->
 
+  <div
+    class="scene-bg"
+    aria-hidden="true"
+  ></div>
+
+  <div
+    class="grid-floor"
+    aria-hidden="true"
+  ></div>
+
+
+  <!-- ========================================================= -->
+  <!-- APPLICATION -->
+  <!-- ========================================================= -->
 
   <main class="app-shell">
 
-    <!-- ========================================================= -->
-    <!-- HERO -->
-    <!-- ========================================================= -->
 
-    <section class="hero-card">
+    <!-- ======================================================= -->
+    <!-- APPLICATION HEADER -->
+    <!-- ======================================================= -->
 
-      <div class="orb"></div>
+    <header class="hero-card">
 
-      <h1>SenseFuzeAI</h1>
+      <div class="hero-identity">
 
-      <p>
-        Live Multimodal Behavioural AI System
-      </p>
-
-      <span>
-        Keystroke · Text · Audio · Webcam ·
-        Temporal Probability Fusion
-      </span>
-
-    </section>
+        <div
+          class="orb"
+          aria-hidden="true"
+        ></div>
 
 
-    <!-- ========================================================= -->
+        <div class="hero-copy">
+
+          <span class="hero-eyebrow">
+            Multimodal Behavioural Intelligence
+          </span>
+
+          <h1>
+            SenseFuzeAI
+          </h1>
+
+          <p>
+            Live Multimodal Behavioural AI System
+          </p>
+
+          <div class="hero-modalities">
+
+            <span>Keystroke</span>
+            <span>Text</span>
+            <span>Audio</span>
+            <span>Webcam</span>
+            <span>Temporal Fusion</span>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+      <div class="hero-meta">
+
+        <span class="research-label">
+          Research System
+        </span>
+
+        <strong>
+          Real-Time Inference
+        </strong>
+
+        <small>
+          Temporally aggregated multimodal prediction
+        </small>
+
+      </div>
+
+    </header>
+
+
+    <!-- ======================================================= -->
     <!-- SYSTEM READINESS -->
-    <!-- ========================================================= -->
+    <!-- ======================================================= -->
 
     <section class="system-panel">
 
-      <h2>
-        Live System Readiness
-      </h2>
+
+      <div class="section-header">
+
+        <div>
+
+          <span class="section-eyebrow">
+            System Status
+          </span>
+
+          <h2>
+            Live System Readiness
+          </h2>
+
+          <p>
+            Availability and operational state of the
+            multimodal inference pipeline.
+          </p>
+
+        </div>
+
+
+        <div class="section-index">
+          01
+        </div>
+
+      </div>
+
+
+      <!-- ===================================================== -->
+      <!-- READINESS ITEMS -->
+      <!-- ===================================================== -->
 
       <div class="readiness-grid">
 
@@ -68,8 +155,21 @@
           class="ready-item"
           id="modelReady"
         >
-          <span>Fusion Model</span>
-          <b>Checking</b>
+
+          <div class="ready-label">
+
+            <span class="ready-dot"></span>
+
+            <span>
+              Fusion Model
+            </span>
+
+          </div>
+
+          <b>
+            Checking
+          </b>
+
         </div>
 
 
@@ -77,8 +177,21 @@
           class="ready-item"
           id="webcamModelReady"
         >
-          <span>Webcam AI</span>
-          <b>Checking</b>
+
+          <div class="ready-label">
+
+            <span class="ready-dot"></span>
+
+            <span>
+              Webcam AI
+            </span>
+
+          </div>
+
+          <b>
+            Checking
+          </b>
+
         </div>
 
 
@@ -86,8 +199,21 @@
           class="ready-item"
           id="textReady"
         >
-          <span>Text</span>
-          <b>Missing</b>
+
+          <div class="ready-label">
+
+            <span class="ready-dot"></span>
+
+            <span>
+              Text
+            </span>
+
+          </div>
+
+          <b>
+            Missing
+          </b>
+
         </div>
 
 
@@ -95,8 +221,21 @@
           class="ready-item"
           id="keyReady"
         >
-          <span>Keystroke</span>
-          <b>Missing</b>
+
+          <div class="ready-label">
+
+            <span class="ready-dot"></span>
+
+            <span>
+              Keystroke
+            </span>
+
+          </div>
+
+          <b>
+            Missing
+          </b>
+
         </div>
 
 
@@ -104,8 +243,21 @@
           class="ready-item"
           id="audioReady"
         >
-          <span>Audio</span>
-          <b>Optional</b>
+
+          <div class="ready-label">
+
+            <span class="ready-dot"></span>
+
+            <span>
+              Audio
+            </span>
+
+          </div>
+
+          <b>
+            Optional
+          </b>
+
         </div>
 
 
@@ -113,232 +265,84 @@
           class="ready-item"
           id="imageReady"
         >
-          <span>Webcam Input</span>
-          <b>Optional</b>
+
+          <div class="ready-label">
+
+            <span class="ready-dot"></span>
+
+            <span>
+              Webcam Input
+            </span>
+
+          </div>
+
+          <b>
+            Optional
+          </b>
+
         </div>
 
       </div>
 
 
-      <p id="modelStatusText">
-        Checking model status...
-      </p>
+      <!-- ===================================================== -->
+      <!-- MODEL STATUS -->
+      <!-- ===================================================== -->
+
+      <div class="system-message-area">
+
+        <p id="modelStatusText">
+          Checking model status...
+        </p>
 
 
-      <p
-        id="webcamModelStatusText"
-        class="sub-status"
-      >
-        Checking webcam-calibrated classifier...
-      </p>
+        <p
+          id="webcamModelStatusText"
+          class="sub-status"
+        >
+          Checking webcam-calibrated classifier...
+        </p>
 
+      </div>
+
+
+      <!-- ===================================================== -->
+      <!-- TEMPORAL FUSION STATUS -->
+      <!-- ===================================================== -->
 
       <div class="temporal-status-banner">
 
-        <div>
-          <span>
-            Temporal Fusion
+        <div class="temporal-status-main">
+
+          <span class="temporal-icon">
+            TF
           </span>
 
-          <strong>
-            Rolling probability averaging
-          </strong>
+
+          <div>
+
+            <span class="small-label">
+              Temporal Fusion
+            </span>
+
+            <strong>
+              Rolling probability averaging
+            </strong>
+
+          </div>
+
         </div>
 
-        <div>
-          <span>
-            Window
+
+        <div class="temporal-window-status">
+
+          <span class="small-label">
+            Rolling Window
           </span>
 
           <strong id="temporalWindowStatus">
             0 / 5
           </strong>
-        </div>
-
-      </div>
-
-    </section>
-
-
-    <!-- ========================================================= -->
-    <!-- MODALITIES -->
-    <!-- ========================================================= -->
-
-    <section class="fusion-panel">
-
-      <div class="modality-grid">
-
-
-        <!-- ===================================================== -->
-        <!-- TEXT + KEYSTROKES -->
-        <!-- ===================================================== -->
-
-        <div
-          class="modality-card"
-          id="textCard"
-        >
-
-          <div class="card-head">
-
-            <h2>
-              Live Text + Keystrokes
-            </h2>
-
-            <span class="badge">
-              inactive
-            </span>
-
-          </div>
-
-
-          <textarea
-            id="textInput"
-            placeholder="Type naturally here..."
-          ></textarea>
-
-
-          <div class="metric-grid">
-
-            <div>
-              <span>Characters</span>
-              <b id="charCount">0</b>
-            </div>
-
-            <div>
-              <span>Keypresses</span>
-              <b id="keyCount">0</b>
-            </div>
-
-          </div>
-
-        </div>
-
-
-        <!-- ===================================================== -->
-        <!-- WEBCAM -->
-        <!-- ===================================================== -->
-
-        <div
-          class="modality-card"
-          id="webcamCard"
-        >
-
-          <div class="card-head">
-
-            <h2>
-              Live Webcam
-            </h2>
-
-            <span class="badge">
-              inactive
-            </span>
-
-          </div>
-
-
-          <video
-            id="webcam"
-            autoplay
-            muted
-            playsinline
-          ></video>
-
-
-          <canvas
-            id="frameCanvas"
-            class="hidden"
-          ></canvas>
-
-
-          <p id="webcamStatus">
-            Webcam inactive.
-          </p>
-
-
-          <p class="calibration-note">
-            Current webcam frames are additionally evaluated
-            by the webcam-calibrated image classifier.
-          </p>
-
-        </div>
-
-
-        <!-- ===================================================== -->
-        <!-- AUDIO -->
-        <!-- ===================================================== -->
-
-        <div
-          class="modality-card"
-          id="audioCard"
-        >
-
-          <div class="card-head">
-
-            <h2>
-              Live Audio
-            </h2>
-
-            <span class="badge">
-              inactive
-            </span>
-
-          </div>
-
-
-          <p id="audioStatus">
-            Microphone inactive.
-          </p>
-
-        </div>
-
-
-        <!-- ===================================================== -->
-        <!-- SESSION CONTROLS -->
-        <!-- ===================================================== -->
-
-        <div class="modality-card">
-
-          <h2>
-            Session Controls
-          </h2>
-
-
-          <button
-            id="startBtn"
-            class="control-btn"
-          >
-            Start Live Session
-          </button>
-
-
-          <button
-            id="stopBtn"
-            class="control-btn danger"
-            disabled
-          >
-            Stop Session
-          </button>
-
-
-          <button
-            id="resetTemporalBtn"
-            class="control-btn temporal"
-          >
-            Reset Temporal Window
-          </button>
-
-
-          <button
-            id="resetBtn"
-            class="control-btn neutral"
-          >
-            Reset Session
-          </button>
-
-
-          <p id="sessionStatus">
-            Session not started.
-          </p>
 
         </div>
 
@@ -347,346 +351,789 @@
     </section>
 
 
-    <!-- ========================================================= -->
-    <!-- FINAL FUSION RESULT -->
-    <!-- ========================================================= -->
+    <!-- ======================================================= -->
+    <!-- PRIMARY LIVE WORKSPACE -->
+    <!-- ======================================================= -->
 
-    <section class="result-panel">
-
-      <h2>
-        Final Multimodal Behavioural State
-      </h2>
+    <div class="live-workspace">
 
 
-      <p id="status">
-        Awaiting live session...
-      </p>
+      <!-- ===================================================== -->
+      <!-- LEFT: LIVE MODALITIES -->
+      <!-- ===================================================== -->
 
+      <section class="fusion-panel">
 
-      <div class="state-display">
-
-        <span class="state-caption">
-          Temporally Aggregated Fusion Prediction
-        </span>
-
-
-        <div
-          id="prediction"
-          class="prediction-box"
-        >
-          —
-        </div>
-
-
-        <div class="confidence-block">
-
-          <span>
-            Aggregated Fusion Confidence
-          </span>
-
-          <strong id="confidencePercent">
-            —
-          </strong>
-
-
-          <div class="confidence-track">
-
-            <div
-              id="confidenceFill"
-              class="confidence-fill"
-            ></div>
-
-          </div>
-
-        </div>
-
-
-        <div class="confidence-level-box">
-
-          <span>
-            Prediction Confidence
-          </span>
-
-          <strong id="confidenceLevel">
-            —
-          </strong>
-
-        </div>
-
-
-        <div class="temporal-result-info">
+        <div class="section-header workspace-header">
 
           <div>
 
-            <span>
-              Temporal Samples
+            <span class="section-eyebrow">
+              Live Inputs
             </span>
 
-            <strong id="temporalSamples">
-              0
-            </strong>
+            <h2>
+              Multimodal Input Streams
+            </h2>
+
+            <p>
+              Real-time acquisition of behavioural
+              signals used by the fusion model.
+            </p>
 
           </div>
 
 
-          <div>
-
-            <span>
-              Rolling Window
-            </span>
-
-            <strong id="temporalWindow">
-              5
-            </strong>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              Aggregation
-            </span>
-
-            <strong>
-              Mean Probability
-            </strong>
-
+          <div class="section-index">
+            02
           </div>
 
         </div>
 
-      </div>
+
+        <div class="modality-grid">
 
 
-      <!-- ======================================================= -->
-      <!-- RAW CURRENT FUSION PREDICTION -->
-      <!-- ======================================================= -->
+          <!-- ================================================= -->
+          <!-- TEXT + KEYSTROKES -->
+          <!-- ================================================= -->
 
-      <section class="raw-result-card">
+          <article
+            class="modality-card"
+            id="textCard"
+          >
 
-        <span class="small-caption">
-          Current Unsmooothed Fusion Observation
-        </span>
+            <div class="card-head">
 
-        <div class="raw-result-grid">
+              <div>
 
-          <div>
-            <span>Raw State</span>
+                <span class="card-kicker">
+                  Linguistic + Motor
+                </span>
 
-            <strong id="rawPrediction">
-              —
-            </strong>
-          </div>
+                <h3>
+                  Live Text + Keystrokes
+                </h3>
+
+              </div>
 
 
-          <div>
-            <span>Raw Confidence</span>
+              <span class="badge">
+                inactive
+              </span>
 
-            <strong id="rawConfidence">
-              —
-            </strong>
-          </div>
+            </div>
+
+
+            <textarea
+              id="textInput"
+              placeholder="Type naturally here..."
+              aria-label="Live text input"
+            ></textarea>
+
+
+            <div class="metric-grid">
+
+              <div>
+
+                <span>
+                  Characters
+                </span>
+
+                <b id="charCount">
+                  0
+                </b>
+
+              </div>
+
+
+              <div>
+
+                <span>
+                  Keypresses
+                </span>
+
+                <b id="keyCount">
+                  0
+                </b>
+
+              </div>
+
+            </div>
+
+          </article>
+
+
+          <!-- ================================================= -->
+          <!-- WEBCAM -->
+          <!-- ================================================= -->
+
+          <article
+            class="modality-card"
+            id="webcamCard"
+          >
+
+            <div class="card-head">
+
+              <div>
+
+                <span class="card-kicker">
+                  Visual Behaviour
+                </span>
+
+                <h3>
+                  Live Webcam
+                </h3>
+
+              </div>
+
+
+              <span class="badge">
+                inactive
+              </span>
+
+            </div>
+
+
+            <div class="video-frame">
+
+              <video
+                id="webcam"
+                autoplay
+                muted
+                playsinline
+              ></video>
+
+            </div>
+
+
+            <canvas
+              id="frameCanvas"
+              class="hidden"
+            ></canvas>
+
+
+            <p
+              id="webcamStatus"
+              class="modality-status"
+            >
+              Webcam inactive.
+            </p>
+
+
+            <p class="calibration-note">
+              Frames are additionally evaluated by the
+              webcam-calibrated image classifier.
+            </p>
+
+          </article>
+
+
+          <!-- ================================================= -->
+          <!-- AUDIO -->
+          <!-- ================================================= -->
+
+          <article
+            class="modality-card audio-card"
+            id="audioCard"
+          >
+
+            <div class="card-head">
+
+              <div>
+
+                <span class="card-kicker">
+                  Acoustic Signal
+                </span>
+
+                <h3>
+                  Live Audio
+                </h3>
+
+              </div>
+
+
+              <span class="badge">
+                inactive
+              </span>
+
+            </div>
+
+
+            <div class="audio-visual">
+
+              <div class="audio-bars">
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+
+            </div>
+
+
+            <p
+              id="audioStatus"
+              class="modality-status"
+            >
+              Microphone inactive.
+            </p>
+
+          </article>
+
+
+          <!-- ================================================= -->
+          <!-- SESSION CONTROLS -->
+          <!-- ================================================= -->
+
+          <article class="modality-card control-card">
+
+            <div class="card-head">
+
+              <div>
+
+                <span class="card-kicker">
+                  Acquisition Control
+                </span>
+
+                <h3>
+                  Session Controls
+                </h3>
+
+              </div>
+
+            </div>
+
+
+            <div class="control-stack">
+
+              <button
+                id="startBtn"
+                class="control-btn primary"
+              >
+                Start Live Session
+              </button>
+
+
+              <button
+                id="stopBtn"
+                class="control-btn danger"
+                disabled
+              >
+                Stop Session
+              </button>
+
+
+              <button
+                id="resetTemporalBtn"
+                class="control-btn temporal"
+              >
+                Reset Temporal Window
+              </button>
+
+
+              <button
+                id="resetBtn"
+                class="control-btn neutral"
+              >
+                Reset Session
+              </button>
+
+            </div>
+
+
+            <div class="session-footer">
+
+              <span class="session-indicator"></span>
+
+              <p id="sessionStatus">
+                Session not started.
+              </p>
+
+            </div>
+
+          </article>
 
         </div>
-
-        <p>
-          This is the latest individual fusion observation.
-          The final result above is calculated from the recent
-          rolling probability window.
-        </p>
 
       </section>
 
 
-      <!-- ======================================================= -->
-      <!-- WEBCAM CALIBRATED MODALITY RESULT -->
-      <!-- ======================================================= -->
+      <!-- ===================================================== -->
+      <!-- RIGHT: LIVE INFERENCE -->
+      <!-- ===================================================== -->
 
-      <section class="webcam-result-card">
+      <section class="result-panel">
 
-        <div class="webcam-result-heading">
+        <div class="section-header result-header">
 
           <div>
 
-            <span class="small-caption">
-              Webcam-Calibrated Image Modality
+            <span class="section-eyebrow">
+              Live Inference
             </span>
 
-            <strong id="webcamPrediction">
+            <h2>
+              Final Behavioural State
+            </h2>
+
+            <p>
+              Temporally stabilised multimodal
+              behavioural classification.
+            </p>
+
+          </div>
+
+
+          <div class="section-index">
+            03
+          </div>
+
+        </div>
+
+
+        <div class="result-status-bar">
+
+          <span class="result-status-dot"></span>
+
+          <p id="status">
+            Awaiting live session...
+          </p>
+
+        </div>
+
+
+        <!-- =================================================== -->
+        <!-- MAIN FUSION STATE -->
+        <!-- =================================================== -->
+
+        <div class="state-display">
+
+          <span class="state-caption">
+            Temporally Aggregated Fusion Prediction
+          </span>
+
+
+          <div
+            id="prediction"
+            class="prediction-box"
+          >
+            —
+          </div>
+
+
+          <div class="confidence-block">
+
+            <div class="confidence-heading">
+
+              <span>
+                Aggregated Fusion Confidence
+              </span>
+
+              <strong id="confidencePercent">
+                —
+              </strong>
+
+            </div>
+
+
+            <div class="confidence-track">
+
+              <div
+                id="confidenceFill"
+                class="confidence-fill"
+              ></div>
+
+            </div>
+
+          </div>
+
+
+          <div class="confidence-level-box">
+
+            <span>
+              Prediction Confidence
+            </span>
+
+            <strong id="confidenceLevel">
               —
             </strong>
 
           </div>
 
 
-          <div class="webcam-confidence">
+          <div class="temporal-result-info">
 
-            <span>
-              Confidence
-            </span>
+            <div>
 
-            <strong id="webcamConfidence">
-              —
-            </strong>
+              <span>
+                Temporal Samples
+              </span>
+
+              <strong id="temporalSamples">
+                0
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Rolling Window
+              </span>
+
+              <strong id="temporalWindow">
+                5
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Aggregation
+              </span>
+
+              <strong>
+                Mean Probability
+              </strong>
+
+            </div>
 
           </div>
 
         </div>
 
 
-        <div
-          id="webcamProbabilityBars"
-          class="mini-probabilities"
-        ></div>
+        <!-- =================================================== -->
+        <!-- RAW CURRENT OBSERVATION -->
+        <!-- =================================================== -->
+
+        <section class="result-subcard raw-result-card">
+
+          <div class="subcard-heading">
+
+            <div>
+
+              <span class="small-caption">
+                Current Fusion Observation
+              </span>
+
+              <h3>
+                Unsmoothed Prediction
+              </h3>
+
+            </div>
+
+
+            <span class="subcard-tag">
+              Raw
+            </span>
+
+          </div>
+
+
+          <div class="raw-result-grid">
+
+            <div>
+
+              <span>
+                Raw State
+              </span>
+
+              <strong id="rawPrediction">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Raw Confidence
+              </span>
+
+              <strong id="rawConfidence">
+                —
+              </strong>
+
+            </div>
+
+          </div>
+
+
+          <p class="subcard-description">
+            Latest individual fusion observation before
+            temporal probability aggregation.
+          </p>
+
+        </section>
+
+
+        <!-- =================================================== -->
+        <!-- WEBCAM MODALITY RESULT -->
+        <!-- =================================================== -->
+
+        <section class="result-subcard webcam-result-card">
+
+          <div class="webcam-result-heading">
+
+            <div>
+
+              <span class="small-caption">
+                Webcam-Calibrated Modality
+              </span>
+
+              <h3>
+                Visual Classification
+              </h3>
+
+            </div>
+
+
+            <div class="webcam-confidence">
+
+              <span>
+                Confidence
+              </span>
+
+              <strong id="webcamConfidence">
+                —
+              </strong>
+
+            </div>
+
+          </div>
+
+
+          <strong
+            id="webcamPrediction"
+            class="webcam-prediction"
+          >
+            —
+          </strong>
+
+
+          <div
+            id="webcamProbabilityBars"
+            class="mini-probabilities"
+          ></div>
+
+        </section>
 
       </section>
 
+    </div>
 
-      <!-- ======================================================= -->
-      <!-- TECHNICAL DETAILS -->
-      <!-- ======================================================= -->
+
+    <!-- ======================================================= -->
+    <!-- TECHNICAL / DIAGNOSTIC DETAILS -->
+    <!-- ======================================================= -->
+
+    <section class="diagnostics-panel">
 
       <details class="technical-details">
 
+
         <summary>
-          Show Technical Details
+
+          <div class="summary-content">
+
+            <div>
+
+              <span class="section-eyebrow">
+                Diagnostics
+              </span>
+
+              <strong>
+                Technical Details
+              </strong>
+
+            </div>
+
+
+            <span class="summary-hint">
+              Model metadata and probability distributions
+            </span>
+
+          </div>
+
         </summary>
 
 
-        <div class="technical-grid">
+        <div class="technical-content">
 
-          <div>
 
-            <span>
-              Second-highest class
-            </span>
+          <!-- ================================================= -->
+          <!-- METADATA -->
+          <!-- ================================================= -->
 
-            <strong id="secondaryState">
-              —
-            </strong>
+          <div class="technical-grid">
+
+            <div>
+
+              <span>
+                Second-highest class
+              </span>
+
+              <strong id="secondaryState">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Confidence gap
+              </span>
+
+              <strong id="confidenceGap">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Feature dimension
+              </span>
+
+              <strong id="featureDimension">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Device
+              </span>
+
+              <strong id="deviceInfo">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Webcam Calibration
+              </span>
+
+              <strong id="webcamCalibrationUsed">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Active Modalities
+              </span>
+
+              <strong id="activeModalities">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Raw Top Class
+              </span>
+
+              <strong id="technicalRawState">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Temporal Samples
+              </span>
+
+              <strong id="technicalTemporalSamples">
+                —
+              </strong>
+
+            </div>
+
+
+            <div>
+
+              <span>
+                Session ID
+              </span>
+
+              <strong id="sessionIdDisplay">
+                —
+              </strong>
+
+            </div>
 
           </div>
 
 
-          <div>
+          <!-- ================================================= -->
+          <!-- PROBABILITY DISTRIBUTIONS -->
+          <!-- ================================================= -->
 
-            <span>
-              Confidence gap
-            </span>
+          <div class="distribution-grid">
 
-            <strong id="confidenceGap">
-              —
-            </strong>
+            <section class="distribution-card">
 
-          </div>
+              <span class="small-caption">
+                Aggregated Output
+              </span>
 
+              <h3>
+                Temporal Fusion Probability Distribution
+              </h3>
 
-          <div>
+              <div id="probabilities"></div>
 
-            <span>
-              Feature dimension
-            </span>
-
-            <strong id="featureDimension">
-              —
-            </strong>
-
-          </div>
+            </section>
 
 
-          <div>
+            <section class="distribution-card">
 
-            <span>
-              Device
-            </span>
+              <span class="small-caption">
+                Current Observation
+              </span>
 
-            <strong id="deviceInfo">
-              —
-            </strong>
+              <h3>
+                Raw Fusion Probability Distribution
+              </h3>
 
-          </div>
+              <div id="rawProbabilities"></div>
 
-
-          <div>
-
-            <span>
-              Webcam Calibration
-            </span>
-
-            <strong id="webcamCalibrationUsed">
-              —
-            </strong>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              Active Modalities
-            </span>
-
-            <strong id="activeModalities">
-              —
-            </strong>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              Raw Top Class
-            </span>
-
-            <strong id="technicalRawState">
-              —
-            </strong>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              Temporal Samples
-            </span>
-
-            <strong id="technicalTemporalSamples">
-              —
-            </strong>
-
-          </div>
-
-
-          <div>
-
-            <span>
-              Session ID
-            </span>
-
-            <strong id="sessionIdDisplay">
-              —
-            </strong>
+            </section>
 
           </div>
 
         </div>
-
-
-        <h3>
-          Temporally Aggregated Fusion Probability Distribution
-        </h3>
-
-        <div id="probabilities"></div>
-
-
-        <h3>
-          Current Raw Fusion Probability Distribution
-        </h3>
-
-        <div id="rawProbabilities"></div>
 
       </details>
 
@@ -694,6 +1141,10 @@
 
   </main>
 
+
+  <!-- ========================================================= -->
+  <!-- APPLICATION SCRIPT -->
+  <!-- ========================================================= -->
 
   <script
     src="{{ url_for('static', path='/script.js') }}"
