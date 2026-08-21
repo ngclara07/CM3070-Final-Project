@@ -1,0 +1,26 @@
+configuration,fold,dimensions,removed_groups,removed_feature_count,train_samples,test_samples,accuracy,macro_f1
+Full fusion,1,2373,,0,247,62,1.0,1.0
+Full fusion,2,2373,,0,247,62,1.0,1.0
+Full fusion,3,2373,,0,247,62,1.0,1.0
+Full fusion,4,2373,,0,247,62,1.0,1.0
+Full fusion,5,2373,,0,248,61,1.0,1.0
+Fusion - Keystroke,1,2351,keystroke,22,247,62,1.0,1.0
+Fusion - Keystroke,2,2351,keystroke,22,247,62,1.0,1.0
+Fusion - Keystroke,3,2351,keystroke,22,247,62,1.0,1.0
+Fusion - Keystroke,4,2351,keystroke,22,247,62,1.0,1.0
+Fusion - Keystroke,5,2351,keystroke,22,248,61,1.0,1.0
+Fusion - Text,1,1605,text,768,247,62,0.967741935483871,0.9674369747899161
+Fusion - Text,2,1605,text,768,247,62,1.0,1.0
+Fusion - Text,3,1605,text,768,247,62,1.0,1.0
+Fusion - Text,4,1605,text,768,247,62,1.0,1.0
+Fusion - Text,5,1605,text,768,248,61,1.0,1.0
+Fusion - Audio,1,1564,audio,809,247,62,1.0,1.0
+Fusion - Audio,2,1564,audio,809,247,62,1.0,1.0
+Fusion - Audio,3,1564,audio,809,247,62,1.0,1.0
+Fusion - Audio,4,1564,audio,809,247,62,1.0,1.0
+Fusion - Audio,5,1564,audio,809,248,61,1.0,1.0
+Fusion - Vision,1,1599,vision+derived,774,247,62,1.0,1.0
+Fusion - Vision,2,1599,vision+derived,774,247,62,1.0,1.0
+Fusion - Vision,3,1599,vision+derived,774,247,62,1.0,1.0
+Fusion - Vision,4,1599,vision+derived,774,247,62,0.9838709677419355,0.98380355276907
+Fusion - Vision,5,1599,vision+derived,774,248,61,1.0,1.0

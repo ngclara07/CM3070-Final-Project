@@ -1,0 +1,353 @@
+{
+    "project": "SenseFuzeAI",
+    "test_runner": "run_all_tests.py",
+    "architecture": "continuous_multimodal_temporal_fusion",
+    "timestamp_epoch": 1787312416.380702,
+    "environment": {
+        "python_version": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+        "python_executable": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\.venv\\Scripts\\python.exe",
+        "platform": "Windows-10-10.0.26200-SP0",
+        "project_root": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app"
+    },
+    "canonical_expectations": {
+        "labels": [
+            "focused",
+            "distracted",
+            "fatigued",
+            "overloaded"
+        ],
+        "temporal_window": 5,
+        "confidence_high_gap": 0.35,
+        "confidence_medium_gap": 0.15,
+        "live_interval_ms": 2500,
+        "min_text_chars": 20,
+        "min_keydowns": 20,
+        "continuous_audio": {
+            "target_sample_rate": 16000,
+            "pcm_format": "signed_16_bit_little_endian",
+            "channels": 1,
+            "transport": "websocket_pcm16_mono",
+            "rolling_window_seconds": 10.0,
+            "minimum_ready_seconds": 2.0,
+            "audio_source_policy": "fixed_file_or_continuous_microphone_stream",
+            "stream_packets_reset_temporal": false,
+            "microphone_start_resets_temporal": true,
+            "microphone_stop_resets_temporal": true,
+            "temporal_only_reset_preserves_stream": true
+        },
+        "keystroke_dataset_comparison": {
+            "builder": "build_keystroke_dataset_comparison.py",
+            "trainer": "train_keystroke_dataset_comparison.py",
+            "primary_analysis": "three_class",
+            "exploratory_analysis": "four_class"
+        }
+    },
+    "options": {
+        "with_model_smoke": true,
+        "require_node": false,
+        "require_pytest": true,
+        "strict": true
+    },
+    "summary": {
+        "PASS": 42,
+        "FAIL": 0,
+        "WARN": 0,
+        "SKIP": 0
+    },
+    "results": [
+        {
+            "name": "py_compile temporal_fusion.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.004558000015094876,
+            "detail": "Compiled successfully: temporal_fusion.py"
+        },
+        {
+            "name": "py_compile final_multimodal_inference.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.007973800064064562,
+            "detail": "Compiled successfully: final_multimodal_inference.py"
+        },
+        {
+            "name": "py_compile live_fusion_gui.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.009151200065389276,
+            "detail": "Compiled successfully: live_fusion_gui.py"
+        },
+        {
+            "name": "py_compile web_app\\app.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.007197399972938001,
+            "detail": "Compiled successfully: web_app\\app.py"
+        },
+        {
+            "name": "py_compile evaluate_multimodal_results.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.013385600061155856,
+            "detail": "Compiled successfully: evaluate_multimodal_results.py"
+        },
+        {
+            "name": "py_compile train_multimodal_comparison.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.010360100073739886,
+            "detail": "Compiled successfully: train_multimodal_comparison.py"
+        },
+        {
+            "name": "py_compile build_keystroke_dataset_comparison.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.004561999929137528,
+            "detail": "Compiled successfully: build_keystroke_dataset_comparison.py"
+        },
+        {
+            "name": "py_compile train_keystroke_dataset_comparison.py",
+            "category": "syntax",
+            "status": "PASS",
+            "duration_seconds": 0.007895599934272468,
+            "detail": "Compiled successfully: train_keystroke_dataset_comparison.py"
+        },
+        {
+            "name": "py_compile tests\\test_01_unit.py",
+            "category": "test-syntax",
+            "status": "PASS",
+            "duration_seconds": 0.004332400043494999,
+            "detail": "Compiled successfully: tests\\test_01_unit.py"
+        },
+        {
+            "name": "py_compile tests\\test_02_integration.py",
+            "category": "test-syntax",
+            "status": "PASS",
+            "duration_seconds": 0.0037103999638929963,
+            "detail": "Compiled successfully: tests\\test_02_integration.py"
+        },
+        {
+            "name": "py_compile tests\\test_03_system.py",
+            "category": "test-syntax",
+            "status": "PASS",
+            "duration_seconds": 0.004281500005163252,
+            "detail": "Compiled successfully: tests\\test_03_system.py"
+        },
+        {
+            "name": "py_compile tests\\test_04_acceptance.py",
+            "category": "test-syntax",
+            "status": "PASS",
+            "duration_seconds": 0.003996500046923757,
+            "detail": "Compiled successfully: tests\\test_04_acceptance.py"
+        },
+        {
+            "name": "py_compile tests\\test_05_keystroke_dataset_comparison.py",
+            "category": "test-syntax",
+            "status": "PASS",
+            "duration_seconds": 0.004730099928565323,
+            "detail": "Compiled successfully: tests\\test_05_keystroke_dataset_comparison.py"
+        },
+        {
+            "name": "py_compile tests\\test_sensefuzeai.py",
+            "category": "test-syntax",
+            "status": "PASS",
+            "duration_seconds": 0.005576199968345463,
+            "detail": "Compiled successfully: tests\\test_sensefuzeai.py"
+        },
+        {
+            "name": "canonical constants",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.0033779999939724803,
+            "detail": "Canonical labels/window/confidence thresholds verified."
+        },
+        {
+            "name": "probability normalisation",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.00023769994731992483,
+            "detail": "Positive probability normalisation verified."
+        },
+        {
+            "name": "invalid probability policy",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.00019759999122470617,
+            "detail": "NaN/infinity/negative/zero-total probability policy verified."
+        },
+        {
+            "name": "confidence thresholds",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 5.580007564276457e-05,
+            "detail": "Low/Medium/High confidence boundaries verified."
+        },
+        {
+            "name": "five-sample arithmetic mean",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.00011199992150068283,
+            "detail": "Equal arithmetic five-observation probability averaging verified."
+        },
+        {
+            "name": "rolling-window rollover",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.0002914000069722533,
+            "detail": "Rolling maxlen=5 behaviour verified."
+        },
+        {
+            "name": "reset + stale generation",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.00014579994603991508,
+            "detail": "Generation reset and stale-result rejection verified."
+        },
+        {
+            "name": "consumer parity",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.003946300013922155,
+            "detail": "40 deterministic observations produced exact consumer parity."
+        },
+        {
+            "name": "probability validator",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.00016870000399649143,
+            "detail": "Probability-distribution diagnostics verified."
+        },
+        {
+            "name": "built-in temporal self-test",
+            "category": "temporal",
+            "status": "PASS",
+            "duration_seconds": 0.07209670008160174,
+            "detail": "temporal_fusion.py self-test: PASS"
+        },
+        {
+            "name": "stateless final inference",
+            "category": "architecture",
+            "status": "PASS",
+            "duration_seconds": 0.010022299946285784,
+            "detail": "Stateless raw-inference API and probability contract verified."
+        },
+        {
+            "name": "desktop shared temporal engine",
+            "category": "architecture",
+            "status": "PASS",
+            "duration_seconds": 0.015526700066402555,
+            "detail": "Desktop shared temporal engine, cadence and inference contract verified."
+        },
+        {
+            "name": "web multimodal source contract",
+            "category": "architecture",
+            "status": "PASS",
+            "duration_seconds": 0.019556700019165874,
+            "detail": "Per-session temporal engine, continuous audio state, routes and canonical predictor contract verified."
+        },
+        {
+            "name": "evaluation temporal parity",
+            "category": "architecture",
+            "status": "PASS",
+            "duration_seconds": 0.01975740003399551,
+            "detail": "Raw-vs-temporal evaluation uses the canonical engine."
+        },
+        {
+            "name": "comparison group-aware temporal evaluation",
+            "category": "architecture",
+            "status": "PASS",
+            "duration_seconds": 0.01782680000178516,
+            "detail": "Group-aware raw-vs-temporal comparison contract verified."
+        },
+        {
+            "name": "streaming audio constants",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.013166900025680661,
+            "detail": "16-kHz PCM16, 10-second rolling window and 2-second warm-up verified."
+        },
+        {
+            "name": "streaming model-status contract",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.016206400003284216,
+            "detail": "MODEL_STATUS continuous-audio contract verified semantically via AST."
+        },
+        {
+            "name": "PCM packets preserve temporal generation",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.034517499967478216,
+            "detail": "Incoming PCM packets preserve the temporal generation."
+        },
+        {
+            "name": "microphone start/stop reset semantics",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.037270299973897636,
+            "detail": "Microphone start/stop generation semantics verified."
+        },
+        {
+            "name": "predict_live streamed audio snapshot",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.04960240004584193,
+            "detail": "predict_live() snapshots continuous PCM16 audio and propagates buffered-duration metadata correctly."
+        },
+        {
+            "name": "JavaScript continuous microphone contract",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.0019100999925285578,
+            "detail": "Browser client uses continuous PCM16 WebSocket acquisition without duplicating temporal mathematics."
+        },
+        {
+            "name": "HTML continuous microphone controls",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.0012124000350013375,
+            "detail": "Continuous audio controls and raw/temporal result UI verified."
+        },
+        {
+            "name": "CSS continuous microphone states",
+            "category": "continuous-audio",
+            "status": "PASS",
+            "duration_seconds": 0.000624599982984364,
+            "detail": "Continuous microphone visual states verified in style.css."
+        },
+        {
+            "name": "keystroke dataset harmonisation contract",
+            "category": "dataset-comparison",
+            "status": "PASS",
+            "duration_seconds": 0.013707099948078394,
+            "detail": "EmoSurv/SenseFuzeAI feature harmonisation and provenance verified."
+        },
+        {
+            "name": "keystroke dataset comparison split contract",
+            "category": "dataset-comparison",
+            "status": "PASS",
+            "duration_seconds": 0.00902119989041239,
+            "detail": "A-F experiment design, frozen split, group-aware evaluation and bootstrap analysis verified."
+        },
+        {
+            "name": "node --check script.js",
+            "category": "javascript",
+            "status": "PASS",
+            "duration_seconds": 0.07951660000253469,
+            "detail": "node --check passed for web_app/static/script.js."
+        },
+        {
+            "name": "pytest tests/",
+            "category": "pytest",
+            "status": "PASS",
+            "duration_seconds": 7.537419100059196,
+            "detail": "pytest passed.\n........................................................................ [ 45%]\n........................................................................ [ 91%]\n..............                                                           [100%]\n158 passed in 6.20s"
+        },
+        {
+            "name": "FinalMultimodalInference initialisation",
+            "category": "model-smoke",
+            "status": "PASS",
+            "duration_seconds": 6.880082400050014,
+            "detail": "FinalMultimodalInference initialised successfully.\nDevice: cpu\nFusion features: 2373\nCanonical classes: ['focused', 'distracted', 'fatigued', 'overloaded']\nExpected MPNet dimension: 768\nExpected WavLM dimension: 768\nExpected CLIP dimension: 768\nWebcam-calibrated image augmentation: enabled\nTemporal inference: external (temporal_fusion.py)\nMODEL_SMOKE_PASS\nfeature_count= 2373\ndevice= cpu\n\n\nLoading weights:   0%|          | 0/199 [00:00<?, ?it/s]\nLoading weights: 100%|##########| 199/199 [00:00<00:00, 3865.90it/s]\n\nLoading weights:   0%|          | 0/248 [00:00<?, ?it/s]\nLoading weights: 100%|##########| 248/248 [00:00<00:00, 5917.86it/s]\n\nLoading weights:   0%|          | 0/590 [00:00<?, ?it/s]\nLoading weights:  98%|#########8| 579/590 [00:00<00:00, 5746.32it/s]\nLoading weights: 100%|##########| 590/590 [00:00<00:00, 5797.95it/s]\nC:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\final_multimodal_inference.py:1128: FutureWarning: The `get_sentence_embedding_dimension` method has been renamed to `get_embedding_dimension`.\n  .get_sentence_embedding_dimension()"
+        }
+    ]
+}

@@ -64,6 +64,30 @@ venv/
 /data/processed/archive/
 
 
+# EmoSurv IEEE comparison results
+
+!/data/processed/emosurv_ieee_comparison/
+!/data/processed/emosurv_ieee_comparison/**
+
+
+# Final experiment preflight outputs
+
+!/data/processed/final_experiment_preflight/
+!/data/processed/final_experiment_preflight/**
+
+
+# Final experiment outputs
+
+!/data/processed/final_experiments/
+!/data/processed/final_experiments/**
+
+
+# Test results
+
+!/data/processed/test_results/
+!/data/processed/test_results/**
+
+
 # Keystroke baseline results
 
 !/data/processed/keystroke_baseline_results/

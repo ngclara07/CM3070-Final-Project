@@ -1,0 +1,91 @@
+SenseFuzeAI EmoSurv IEEE Keystroke Comparison Report
+==========================================================
+
+Created: 2026-08-03T21:40:08
+
+METHODOLOGICAL STATUS
+--------------------
+The EmoSurv datasets contain emotion labels rather than SenseFuzeAI behavioural-state labels.
+Focused, distracted, fatigued and overloaded are therefore weakly supervised proxy labels.
+
+Proxy mapping:
+  Calm   -> focused
+  Angry  -> overloaded
+  Sad    -> fatigued
+  Neutral / Happy -> focused or distracted according to typing-dynamics irregularity
+
+Distraction threshold: 0.621128
+
+DATASET
+Proxy windows       : 1837
+Participants        : 83
+Training windows    : 1387
+Testing windows     : 450
+Training users      : 66
+Testing users       : 17
+Participant overlap : 0
+
+CLASS DISTRIBUTION
+------------------
+behaviour_proxy
+focused       951
+distracted    506
+fatigued      220
+overloaded    160
+Name: count, dtype: int64
+
+MODEL COMPARISON
+----------------
+
+baseline_random_forest
+  Accuracy     : 0.7444
+  Macro P      : 0.7850
+  Macro Recall : 0.5198
+  Macro F1     : 0.5214
+  Weighted F1  : 0.6901
+
+balanced_random_forest
+  Accuracy     : 0.7289
+  Macro P      : 0.6938
+  Macro Recall : 0.5264
+  Macro F1     : 0.5462
+  Weighted F1  : 0.6906
+
+SELECTED MODEL
+--------------
+Classifier      : balanced_random_forest
+Accuracy        : 0.7289
+Macro Precision : 0.6938
+Macro Recall    : 0.5264
+Macro F1        : 0.5462
+Weighted F1     : 0.6906
+
+PER-CLASS METRICS
+-----------------
+focused      P=0.7384 R=0.9102 F1=0.8154 N=245
+distracted   P=0.7227 R=0.7963 F1=0.7577 N=108
+fatigued     P=0.7143 R=0.2326 F1=0.3509 N=43
+overloaded   P=0.6000 R=0.1667 F1=0.2609 N=54
+
+CLASSIFICATION REPORT
+---------------------
+              precision    recall  f1-score   support
+
+     focused       0.74      0.91      0.82       245
+  distracted       0.72      0.80      0.76       108
+    fatigued       0.71      0.23      0.35        43
+  overloaded       0.60      0.17      0.26        54
+
+    accuracy                           0.73       450
+   macro avg       0.69      0.53      0.55       450
+weighted avg       0.72      0.73      0.69       450
+
+
+CONFUSION MATRIX
+----------------
+[[223, 14, 2, 6], [20, 86, 2, 0], [27, 6, 10, 0], [32, 13, 0, 9]]
+
+LIVE-DISTRIBUTION DIAGNOSTICS
+-----------------------------
+The live GUI compares each observed feature against the EmoSurv proxy training distribution using robust median/MAD z-scores.
+Large training-vs-live distribution differences are reported as diagnostic warnings and are not used to force a different behavioural prediction.

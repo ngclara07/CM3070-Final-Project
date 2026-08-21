@@ -1,0 +1,6 @@
+condition,input_dimensions,masked_groups,masked_feature_count,mean_accuracy,accuracy_sd,mean_macro_f1,macro_f1_sd,mean_delta_accuracy,delta_macro_f1,pooled_accuracy,pooled_macro_f1,predicted_focused,predicted_distracted,predicted_fatigued,predicted_overloaded,dominant_predicted_class,dominant_predicted_proportion,unique_predicted_classes,class_collapse,severe_prediction_imbalance
+All modalities available,2373,,0,1.0,0.0,1.0,0.0,0.0,0.0,1.0,1.0,77,77,77,78,overloaded,0.2524271844660194,4,False,False
+Keystroke unavailable,2373,keystroke,22,0.9740877842411422,0.016491238635127095,0.9737104552526509,0.016958964172759515,0.025912215758857736,0.026289544747349146,0.9741100323624595,0.9741819289325258,84,72,74,79,focused,0.27184466019417475,4,False,False
+Text unavailable,2373,text,768,1.0,0.0,1.0,0.0,0.0,0.0,1.0,1.0,77,77,77,78,overloaded,0.2524271844660194,4,False,False
+Audio unavailable,2373,audio,809,1.0,0.0,1.0,0.0,0.0,0.0,1.0,1.0,77,77,77,78,overloaded,0.2524271844660194,4,False,False
+Vision unavailable,2373,vision+derived,774,0.9255949233209944,0.05451744196305584,0.9189781286565804,0.06644347060690237,0.0744050766790058,0.08102187134341965,0.9255663430420712,0.9242810415870183,77,100,77,55,distracted,0.32362459546925565,4,False,False

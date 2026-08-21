@@ -1,0 +1,435 @@
+{
+  "captured_at": "2026-08-22T05:51:51.021175+08:00",
+  "operating_system": "Windows-10-10.0.26200-SP0",
+  "system": "Windows",
+  "release": "10",
+  "machine": "AMD64",
+  "cpu_model": "Intel(R) Core(TM) Ultra 7 255H",
+  "logical_cpu_count": 16,
+  "physical_cpu_count": 16,
+  "total_ram_bytes": 16574672896,
+  "total_ram_gib": 15.43636703491211,
+  "python_version": "3.11.9",
+  "python_full": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+  "python_executable": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\.venv\\Scripts\\python.exe",
+  "cpu_only_configuration": {
+    "CUDA_VISIBLE_DEVICES": "",
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "required_predictor_device": "cpu"
+  },
+  "library_versions": {
+    "numpy": "2.1.3",
+    "pandas": "3.0.2",
+    "scikit-learn": "1.8.0",
+    "torch": "2.11.0",
+    "sentence-transformers": "5.5.1",
+    "transformers": "5.5.4",
+    "librosa": "0.11.0",
+    "joblib": "1.5.3",
+    "fastapi": "0.136.0",
+    "jinja2": "3.1.6",
+    "uvicorn": "0.44.0"
+  },
+  "benchmark": {
+    "name": "SenseFuzeAI CPU-only inference latency benchmark",
+    "report_section": "5.7",
+    "timer": "time.perf_counter_ns",
+    "cold_repetitions": 5,
+    "warm_repetitions_per_stage": 30,
+    "warmups_per_stage": 3,
+    "sd_ddof": 0,
+    "p95_definition": "numpy.percentile(values, 95)",
+    "cold_start_method": "Fresh Python subprocess for every repetition.",
+    "cold_start_scope": "Python process startup, imports and construction of FinalMultimodalInference through child process completion immediately after readiness.",
+    "cold_start_shutdown_note": "The parent measures through immediate child exit; therefore cold-start values include a small conservative process-shutdown overhead.",
+    "cold_start_os_cache_note": "Operating-system/file caches were not forcibly cleared between fresh processes.",
+    "model_downloads_allowed": false,
+    "warm_end_to_end_measured_independently": true,
+    "warm_end_to_end_is_arithmetic_stage_sum": false,
+    "acquisition_duration_included": false,
+    "excluded_acquisition_components": [
+      "waiting for participant typing",
+      "microphone recording duration",
+      "webcam/video acquisition waiting",
+      "2.5-second live update cadence",
+      "temporal observation waiting",
+      "model download time",
+      "browser/network round-trip"
+    ],
+    "file_decode_included": {
+      "keystroke_json_read": true,
+      "audio_file_decode": true,
+      "image_file_decode": true,
+      "text_file_read": false
+    },
+    "text_file_read_note": "Text is loaded before timing because the canonical predictor receives already-acquired text as a Python string.",
+    "fusion_stage_precomputed_features": true,
+    "fusion_stage_precomputed_feature_note": "Persisted complete feature rows are used only for isolated schema/fusion classifier timing. They are not used for MPNet, WavLM, CLIP or warm end-to-end measurements.",
+    "environment_collection_psutil_dependency": false
+  },
+  "production_code_paths": {
+    "initialisation": {
+      "class": "FinalMultimodalInference",
+      "method": "__init__",
+      "source": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\final_multimodal_inference.py",
+      "description": "Loads final fusion classifier/schema, MPNet, WavLM, CLIP and webcam-calibrated visual model where required."
+    },
+    "keystroke_processing": {
+      "method": "FinalMultimodalInference.extract_keystroke_features",
+      "description": "Loads already-extracted session keystroke features from the production-compatible JSON."
+    },
+    "text_processing": {
+      "method": "FinalMultimodalInference.extract_text_features",
+      "description": "Executes the production MPNet text feature-extraction path."
+    },
+    "audio_processing": {
+      "method": "FinalMultimodalInference.extract_audio_features",
+      "description": "Decodes already-acquired audio and executes Librosa/WavLM production feature extraction."
+    },
+    "visual_processing": {
+      "method": "FinalMultimodalInference.extract_image_features",
+      "description": "Decodes the already-acquired image, executes CLIP extraction and creates webcam-calibrated visual-derived predictors."
+    },
+    "fusion_schema": {
+      "method": "FinalMultimodalInference.build_fusion_dataframe",
+      "description": "Reconstructs the exact persisted 2,373-dimensional fusion row."
+    },
+    "fusion_classifier": {
+      "members": [
+        "FinalMultimodalInference.fusion_model.predict",
+        "FinalMultimodalInference._predict_probability_dict"
+      ],
+      "description": "Executes the learned fusion classifier and canonical probability-vector construction."
+    },
+    "warm_end_to_end": {
+      "method": "FinalMultimodalInference.predict",
+      "description": "Canonical stateless server-side four-modality raw-inference operation.",
+      "measured_independently": true,
+      "derived_by_stage_sum": false
+    },
+    "web_backend": {
+      "source": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\web_app\\app.py",
+      "endpoint": "POST /predict_live",
+      "canonical_inference_call": "predictor.predict(...)"
+    }
+  },
+  "artifacts": {
+    "final_inference_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\final_multimodal_inference.py",
+    "final_inference_sha256": "4ebf507ff15d49a615ad90141ccae910d66d0ac3049c4cb4d3c69969b360a28f",
+    "fusion_model_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\models\\fusion_demo\\fusion_pipeline.joblib",
+    "fusion_model_sha256": "7dbe590a6bedfaea6a2c4042cce4e667db2db73b1dd18477421a1920ee6e5295",
+    "feature_schema_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\models\\fusion_demo\\feature_columns.json",
+    "feature_schema_sha256": "a50ba1894e19d41954630e966c0f1c4b3bb983e02e4226dee490a0ee8d9a8153",
+    "fusion_dataset_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\models\\fusion_demo\\fusion_training_dataset.csv",
+    "fusion_dataset_sha256": "9bf9a3c7318022efd00b04283f31909ea3748aaaee7a1c64c586b67f97476d6c"
+  },
+  "representative_inputs": {
+    "source_root": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data",
+    "session_count": 20,
+    "sessions": [
+      {
+        "session_id": "distracted_20260612_182215_e5cc9805",
+        "label": "distracted",
+        "text_characters": 81,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\distracted_20260612_182215_e5cc9805.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\distracted_20260612_182215_e5cc9805.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\distracted_20260612_182215_e5cc9805.mp3",
+        "audio_bytes": 49319,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\distracted_20260612_182215_e5cc9805.jpg",
+        "image_bytes": 712926
+      },
+      {
+        "session_id": "distracted_20260612_182451_ec3a7775",
+        "label": "distracted",
+        "text_characters": 67,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\distracted_20260612_182451_ec3a7775.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\distracted_20260612_182451_ec3a7775.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\distracted_20260612_182451_ec3a7775.mp3",
+        "audio_bytes": 108669,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\distracted_20260612_182451_ec3a7775.jpg",
+        "image_bytes": 999054
+      },
+      {
+        "session_id": "distracted_20260612_182647_3cd34247",
+        "label": "distracted",
+        "text_characters": 71,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\distracted_20260612_182647_3cd34247.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\distracted_20260612_182647_3cd34247.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\distracted_20260612_182647_3cd34247.mp3",
+        "audio_bytes": 199680,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\distracted_20260612_182647_3cd34247.jpg",
+        "image_bytes": 576025
+      },
+      {
+        "session_id": "distracted_20260612_183036_e039e44a",
+        "label": "distracted",
+        "text_characters": 72,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\distracted_20260612_183036_e039e44a.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\distracted_20260612_183036_e039e44a.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\distracted_20260612_183036_e039e44a.mp3",
+        "audio_bytes": 278360,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\distracted_20260612_183036_e039e44a.jpg",
+        "image_bytes": 580921
+      },
+      {
+        "session_id": "distracted_20260612_183225_53210ca7",
+        "label": "distracted",
+        "text_characters": 68,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\distracted_20260612_183225_53210ca7.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\distracted_20260612_183225_53210ca7.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\distracted_20260612_183225_53210ca7.mp3",
+        "audio_bytes": 238281,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\distracted_20260612_183225_53210ca7.jpg",
+        "image_bytes": 4346403
+      },
+      {
+        "session_id": "fatigued_20260610_204849_ca81fca6",
+        "label": "fatigued",
+        "text_characters": 71,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\fatigued_20260610_204849_ca81fca6.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\fatigued_20260610_204849_ca81fca6.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\fatigued_20260610_204849_ca81fca6.mp3",
+        "audio_bytes": 984960,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\fatigued_20260610_204849_ca81fca6.jpg",
+        "image_bytes": 1022346
+      },
+      {
+        "session_id": "fatigued_20260610_205607_8887b0f9",
+        "label": "fatigued",
+        "text_characters": 55,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\fatigued_20260610_205607_8887b0f9.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\fatigued_20260610_205607_8887b0f9.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\fatigued_20260610_205607_8887b0f9.mp3",
+        "audio_bytes": 1974439,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\fatigued_20260610_205607_8887b0f9.jpg",
+        "image_bytes": 783055
+      },
+      {
+        "session_id": "fatigued_20260610_205905_8cfa4763",
+        "label": "fatigued",
+        "text_characters": 69,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\fatigued_20260610_205905_8cfa4763.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\fatigued_20260610_205905_8cfa4763.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\fatigued_20260610_205905_8cfa4763.mp3",
+        "audio_bytes": 1168320,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\fatigued_20260610_205905_8cfa4763.jpg",
+        "image_bytes": 681620
+      },
+      {
+        "session_id": "fatigued_20260610_210145_693e819a",
+        "label": "fatigued",
+        "text_characters": 68,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\fatigued_20260610_210145_693e819a.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\fatigued_20260610_210145_693e819a.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\fatigued_20260610_210145_693e819a.mp3",
+        "audio_bytes": 27648,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\fatigued_20260610_210145_693e819a.jpg",
+        "image_bytes": 2352301
+      },
+      {
+        "session_id": "fatigued_20260610_210404_b81457e0",
+        "label": "fatigued",
+        "text_characters": 64,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\fatigued_20260610_210404_b81457e0.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\fatigued_20260610_210404_b81457e0.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\fatigued_20260610_210404_b81457e0.mp3",
+        "audio_bytes": 199680,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\fatigued_20260610_210404_b81457e0.jpg",
+        "image_bytes": 1629835
+      },
+      {
+        "session_id": "focused_20260611_203335_5f244a13",
+        "label": "focused",
+        "text_characters": 76,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\focused_20260611_203335_5f244a13.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\focused_20260611_203335_5f244a13.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\focused_20260611_203335_5f244a13.mp3",
+        "audio_bytes": 96246,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\focused_20260611_203335_5f244a13.jpg",
+        "image_bytes": 6978697
+      },
+      {
+        "session_id": "focused_20260611_203933_8705813b",
+        "label": "focused",
+        "text_characters": 69,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\focused_20260611_203933_8705813b.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\focused_20260611_203933_8705813b.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\focused_20260611_203933_8705813b.mp3",
+        "audio_bytes": 37731,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\focused_20260611_203933_8705813b.jpg",
+        "image_bytes": 23805634
+      },
+      {
+        "session_id": "focused_20260611_204136_cbee82eb",
+        "label": "focused",
+        "text_characters": 63,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\focused_20260611_204136_cbee82eb.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\focused_20260611_204136_cbee82eb.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\focused_20260611_204136_cbee82eb.mp3",
+        "audio_bytes": 37206,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\focused_20260611_204136_cbee82eb.jpg",
+        "image_bytes": 3263463
+      },
+      {
+        "session_id": "focused_20260611_204247_e04a8459",
+        "label": "focused",
+        "text_characters": 63,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\focused_20260611_204247_e04a8459.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\focused_20260611_204247_e04a8459.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\focused_20260611_204247_e04a8459.mp3",
+        "audio_bytes": 38740,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\focused_20260611_204247_e04a8459.jpg",
+        "image_bytes": 11196774
+      },
+      {
+        "session_id": "focused_20260611_204500_f993608f",
+        "label": "focused",
+        "text_characters": 74,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\focused_20260611_204500_f993608f.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\focused_20260611_204500_f993608f.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\focused_20260611_204500_f993608f.mp3",
+        "audio_bytes": 38215,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\focused_20260611_204500_f993608f.jpg",
+        "image_bytes": 12426253
+      },
+      {
+        "session_id": "overloaded_20260612_223559_d6295534",
+        "label": "overloaded",
+        "text_characters": 87,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\overloaded_20260612_223559_d6295534.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\overloaded_20260612_223559_d6295534.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\overloaded_20260612_223559_d6295534.mp3",
+        "audio_bytes": 17664,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\overloaded_20260612_223559_d6295534.jpg",
+        "image_bytes": 650448
+      },
+      {
+        "session_id": "overloaded_20260613_033619_282ca705",
+        "label": "overloaded",
+        "text_characters": 73,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\overloaded_20260613_033619_282ca705.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\overloaded_20260613_033619_282ca705.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\overloaded_20260613_033619_282ca705.mp3",
+        "audio_bytes": 56842,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\overloaded_20260613_033619_282ca705.jpg",
+        "image_bytes": 1360052
+      },
+      {
+        "session_id": "overloaded_20260613_034837_ef039e72",
+        "label": "overloaded",
+        "text_characters": 73,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\overloaded_20260613_034837_ef039e72.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\overloaded_20260613_034837_ef039e72.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\overloaded_20260613_034837_ef039e72.mp3",
+        "audio_bytes": 35108,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\overloaded_20260613_034837_ef039e72.jpg",
+        "image_bytes": 1280792
+      },
+      {
+        "session_id": "overloaded_20260613_035141_5235db73",
+        "label": "overloaded",
+        "text_characters": 73,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\overloaded_20260613_035141_5235db73.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\overloaded_20260613_035141_5235db73.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\overloaded_20260613_035141_5235db73.mp3",
+        "audio_bytes": 62208,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\overloaded_20260613_035141_5235db73.jpg",
+        "image_bytes": 562957
+      },
+      {
+        "session_id": "overloaded_20260613_035456_84e4a548",
+        "label": "overloaded",
+        "text_characters": 69,
+        "text_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\texts\\overloaded_20260613_035456_84e4a548.txt",
+        "keystroke_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\keystrokes\\overloaded_20260613_035456_84e4a548.json",
+        "audio_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\audio\\overloaded_20260613_035456_84e4a548.mp3",
+        "audio_bytes": 204800,
+        "image_path": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app\\sample_data\\images\\overloaded_20260613_035456_84e4a548.jpg",
+        "image_bytes": 521502
+      }
+    ]
+  },
+  "summary_results": [
+    {
+      "stage": "Cold application/model initialisation",
+      "n": 5,
+      "mean_ms": 8388.621519999999,
+      "sd_ms": 1259.2827177757713,
+      "median_ms": 8209.4268,
+      "p95_ms": 10258.98858,
+      "min_ms": 7086.4727,
+      "max_ms": 10723.9142
+    },
+    {
+      "stage": "Keystroke processing",
+      "n": 30,
+      "mean_ms": 0.5131933333333334,
+      "sd_ms": 0.2960634109255801,
+      "median_ms": 0.38755,
+      "p95_ms": 1.06481,
+      "min_ms": 0.2048,
+      "max_ms": 1.0853
+    },
+    {
+      "stage": "Text feature extraction",
+      "n": 30,
+      "mean_ms": 41.594866666666675,
+      "sd_ms": 9.454276703810939,
+      "median_ms": 37.2053,
+      "p95_ms": 60.50798999999999,
+      "min_ms": 29.7151,
+      "max_ms": 63.0893
+    },
+    {
+      "stage": "Audio feature extraction",
+      "n": 30,
+      "mean_ms": 906.6674766666667,
+      "sd_ms": 809.159187353867,
+      "median_ms": 710.8251,
+      "p95_ms": 2191.56573,
+      "min_ms": 92.1572,
+      "max_ms": 2206.8694
+    },
+    {
+      "stage": "Visual feature extraction",
+      "n": 30,
+      "mean_ms": 1266.30314,
+      "sd_ms": 188.75157033943427,
+      "median_ms": 1256.16325,
+      "p95_ms": 1649.1204449999996,
+      "min_ms": 1027.869,
+      "max_ms": 1718.1276
+    },
+    {
+      "stage": "Fusion/classifier",
+      "n": 30,
+      "mean_ms": 134.62655666666663,
+      "sd_ms": 29.421267764999328,
+      "median_ms": 128.90255000000002,
+      "p95_ms": 194.574705,
+      "min_ms": 100.0373,
+      "max_ms": 239.6304
+    },
+    {
+      "stage": "Warm end-to-end processing",
+      "n": 30,
+      "mean_ms": 2501.147926666666,
+      "sd_ms": 824.5980902924681,
+      "median_ms": 2174.8530499999997,
+      "p95_ms": 3830.7213899999997,
+      "min_ms": 1503.0502,
+      "max_ms": 3912.4931
+    }
+  ],
+  "report_interpretation": {
+    "warm_end_to_end_mean_ms": 2501.147926666666,
+    "warm_end_to_end_p95_ms": 3830.7213899999997,
+    "slowest_modality_stage": "Visual feature extraction",
+    "slowest_modality_mean_ms": 1266.30314,
+    "cold_start_mean_ms": 8388.621519999999,
+    "operational_update_cadence_ms": 2500.0,
+    "warm_p95_within_operational_cadence": false,
+    "near_real_time_interpretation_scope": "Measured CPU hardware, software environment, input sizes and implementation only."
+  }
+}

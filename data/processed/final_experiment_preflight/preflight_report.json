@@ -1,0 +1,3943 @@
+{
+  "project": "SenseFuzeAI",
+  "inspection": "final evaluation experiments pre-flight",
+  "read_only": true,
+  "repository_root": "C:\\Users\\CLara\\Documents\\SIM-UOL Year 3\\Semester 2\\CM3070 Final project (FP)\\assessments_april26\\behaviour_app",
+  "environment": {
+    "python_version": "3.11.9",
+    "python_full": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 197 Stepping 2, GenuineIntel",
+    "cpu_count": 16
+  },
+  "required_protocol": {
+    "records": 309,
+    "class_counts": {
+      "focused": 77,
+      "distracted": 77,
+      "fatigued": 77,
+      "overloaded": 78
+    },
+    "cv": {
+      "type": "StratifiedKFold",
+      "n_splits": 5,
+      "shuffle": true,
+      "random_state": 42
+    },
+    "metrics": {
+      "primary": "macro_f1",
+      "complementary": "accuracy",
+      "variability": "standard deviation across five folds"
+    },
+    "execution": "CPU only",
+    "report_python_version": "3.11.9",
+    "proposed_feature_groups": {
+      "keystroke": 22,
+      "text": 768,
+      "audio": 809,
+      "vision": 768,
+      "derived": 6
+    },
+    "proposed_total_features": 2373
+  },
+  "resolved": {
+    "dataset": null,
+    "feature_schema": {
+      "path": "models\\fusion_demo\\feature_columns.json",
+      "source": "json",
+      "key": "",
+      "feature_count": 2373,
+      "exact_2373_match": true,
+      "first_features": [
+        "keystroke_total_duration_sec",
+        "keystroke_keydown_count",
+        "keystroke_word_count",
+        "keystroke_typing_speed_kps",
+        "keystroke_typing_speed_wpm",
+        "keystroke_delay_mean",
+        "keystroke_delay_std",
+        "keystroke_delay_min",
+        "keystroke_delay_max",
+        "keystroke_hold_mean"
+      ],
+      "last_features": [
+        "image_clip_emb_764",
+        "image_clip_emb_765",
+        "image_clip_emb_766",
+        "image_clip_emb_767",
+        "image_webcam_focused_prob",
+        "image_webcam_distracted_prob",
+        "image_webcam_fatigued_prob",
+        "image_webcam_overloaded_prob",
+        "image_webcam_top_probability",
+        "image_webcam_confidence_gap"
+      ]
+    },
+    "feature_groups": {
+      "keystroke": {
+        "expected_count": 22,
+        "resolved": false,
+        "exact_expected_count": false,
+        "chosen": null,
+        "all_candidates": []
+      },
+      "text": {
+        "expected_count": 768,
+        "resolved": false,
+        "exact_expected_count": false,
+        "chosen": null,
+        "all_candidates": []
+      },
+      "audio": {
+        "expected_count": 809,
+        "resolved": false,
+        "exact_expected_count": false,
+        "chosen": null,
+        "all_candidates": []
+      },
+      "vision": {
+        "expected_count": 768,
+        "resolved": false,
+        "exact_expected_count": false,
+        "chosen": null,
+        "all_candidates": []
+      },
+      "derived": {
+        "expected_count": 6,
+        "resolved": false,
+        "exact_expected_count": false,
+        "chosen": null,
+        "all_candidates": []
+      }
+    },
+    "derived_dependency_mapping": null,
+    "deployed_random_forest": {
+      "path": "models\\fusion_demo\\fusion_pipeline.joblib",
+      "loaded": true,
+      "artifact_type": "sklearn.pipeline.Pipeline",
+      "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+      "classifier_parameters": {
+        "bootstrap": true,
+        "ccp_alpha": 0.0,
+        "class_weight": "balanced",
+        "criterion": "gini",
+        "max_depth": null,
+        "max_features": "sqrt",
+        "max_leaf_nodes": null,
+        "max_samples": null,
+        "min_impurity_decrease": 0.0,
+        "min_samples_leaf": 1,
+        "min_samples_split": 2,
+        "min_weight_fraction_leaf": 0.0,
+        "monotonic_cst": null,
+        "n_estimators": 500,
+        "n_jobs": -1,
+        "oob_score": false,
+        "random_state": 42,
+        "verbose": 0,
+        "warm_start": false
+      },
+      "preprocessing_steps": [],
+      "error": null
+    },
+    "matching_cv_implementations": [
+      {
+        "path": "train_audio_demo_pipeline.py",
+        "line_number": 152,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_image_demo_pipeline.py",
+        "line_number": 160,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_keystroke_baseline.py",
+        "line_number": 132,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_keystroke_demo_pipeline.py",
+        "line_number": 120,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_text_demo_pipeline.py",
+        "line_number": 96,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      }
+    ],
+    "predict_live_routes": [
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/predict_live",
+        "function_name": "predict_live",
+        "line_number": 3170
+      }
+    ],
+    "latency_inputs": {
+      "candidate_input_directories": [
+        {
+          "path": "sample_data",
+          "audio_files": 20,
+          "image_files": 20,
+          "video_files": 0,
+          "json_files": 20,
+          "text_files": 20
+        },
+        {
+          "path": "data\\session_aligned",
+          "audio_files": 309,
+          "image_files": 309,
+          "video_files": 0,
+          "json_files": 309,
+          "text_files": 309
+        },
+        {
+          "path": "web_app\\output",
+          "audio_files": 0,
+          "image_files": 0,
+          "video_files": 0,
+          "json_files": 0,
+          "text_files": 0
+        }
+      ],
+      "suitable_input_directory_found": true
+    }
+  },
+  "all_candidates": {
+    "datasets": [
+      {
+        "path": "data\\processed\\audio_features.csv",
+        "rows": 309,
+        "columns": 811,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\audio_features_30s.csv",
+        "rows": 309,
+        "columns": 811,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\image_features.csv",
+        "rows": 309,
+        "columns": 770,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\master_sessions_clean_scaled.csv",
+        "rows": 309,
+        "columns": 40,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\master_sessions_raw.csv",
+        "rows": 309,
+        "columns": 40,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\data_split_assignments.csv",
+        "rows": 309,
+        "columns": 4,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_features.csv",
+        "rows": 309,
+        "columns": 2369,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\processed\\text_features.csv",
+        "rows": 309,
+        "columns": 770,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "data\\session_aligned\\retroactive_keystroke_features.csv",
+        "rows": 309,
+        "columns": 38,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "fatigued": 77,
+          "focused": 77,
+          "distracted": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      },
+      {
+        "path": "models\\fusion_demo\\fusion_training_dataset.csv",
+        "rows": 309,
+        "columns": 2375,
+        "label_column": "label",
+        "class_counts": {
+          "overloaded": 78,
+          "distracted": 77,
+          "fatigued": 77,
+          "focused": 77
+        },
+        "exact_protocol_match": true,
+        "error": null
+      }
+    ],
+    "schemas": [
+      {
+        "path": "models\\fusion_demo\\feature_columns.json",
+        "source": "json",
+        "key": "",
+        "feature_count": 2373,
+        "exact_2373_match": true,
+        "first_features": [
+          "keystroke_total_duration_sec",
+          "keystroke_keydown_count",
+          "keystroke_word_count",
+          "keystroke_typing_speed_kps",
+          "keystroke_typing_speed_wpm",
+          "keystroke_delay_mean",
+          "keystroke_delay_std",
+          "keystroke_delay_min",
+          "keystroke_delay_max",
+          "keystroke_hold_mean"
+        ],
+        "last_features": [
+          "image_clip_emb_764",
+          "image_clip_emb_765",
+          "image_clip_emb_766",
+          "image_clip_emb_767",
+          "image_webcam_focused_prob",
+          "image_webcam_distracted_prob",
+          "image_webcam_fatigued_prob",
+          "image_webcam_overloaded_prob",
+          "image_webcam_top_probability",
+          "image_webcam_confidence_gap"
+        ]
+      },
+      {
+        "path": "models\\fusion_demo\\metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 2373,
+        "exact_2373_match": true,
+        "first_features": [
+          "keystroke_total_duration_sec",
+          "keystroke_keydown_count",
+          "keystroke_word_count",
+          "keystroke_typing_speed_kps",
+          "keystroke_typing_speed_wpm",
+          "keystroke_delay_mean",
+          "keystroke_delay_std",
+          "keystroke_delay_min",
+          "keystroke_delay_max",
+          "keystroke_hold_mean"
+        ],
+        "last_features": [
+          "image_clip_emb_764",
+          "image_clip_emb_765",
+          "image_clip_emb_766",
+          "image_clip_emb_767",
+          "image_webcam_focused_prob",
+          "image_webcam_distracted_prob",
+          "image_webcam_fatigued_prob",
+          "image_webcam_overloaded_prob",
+          "image_webcam_top_probability",
+          "image_webcam_confidence_gap"
+        ]
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\feature_groups.json",
+        "source": "json",
+        "key": "multimodal_all",
+        "feature_count": 2367,
+        "exact_2373_match": false,
+        "first_features": [
+          "total_duration_sec",
+          "keydown_count",
+          "word_count",
+          "typing_speed_kps",
+          "typing_speed_wpm",
+          "delay_mean",
+          "delay_std",
+          "delay_min",
+          "delay_max",
+          "hold_mean"
+        ],
+        "last_features": [
+          "image_clip_emb_758",
+          "image_clip_emb_759",
+          "image_clip_emb_760",
+          "image_clip_emb_761",
+          "image_clip_emb_762",
+          "image_clip_emb_763",
+          "image_clip_emb_764",
+          "image_clip_emb_765",
+          "image_clip_emb_766",
+          "image_clip_emb_767"
+        ]
+      },
+      {
+        "path": "data\\processed\\keystroke_dataset_comparison\\build_metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 23,
+        "exact_2373_match": false,
+        "first_features": [
+          "dwell_mean_ms",
+          "dwell_std_ms",
+          "dwell_median_ms",
+          "dwell_min_ms",
+          "dwell_max_ms",
+          "dd_mean_ms",
+          "dd_std_ms",
+          "dd_median_ms",
+          "dd_min_ms",
+          "dd_max_ms"
+        ],
+        "last_features": [
+          "ud_min_ms",
+          "ud_max_ms",
+          "typing_speed_kps",
+          "pause_ratio_500",
+          "pause_ratio_1000",
+          "pause_ratio_2000",
+          "correction_ratio",
+          "space_ratio",
+          "rhythm_cv",
+          "overlap_ratio"
+        ]
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "source": "python_literal",
+        "key": "FEATURE_COLUMNS",
+        "feature_count": 23,
+        "exact_2373_match": false,
+        "first_features": [
+          "dwell_mean_ms",
+          "dwell_std_ms",
+          "dwell_median_ms",
+          "dwell_min_ms",
+          "dwell_max_ms",
+          "dd_mean_ms",
+          "dd_std_ms",
+          "dd_median_ms",
+          "dd_min_ms",
+          "dd_max_ms"
+        ],
+        "last_features": [
+          "ud_min_ms",
+          "ud_max_ms",
+          "typing_speed_kps",
+          "pause_ratio_500",
+          "pause_ratio_1000",
+          "pause_ratio_2000",
+          "correction_ratio",
+          "space_ratio",
+          "rhythm_cv",
+          "overlap_ratio"
+        ]
+      },
+      {
+        "path": "models\\audio_demo\\metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 809,
+        "exact_2373_match": false,
+        "first_features": [
+          "audio_duration",
+          "audio_rms_mean",
+          "audio_rms_std",
+          "audio_zcr_mean",
+          "audio_zcr_std",
+          "audio_spectral_centroid_mean",
+          "audio_spectral_centroid_std",
+          "audio_spectral_bandwidth_mean",
+          "audio_spectral_bandwidth_std",
+          "audio_spectral_rolloff_mean"
+        ],
+        "last_features": [
+          "audio_wavlm_emb_758",
+          "audio_wavlm_emb_759",
+          "audio_wavlm_emb_760",
+          "audio_wavlm_emb_761",
+          "audio_wavlm_emb_762",
+          "audio_wavlm_emb_763",
+          "audio_wavlm_emb_764",
+          "audio_wavlm_emb_765",
+          "audio_wavlm_emb_766",
+          "audio_wavlm_emb_767"
+        ]
+      },
+      {
+        "path": "models\\image_demo\\metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 768,
+        "exact_2373_match": false,
+        "first_features": [
+          "image_clip_emb_0",
+          "image_clip_emb_1",
+          "image_clip_emb_2",
+          "image_clip_emb_3",
+          "image_clip_emb_4",
+          "image_clip_emb_5",
+          "image_clip_emb_6",
+          "image_clip_emb_7",
+          "image_clip_emb_8",
+          "image_clip_emb_9"
+        ],
+        "last_features": [
+          "image_clip_emb_758",
+          "image_clip_emb_759",
+          "image_clip_emb_760",
+          "image_clip_emb_761",
+          "image_clip_emb_762",
+          "image_clip_emb_763",
+          "image_clip_emb_764",
+          "image_clip_emb_765",
+          "image_clip_emb_766",
+          "image_clip_emb_767"
+        ]
+      },
+      {
+        "path": "models\\image_demo\\webcam_calibrated_metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 768,
+        "exact_2373_match": false,
+        "first_features": [
+          "image_clip_emb_0",
+          "image_clip_emb_1",
+          "image_clip_emb_2",
+          "image_clip_emb_3",
+          "image_clip_emb_4",
+          "image_clip_emb_5",
+          "image_clip_emb_6",
+          "image_clip_emb_7",
+          "image_clip_emb_8",
+          "image_clip_emb_9"
+        ],
+        "last_features": [
+          "image_clip_emb_758",
+          "image_clip_emb_759",
+          "image_clip_emb_760",
+          "image_clip_emb_761",
+          "image_clip_emb_762",
+          "image_clip_emb_763",
+          "image_clip_emb_764",
+          "image_clip_emb_765",
+          "image_clip_emb_766",
+          "image_clip_emb_767"
+        ]
+      },
+      {
+        "path": "models\\keystroke_demo\\metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 22,
+        "exact_2373_match": false,
+        "first_features": [
+          "total_duration_sec",
+          "keydown_count",
+          "word_count",
+          "typing_speed_kps",
+          "typing_speed_wpm",
+          "delay_mean",
+          "delay_std",
+          "delay_min",
+          "delay_max",
+          "hold_mean"
+        ],
+        "last_features": [
+          "pause_count_2000",
+          "pause_count_5000",
+          "pause_ratio_1000",
+          "pause_ratio_2000",
+          "mental_block_ratio_5000",
+          "correction_count",
+          "correction_ratio",
+          "rhythm_consistency",
+          "burstiness_proxy",
+          "fits_starts_index"
+        ]
+      },
+      {
+        "path": "models\\keystroke_emosurv_demo\\metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 23,
+        "exact_2373_match": false,
+        "first_features": [
+          "dwell_mean_ms",
+          "dwell_std_ms",
+          "dwell_median_ms",
+          "dwell_min_ms",
+          "dwell_max_ms",
+          "dd_mean_ms",
+          "dd_std_ms",
+          "dd_median_ms",
+          "dd_min_ms",
+          "dd_max_ms"
+        ],
+        "last_features": [
+          "ud_min_ms",
+          "ud_max_ms",
+          "typing_speed_kps",
+          "pause_ratio_500",
+          "pause_ratio_1000",
+          "pause_ratio_2000",
+          "correction_ratio",
+          "space_ratio",
+          "rhythm_cv",
+          "overlap_ratio"
+        ]
+      },
+      {
+        "path": "models\\text_demo\\metadata.json",
+        "source": "json",
+        "key": "feature_columns",
+        "feature_count": 768,
+        "exact_2373_match": false,
+        "first_features": [
+          "text_mpnet_emb_0",
+          "text_mpnet_emb_1",
+          "text_mpnet_emb_2",
+          "text_mpnet_emb_3",
+          "text_mpnet_emb_4",
+          "text_mpnet_emb_5",
+          "text_mpnet_emb_6",
+          "text_mpnet_emb_7",
+          "text_mpnet_emb_8",
+          "text_mpnet_emb_9"
+        ],
+        "last_features": [
+          "text_mpnet_emb_758",
+          "text_mpnet_emb_759",
+          "text_mpnet_emb_760",
+          "text_mpnet_emb_761",
+          "text_mpnet_emb_762",
+          "text_mpnet_emb_763",
+          "text_mpnet_emb_764",
+          "text_mpnet_emb_765",
+          "text_mpnet_emb_766",
+          "text_mpnet_emb_767"
+        ]
+      },
+      {
+        "path": "tests\\test_05_keystroke_dataset_comparison.py",
+        "source": "python_literal",
+        "key": "EXPECTED_FEATURE_COLUMNS",
+        "feature_count": 23,
+        "exact_2373_match": false,
+        "first_features": [
+          "dwell_mean_ms",
+          "dwell_std_ms",
+          "dwell_median_ms",
+          "dwell_min_ms",
+          "dwell_max_ms",
+          "dd_mean_ms",
+          "dd_std_ms",
+          "dd_median_ms",
+          "dd_min_ms",
+          "dd_max_ms"
+        ],
+        "last_features": [
+          "ud_min_ms",
+          "ud_max_ms",
+          "typing_speed_kps",
+          "pause_ratio_500",
+          "pause_ratio_1000",
+          "pause_ratio_2000",
+          "correction_ratio",
+          "space_ratio",
+          "rhythm_cv",
+          "overlap_ratio"
+        ]
+      }
+    ],
+    "model_artifacts": [
+      {
+        "path": "archive\\fusion_model.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "model",
+            "type": "sklearn.neighbors._classification.KNeighborsClassifier",
+            "parameters": {
+              "algorithm": "auto",
+              "leaf_size": 30,
+              "metric": "minkowski",
+              "metric_params": null,
+              "n_jobs": null,
+              "n_neighbors": 5,
+              "p": 2,
+              "weights": "distance"
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\audio_image_logistic_regression.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.linear_model._logistic.LogisticRegression",
+            "parameters": {
+              "C": 1.0,
+              "class_weight": "balanced",
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": 0.0,
+              "max_iter": 3000,
+              "n_jobs": null,
+              "penalty": "deprecated",
+              "random_state": 42,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\audio_image_svm_rbf.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.svm._classes.SVC",
+            "parameters": {
+              "C": 1.0,
+              "break_ties": false,
+              "cache_size": 200,
+              "class_weight": "balanced",
+              "coef0": 0.0,
+              "decision_function_shape": "ovr",
+              "degree": 3,
+              "gamma": "scale",
+              "kernel": "rbf",
+              "max_iter": -1,
+              "probability": true,
+              "random_state": 42,
+              "shrinking": true,
+              "tol": 0.001,
+              "verbose": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\audio_only_svm_rbf.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.svm._classes.SVC",
+            "parameters": {
+              "C": 1.0,
+              "break_ties": false,
+              "cache_size": 200,
+              "class_weight": "balanced",
+              "coef0": 0.0,
+              "decision_function_shape": "ovr",
+              "degree": 3,
+              "gamma": "scale",
+              "kernel": "rbf",
+              "max_iter": -1,
+              "probability": true,
+              "random_state": 42,
+              "shrinking": true,
+              "tol": 0.001,
+              "verbose": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\image_only_random_forest.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 100,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\image_only_svm_rbf.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.svm._classes.SVC",
+            "parameters": {
+              "C": 1.0,
+              "break_ties": false,
+              "cache_size": 200,
+              "class_weight": "balanced",
+              "coef0": 0.0,
+              "decision_function_shape": "ovr",
+              "degree": 3,
+              "gamma": "scale",
+              "kernel": "rbf",
+              "max_iter": -1,
+              "probability": true,
+              "random_state": 42,
+              "shrinking": true,
+              "tol": 0.001,
+              "verbose": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_audio_image_random_forest.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 100,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_audio_image_xgboost.joblib",
+        "loaded": false,
+        "artifact_type": null,
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [],
+        "error": "AttributeError: Can't get attribute 'LabelEncodedClassifier' on <module '__main__' from 'C:\\\\Users\\\\CLara\\\\Documents\\\\SIM-UOL Year 3\\\\Semester 2\\\\CM3070 Final project (FP)\\\\assessments_april26\\\\behaviour_app\\\\inspect_final_experiments_preflight.py'>"
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_audio_lightgbm.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "lightgbm.sklearn.LGBMClassifier",
+            "parameters": {
+              "boosting_type": "gbdt",
+              "class_weight": "balanced",
+              "colsample_bytree": 1.0,
+              "importance_type": "split",
+              "learning_rate": 0.05,
+              "max_depth": -1,
+              "min_child_samples": 20,
+              "min_child_weight": 0.001,
+              "min_split_gain": 0.0,
+              "n_estimators": 100,
+              "n_jobs": -1,
+              "num_leaves": 31,
+              "objective": null,
+              "random_state": 42,
+              "reg_alpha": 0.0,
+              "reg_lambda": 0.0,
+              "subsample": 1.0,
+              "subsample_for_bin": 200000,
+              "subsample_freq": 0,
+              "verbose": -1
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_image_catboost.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "catboost.core.CatBoostClassifier",
+            "parameters": {
+              "iterations": 100,
+              "learning_rate": 0.05,
+              "depth": 4,
+              "loss_function": "MultiClass",
+              "random_seed": 42,
+              "verbose": false,
+              "auto_class_weights": "Balanced"
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_image_random_forest.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 100,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_only_random_forest.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 100,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_text_audio_catboost.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "catboost.core.CatBoostClassifier",
+            "parameters": {
+              "iterations": 100,
+              "learning_rate": 0.05,
+              "depth": 4,
+              "loss_function": "MultiClass",
+              "random_seed": 42,
+              "verbose": false,
+              "auto_class_weights": "Balanced"
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_text_audio_lightgbm.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "lightgbm.sklearn.LGBMClassifier",
+            "parameters": {
+              "boosting_type": "gbdt",
+              "class_weight": "balanced",
+              "colsample_bytree": 1.0,
+              "importance_type": "split",
+              "learning_rate": 0.05,
+              "max_depth": -1,
+              "min_child_samples": 20,
+              "min_child_weight": 0.001,
+              "min_split_gain": 0.0,
+              "n_estimators": 100,
+              "n_jobs": -1,
+              "num_leaves": 31,
+              "objective": null,
+              "random_state": 42,
+              "reg_alpha": 0.0,
+              "reg_lambda": 0.0,
+              "subsample": 1.0,
+              "subsample_for_bin": 200000,
+              "subsample_freq": 0,
+              "verbose": -1
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_text_catboost.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "catboost.core.CatBoostClassifier",
+            "parameters": {
+              "iterations": 100,
+              "learning_rate": 0.05,
+              "depth": 4,
+              "loss_function": "MultiClass",
+              "random_seed": 42,
+              "verbose": false,
+              "auto_class_weights": "Balanced"
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_text_image_logistic_regression.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.linear_model._logistic.LogisticRegression",
+            "parameters": {
+              "C": 1.0,
+              "class_weight": "balanced",
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": 0.0,
+              "max_iter": 3000,
+              "n_jobs": null,
+              "penalty": "deprecated",
+              "random_state": 42,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_text_image_random_forest.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 100,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\keystroke_text_lightgbm.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "lightgbm.sklearn.LGBMClassifier",
+            "parameters": {
+              "boosting_type": "gbdt",
+              "class_weight": "balanced",
+              "colsample_bytree": 1.0,
+              "importance_type": "split",
+              "learning_rate": 0.05,
+              "max_depth": -1,
+              "min_child_samples": 20,
+              "min_child_weight": 0.001,
+              "min_split_gain": 0.0,
+              "n_estimators": 100,
+              "n_jobs": -1,
+              "num_leaves": 31,
+              "objective": null,
+              "random_state": 42,
+              "reg_alpha": 0.0,
+              "reg_lambda": 0.0,
+              "subsample": 1.0,
+              "subsample_for_bin": 200000,
+              "subsample_freq": 0,
+              "verbose": -1
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\multimodal_all_catboost.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "catboost.core.CatBoostClassifier",
+            "parameters": {
+              "iterations": 100,
+              "learning_rate": 0.05,
+              "depth": 4,
+              "loss_function": "MultiClass",
+              "random_seed": 42,
+              "verbose": false,
+              "auto_class_weights": "Balanced"
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\multimodal_all_random_forest.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 100,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\text_audio_image_logistic_regression.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.linear_model._logistic.LogisticRegression",
+            "parameters": {
+              "C": 1.0,
+              "class_weight": "balanced",
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": 0.0,
+              "max_iter": 3000,
+              "n_jobs": null,
+              "penalty": "deprecated",
+              "random_state": 42,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\text_audio_logistic_regression.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.linear_model._logistic.LogisticRegression",
+            "parameters": {
+              "C": 1.0,
+              "class_weight": "balanced",
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": 0.0,
+              "max_iter": 3000,
+              "n_jobs": null,
+              "penalty": "deprecated",
+              "random_state": 42,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\text_image_logistic_regression.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.linear_model._logistic.LogisticRegression",
+            "parameters": {
+              "C": 1.0,
+              "class_weight": "balanced",
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": 0.0,
+              "max_iter": 3000,
+              "n_jobs": null,
+              "penalty": "deprecated",
+              "random_state": 42,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\text_only_logistic_regression.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.linear_model._logistic.LogisticRegression",
+            "parameters": {
+              "C": 1.0,
+              "class_weight": "balanced",
+              "dual": false,
+              "fit_intercept": true,
+              "intercept_scaling": 1,
+              "l1_ratio": 0.0,
+              "max_iter": 3000,
+              "n_jobs": null,
+              "penalty": "deprecated",
+              "random_state": 42,
+              "solver": "lbfgs",
+              "tol": 0.0001,
+              "verbose": 0,
+              "warm_start": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\text_only_svm_rbf.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "clf",
+            "type": "sklearn.svm._classes.SVC",
+            "parameters": {
+              "C": 1.0,
+              "break_ties": false,
+              "cache_size": 200,
+              "class_weight": "balanced",
+              "coef0": 0.0,
+              "decision_function_shape": "ovr",
+              "degree": 3,
+              "gamma": "scale",
+              "kernel": "rbf",
+              "max_iter": -1,
+              "probability": true,
+              "random_state": 42,
+              "shrinking": true,
+              "tol": 0.001,
+              "verbose": false
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "model_artifacts\\fusion_model.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": null,
+        "classifier_parameters": {},
+        "preprocessing_steps": [
+          {
+            "name": "imputer",
+            "type": "sklearn.impute._base.SimpleImputer",
+            "parameters": {
+              "add_indicator": false,
+              "copy": true,
+              "fill_value": null,
+              "keep_empty_features": false,
+              "missing_values": NaN,
+              "strategy": "median"
+            }
+          },
+          {
+            "name": "scaler",
+            "type": "sklearn.preprocessing._data.StandardScaler",
+            "parameters": {
+              "copy": true,
+              "with_mean": true,
+              "with_std": true
+            }
+          },
+          {
+            "name": "model",
+            "type": "sklearn.neighbors._classification.KNeighborsClassifier",
+            "parameters": {
+              "algorithm": "auto",
+              "leaf_size": 30,
+              "metric": "minkowski",
+              "metric_params": null,
+              "n_jobs": null,
+              "n_neighbors": 5,
+              "p": 2,
+              "weights": "distance"
+            }
+          }
+        ],
+        "error": null
+      },
+      {
+        "path": "models\\fusion_demo\\fusion_pipeline.joblib",
+        "loaded": true,
+        "artifact_type": "sklearn.pipeline.Pipeline",
+        "classifier_type": "sklearn.ensemble._forest.RandomForestClassifier",
+        "classifier_parameters": {
+          "bootstrap": true,
+          "ccp_alpha": 0.0,
+          "class_weight": "balanced",
+          "criterion": "gini",
+          "max_depth": null,
+          "max_features": "sqrt",
+          "max_leaf_nodes": null,
+          "max_samples": null,
+          "min_impurity_decrease": 0.0,
+          "min_samples_leaf": 1,
+          "min_samples_split": 2,
+          "min_weight_fraction_leaf": 0.0,
+          "monotonic_cst": null,
+          "n_estimators": 500,
+          "n_jobs": -1,
+          "oob_score": false,
+          "random_state": 42,
+          "verbose": 0,
+          "warm_start": false
+        },
+        "preprocessing_steps": [],
+        "error": null
+      }
+    ],
+    "cv_calls": [
+      {
+        "path": "train_audio_demo_pipeline.py",
+        "line_number": 152,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_fusion_demo_pipeline.py",
+        "line_number": 1612,
+        "kwargs": {
+          "n_splits": "cv_splits",
+          "shuffle": true,
+          "random_state": "RANDOM_STATE"
+        },
+        "protocol_match": false
+      },
+      {
+        "path": "train_image_demo_pipeline.py",
+        "line_number": 160,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_keystroke_baseline.py",
+        "line_number": 132,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_keystroke_demo_pipeline.py",
+        "line_number": 120,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      },
+      {
+        "path": "train_multimodal_comparison.py",
+        "line_number": 1625,
+        "kwargs": {
+          "n_splits": "split_count",
+          "shuffle": true,
+          "random_state": "RANDOM_STATE"
+        },
+        "protocol_match": false
+      },
+      {
+        "path": "train_text_demo_pipeline.py",
+        "line_number": 96,
+        "kwargs": {
+          "n_splits": 5,
+          "shuffle": true,
+          "random_state": 42
+        },
+        "protocol_match": true
+      }
+    ],
+    "fastapi_routes": [
+      {
+        "path": "web_app\\app.py",
+        "method": "GET",
+        "route": "/model-status",
+        "function_name": "model_status",
+        "line_number": 2192
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/set_audio_source",
+        "function_name": "set_audio_source",
+        "line_number": 2206
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/audio_stream/start",
+        "function_name": "start_audio_stream",
+        "line_number": 2318
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/audio_stream/stop",
+        "function_name": "stop_audio_stream",
+        "line_number": 2436
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/set_visual_image",
+        "function_name": "set_visual_image",
+        "line_number": 2844
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/set_visual_video",
+        "function_name": "set_visual_video",
+        "line_number": 2938
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/set_visual_webcam",
+        "function_name": "set_visual_webcam",
+        "line_number": 3040
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/stop_visual",
+        "function_name": "stop_visual",
+        "line_number": 3105
+      },
+      {
+        "path": "web_app\\app.py",
+        "method": "POST",
+        "route": "/predict_live",
+        "function_name": "predict_live",
+        "line_number": 3170
+      }
+    ],
+    "derived_dependency_findings": [],
+    "derived_feature_occurrences": {},
+    "feature_count_mentions": [
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 100,
+        "line": "total:               2373"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 102,
+        "line": "The inspector treats 2373 as the PROPOSED experimental specification, but"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 212,
+        "line": "assert EXPECTED_FEATURE_COUNT == 2373"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 931,
+        "line": "2367,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 932,
+        "line": "2373,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 1115,
+        "line": "2367,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 1116,
+        "line": "2373,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 1230,
+        "line": "2367,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 1231,
+        "line": "2373,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2955,
+        "line": "== 2367"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2966,
+        "line": "\"2,367 features, while the proposed \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2968,
+        "line": "\"2,373 = 22 + 768 + 809 + 768 + 6. \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2980,
+        "line": "\"No persisted 2,373-feature schema \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3210,
+        "line": "\"2367\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3215,
+        "line": "\"2,367\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3226,
+        "line": "\"2373\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3231,
+        "line": "\"2,373\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3251,
+        "line": "\"both 2,367 and 2,373 feature-count \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3340,
+        "line": "== 2367"
+      },
+      {
+        "path": "README.md",
+        "line_number": 77,
+        "line": "| Fusion features | 2367 |"
+      },
+      {
+        "path": "README.md",
+        "line_number": 273,
+        "line": "The fusion pipeline combines all modality features into a single 2367-dimensional feature vector."
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\comparison_metadata.json",
+        "line_number": 76,
+        "line": "\"multimodal_all\": 2367"
+      },
+      {
+        "path": "data\\processed\\multimodal_comparison_results\\multimodal_all_raw_vs_temporal.json",
+        "line_number": 4,
+        "line": "\"num_features\": 2367,"
+      },
+      {
+        "path": "data\\processed\\multimodal_evaluation_summary\\evaluation_summary.json",
+        "line_number": 50,
+        "line": "\"multimodal_all\": 2367"
+      },
+      {
+        "path": "data\\processed\\multimodal_evaluation_summary\\evaluation_summary.md",
+        "line_number": 55,
+        "line": "| multimodal_all        | random_forest       |              2367 |             1      |            0      |             1      |            0      |              0.5112 |                0.2195 | random_forest       |                2367 |          1      |          1      |                      0.2447 |                     0.0228 |                          0.7553 |                        0      |                        0      |                   5 |                            0.0162 |          "
+      },
+      {
+        "path": "data\\processed\\test_results\\run_all_tests_summary.json",
+        "line_number": 350,
+        "line": "\"detail\": \"FinalMultimodalInference initialised successfully.\\nDevice: cpu\\nFusion features: 2373\\nCanonical classes: ['focused', 'distracted', 'fatigued', 'overloaded']\\nExpected MPNet dimension: 768\\nExpected WavLM dimension: 768\\nExpected CLIP dimension: 768\\nWebcam-calibrated image augmentation: enabled\\nTemporal inference: external (temporal_fusion.py)\\nMODEL_SMOKE_PASS\\nfeature_count= 2373\\ndevice= cpu\\n\\n\\nLoading weights:   0%|          | 0/199 [00:00<?, ?it/s]\\nLoading weights: 100%|###"
+      },
+      {
+        "path": "models\\all-mpnet-base-v2\\tokenizer.json",
+        "line_number": 2544,
+        "line": "\"received\": 2367,"
+      },
+      {
+        "path": "models\\all-mpnet-base-v2\\tokenizer.json",
+        "line_number": 2550,
+        "line": "\"behind\": 2373,"
+      },
+      {
+        "path": "models\\blip-image-captioning-large\\tokenizer.json",
+        "line_number": 2515,
+        "line": "\"different\": 2367,"
+      },
+      {
+        "path": "models\\blip-image-captioning-large\\tokenizer.json",
+        "line_number": 2521,
+        "line": "\"power\": 2373,"
+      },
+      {
+        "path": "models\\clip-vit-large-patch14\\tokenizer.json",
+        "line_number": 2458,
+        "line": "\"staf\": 2367,"
+      },
+      {
+        "path": "models\\clip-vit-large-patch14\\tokenizer.json",
+        "line_number": 2464,
+        "line": "\"bloo\": 2373,"
+      },
+      {
+        "path": "models\\distilbert_sentiment\\tokenizer.json",
+        "line_number": 2515,
+        "line": "\"different\": 2367,"
+      },
+      {
+        "path": "models\\distilbert_sentiment\\tokenizer.json",
+        "line_number": 2521,
+        "line": "\"power\": 2373,"
+      },
+      {
+        "path": "models\\fusion_demo\\metadata.json",
+        "line_number": 5,
+        "line": "\"num_features\": 2373,"
+      },
+      {
+        "path": "models\\whisper-large-v3\\tokenizer.json",
+        "line_number": 16968,
+        "line": "\"min\": 2367,"
+      },
+      {
+        "path": "models\\whisper-large-v3\\tokenizer.json",
+        "line_number": 16974,
+        "line": "\"Ġaqu\": 2373,"
+      }
+    ]
+  },
+  "source_evidence": {
+    "cross_validation": [
+      {
+        "path": "data_inspector.py",
+        "line_number": 83,
+        "line": "\"cv_macro_f1_mean\","
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 84,
+        "line": "\"cv_macro_f1_std\","
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 667,
+        "line": "and \"cv_macro_f1_mean\""
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 671,
+        "line": "\"cv_macro_f1_mean\","
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 825,
+        "line": "if \"cv_macro_f1_mean\" not in ("
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 830,
+        "line": "\"contain 'cv_macro_f1_mean'.\""
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 852,
+        "line": ")[\"cv_macro_f1_mean\"]"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 52,
+        "line": "accuracy_score,"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 55,
+        "line": "f1_score,"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 311,
+        "line": "random_state: int = 42,"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 316,
+        "line": "return df.sample(n=limit, random_state=random_state).reset_index(drop=True)"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 406,
+        "line": "\"accuracy\": float(accuracy_score(y_true, y_pred)),"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 407,
+        "line": "\"macro_f1\": float("
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 408,
+        "line": "f1_score("
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 417,
+        "line": "f1_score("
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 558,
+        "line": "f\"Macro F1={result.get('macro_f1'):.4f} | \""
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 1264,
+        "line": "f.write(f\"Macro F1:  {result.get('macro_f1'):.4f}\\n\")"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 166,
+        "line": "accuracy_score,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 167,
+        "line": "balanced_accuracy_score,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1542,
+        "line": "accuracy_score("
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1549,
+        "line": "balanced_accuracy_score("
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1558,
+        "line": "macro_f1,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1681,
+        "line": "\"macro_f1\":"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1683,
+        "line": "macro_f1"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 2474,
+        "line": "\"macro_f1\","
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3076,
+        "line": "\"raw_macro_f1\":"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3078,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3081,
+        "line": "\"temporal_macro_f1\":"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3083,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3086,
+        "line": "\"macro_f1_difference\":"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3089,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 3093,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "generate_text_evaluation_dataset.py",
+        "line_number": 155,
+        "line": "df = df.sample(frac=1, random_state=RANDOM_SEED).reset_index(drop=True)"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 73,
+        "line": "StratifiedKFold"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 74,
+        "line": "n_splits=5"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 75,
+        "line": "shuffle=True"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 76,
+        "line": "random_state=42"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 195,
+        "line": "EXPECTED_CV_SHUFFLE = True"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 196,
+        "line": "EXPECTED_RANDOM_STATE = 42"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 316,
+        "line": "\"StratifiedKFold\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 317,
+        "line": "\"n_splits\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 318,
+        "line": "\"shuffle\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 319,
+        "line": "\"random_state\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 320,
+        "line": "\"macro_f1\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 321,
+        "line": "\"f1_score\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 322,
+        "line": "\"accuracy_score\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2457,
+        "line": "if function_name != \"StratifiedKFold\":"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2507,
+        "line": "\"n_splits\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2512,
+        "line": "\"shuffle\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2514,
+        "line": "is EXPECTED_CV_SHUFFLE"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2517,
+        "line": "\"random_state\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2519,
+        "line": "== EXPECTED_RANDOM_STATE"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3149,
+        "line": "\"No StratifiedKFold call was found with \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3150,
+        "line": "\"n_splits=5, shuffle=True, \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3151,
+        "line": "\"random_state=42.\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3482,
+        "line": "\"StratifiedKFold\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3484,
+        "line": "\"n_splits\":"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3487,
+        "line": "\"shuffle\":"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3488,
+        "line": "EXPECTED_CV_SHUFFLE,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3490,
+        "line": "\"random_state\":"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3491,
+        "line": "EXPECTED_RANDOM_STATE,"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3496,
+        "line": "\"macro_f1\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3846,
+        "line": "\"StratifiedKFold(\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3847,
+        "line": "\"n_splits=5, \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3848,
+        "line": "\"shuffle=True, \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3849,
+        "line": "\"random_state=42)\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 57,
+        "line": "# 1. Participant-independent GroupShuffleSplit retained."
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 87,
+        "line": "accuracy_score,"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 92,
+        "line": "from sklearn.model_selection import GroupShuffleSplit"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 198,
+        "line": "RANDOM_STATE = 42"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1530,
+        "line": "random_state=RANDOM_STATE,"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1567,
+        "line": "random_state=RANDOM_STATE,"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1619,
+        "line": "splitter = GroupShuffleSplit("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1620,
+        "line": "n_splits=1,"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1622,
+        "line": "random_state=("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1623,
+        "line": "RANDOM_STATE"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1696,
+        "line": "accuracy_score("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1705,
+        "line": "macro_f1,"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1800,
+        "line": "\"macro_f1\": float("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1801,
+        "line": "macro_f1"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1928,
+        "line": "f\"{metrics['macro_f1']:.4f}\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 1947,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2015,
+        "line": "\"macro_f1\": ("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2017,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2055,
+        "line": "\"macro_f1\","
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2358,
+        "line": "f\"{selected_metrics['macro_f1']:.4f}\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2606,
+        "line": "\"participant-independent GroupShuffleSplit\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2643,
+        "line": "\"macro_f1\": ("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2645,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2684,
+        "line": "\"random_state\": ("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2685,
+        "line": "RANDOM_STATE"
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2734,
+        "line": "\"held_out_macro_f1\": ("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2736,
+        "line": "\"macro_f1\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2961,
+        "line": "f\"{metrics['macro_f1']:.4f}\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 2999,
+        "line": "f\"{selected_metrics['macro_f1']:.4f}\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 4097,
+        "line": "macro_f1 = float("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 4099,
+        "line": "\"held_out_macro_f1\","
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 4140,
+        "line": "f\"{macro_f1:.3f}\""
+      },
+      {
+        "path": "process_audio_data.py",
+        "line_number": 179,
+        "line": "random_state=RANDOM_SEED,"
+      },
+      {
+        "path": "process_audio_data.py",
+        "line_number": 188,
+        "line": "random_state=RANDOM_SEED,"
+      }
+    ],
+    "missing_modality_zero_fill": [
+      {
+        "path": "audio_live_gui.py",
+        "line_number": 109,
+        "line": "zcr = librosa.feature.zero_crossing_rate(waveform)[0]"
+      },
+      {
+        "path": "audio_live_gui.py",
+        "line_number": 255,
+        "line": "text=\"Audio Readiness: Missing\","
+      },
+      {
+        "path": "audio_live_gui.py",
+        "line_number": 501,
+        "line": "missing = [col for col in self.feature_columns if col not in features]"
+      },
+      {
+        "path": "audio_live_gui.py",
+        "line_number": 503,
+        "line": "if missing:"
+      },
+      {
+        "path": "audio_live_gui.py",
+        "line_number": 504,
+        "line": "raise ValueError(f\"Missing audio feature columns: {missing[:20]}\")"
+      },
+      {
+        "path": "audio_live_gui.py",
+        "line_number": 704,
+        "line": "self.audio_ready_label.config(text=\"Audio Readiness: Missing\", fg=\"#ffb3b3\")"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 395,
+        "line": "missing = ("
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 403,
+        "line": "if missing:"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 406,
+        "line": "f\"Participant map is missing columns: \""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 407,
+        "line": "f\"{sorted(missing)}\""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1049,
+        "line": "missing_participant_sessions: list[str] = []"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1101,
+        "line": "missing_participant_sessions.append("
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1260,
+        "line": "missing_unique = sorted("
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1262,
+        "line": "missing_participant_sessions"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1266,
+        "line": "if missing_unique:"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1270,
+        "line": "\"but participant IDs are missing for \""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1271,
+        "line": "f\"{len(missing_unique)} sessions.\\n\\n\""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1272,
+        "line": "f\"Examples:\\n{missing_unique[:20]}\""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1300,
+        "line": "if missing_participant_sessions:"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1308,
+        "line": "f\"{len(set(missing_participant_sessions))} \""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1551,
+        "line": "missing = ("
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1559,
+        "line": "if missing:"
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1562,
+        "line": "f\"{name} is missing columns: \""
+      },
+      {
+        "path": "build_keystroke_dataset_comparison.py",
+        "line_number": 1563,
+        "line": "f\"{sorted(missing)}\""
+      },
+      {
+        "path": "build_multimodal_dataset.py",
+        "line_number": 41,
+        "line": "raise ValueError(f\"{name} is missing column: {SESSION_COL}\")"
+      },
+      {
+        "path": "build_multimodal_dataset.py",
+        "line_number": 44,
+        "line": "raise ValueError(f\"{name} is missing column: {LABEL_COL}\")"
+      },
+      {
+        "path": "build_multimodal_dataset.py",
+        "line_number": 113,
+        "line": "raise ValueError(\"Merged dataset contains missing labels.\")"
+      },
+      {
+        "path": "build_webcam_calibration_dataset.py",
+        "line_number": 726,
+        "line": "f\"Missing class directory: {label_dir}\""
+      },
+      {
+        "path": "build_webcam_calibration_dataset.py",
+        "line_number": 918,
+        "line": "missing_columns = ["
+      },
+      {
+        "path": "build_webcam_calibration_dataset.py",
+        "line_number": 924,
+        "line": "if missing_columns:"
+      },
+      {
+        "path": "build_webcam_calibration_dataset.py",
+        "line_number": 926,
+        "line": "\"Generated dataset is missing CLIP columns:\\n\""
+      },
+      {
+        "path": "build_webcam_calibration_dataset.py",
+        "line_number": 927,
+        "line": "f\"{missing_columns[:20]}\""
+      },
+      {
+        "path": "collect_multimodal_session.py",
+        "line_number": 568,
+        "line": "messagebox.showerror(\"Missing Label\", \"Please select a behavioural label.\")"
+      },
+      {
+        "path": "collect_multimodal_session.py",
+        "line_number": 572,
+        "line": "messagebox.showerror(\"Missing Text\", \"Please type text before saving the session.\")"
+      },
+      {
+        "path": "collect_multimodal_session.py",
+        "line_number": 593,
+        "line": "\"Audio Missing\","
+      },
+      {
+        "path": "collect_multimodal_session.py",
+        "line_number": 604,
+        "line": "\"Image Missing\","
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 13,
+        "line": "# - reconstructs missing metadata rows from the feature CSV;"
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 277,
+        "line": "\"SAMPLES_PER_CLASS must be greater than zero.\""
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 309,
+        "line": "missing_paths = ["
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 315,
+        "line": "if missing_paths:"
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 318,
+        "line": "for path in missing_paths"
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 346,
+        "line": "missing_classes = ["
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 353,
+        "line": "if missing_classes:"
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 359,
+        "line": "f\"Missing classes: {missing_classes}\""
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 410,
+        "line": "missing_modalities = ["
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 417,
+        "line": "if missing_modalities:"
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 421,
+        "line": "f\"Missing: {missing_modalities}\""
+      },
+      {
+        "path": "create_sample_dataset.py",
+        "line_number": 469,
+        "line": "Missing rows are reconstructed from matching records in"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 9,
+        "line": "# - duplicate and missing session IDs;"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 10,
+        "line": "# - missing and non-finite feature values;"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 217,
+        "line": "- missing session IDs;"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 218,
+        "line": "- missing values;"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 290,
+        "line": "Inspect duplicate, missing, and blank session identifiers."
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 303,
+        "line": "missing_rows = dataframe["
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 335,
+        "line": "f\"Missing session IDs: \""
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 336,
+        "line": "f\"{len(missing_rows)}\""
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 356,
+        "line": "if not missing_rows.empty:"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 357,
+        "line": "print(\"\\nRows with missing session IDs:\")"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 360,
+        "line": "missing_rows,"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 377,
+        "line": "Inspect feature columns for missing, non-numeric,"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 403,
+        "line": "original_missing_count = int("
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 412,
+        "line": "converted_missing_count = int("
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 417,
+        "line": "converted_missing_count"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 418,
+        "line": "- original_missing_count"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 463,
+        "line": "f\"Original missing feature values: \""
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 464,
+        "line": "f\"{original_missing_count}\""
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 491,
+        "line": "missing_by_column = ("
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 497,
+        "line": "missing_by_column = missing_by_column["
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 498,
+        "line": "missing_by_column > 0"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 503,
+        "line": "if not missing_by_column.empty:"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 504,
+        "line": "print(\"\\nMissing values by feature column:\")"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 506,
+        "line": "missing_report = ("
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 507,
+        "line": "missing_by_column"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 508,
+        "line": ".rename(\"missing_count\")"
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 512,
+        "line": "missing_report.columns = ["
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 514,
+        "line": "\"missing_count\","
+      },
+      {
+        "path": "data_inspector.py",
+        "line_number": 518,
+        "line": "missing_report,"
+      },
+      {
+        "path": "download_audio_model.py",
+        "line_number": 178,
+        "line": "print(f\"Directory is missing saved_model.pb / saved_model.pbtxt:\\n{model_dir}\")"
+      },
+      {
+        "path": "download_audio_model.py",
+        "line_number": 266,
+        "line": "\"If this directory is missing or invalid, the audio model loader may fall\\n\""
+      },
+      {
+        "path": "download_yamnet.py",
+        "line_number": 178,
+        "line": "print(f\"Directory is missing saved_model.pb / saved_model.pbtxt:\\n{model_dir}\")"
+      },
+      {
+        "path": "download_yamnet.py",
+        "line_number": 289,
+        "line": "\"If this directory is missing or invalid, the audio model loader may fall\\n\""
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 363,
+        "line": "return [], f\"Missing model artifact: {model_path}\""
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 391,
+        "line": "X = df.reindex(columns=feature_columns, fill_value=0.0)"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 413,
+        "line": "zero_division=0,"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 422,
+        "line": "zero_division=0,"
+      },
+      {
+        "path": "evaluate_model_candidates.py",
+        "line_number": 439,
+        "line": "zero_division=0,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1320,
+        "line": "targets = np.zeros("
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1568,
+        "line": "zero_division=0,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1585,
+        "line": "zero_division=0,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 1622,
+        "line": "zero_division=0,"
+      },
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 2537,
+        "line": "\"Temporal window size must be greater than zero.\""
+      },
+      {
+        "path": "extract_audio_features.py",
+        "line_number": 98,
+        "line": "zcr = librosa.feature.zero_crossing_rate(waveform)[0]"
+      },
+      {
+        "path": "extract_audio_features.py",
+        "line_number": 212,
+        "line": "missing_cols = required_cols - set(df.columns)"
+      },
+      {
+        "path": "extract_audio_features.py",
+        "line_number": 214,
+        "line": "if missing_cols:"
+      },
+      {
+        "path": "extract_audio_features.py",
+        "line_number": 215,
+        "line": "raise ValueError(f\"Missing required columns: {missing_cols}\")"
+      },
+      {
+        "path": "extract_audio_features.py",
+        "line_number": 240,
+        "line": "raise FileNotFoundError(f\"Missing audio file: {audio_path}\")"
+      },
+      {
+        "path": "extract_audio_features_30s.py",
+        "line_number": 98,
+        "line": "zcr = librosa.feature.zero_crossing_rate(waveform)[0]"
+      },
+      {
+        "path": "extract_audio_features_30s.py",
+        "line_number": 212,
+        "line": "missing_cols = required_cols - set(df.columns)"
+      },
+      {
+        "path": "extract_audio_features_30s.py",
+        "line_number": 214,
+        "line": "if missing_cols:"
+      },
+      {
+        "path": "extract_audio_features_30s.py",
+        "line_number": 215,
+        "line": "raise ValueError(f\"Missing required columns: {missing_cols}\")"
+      },
+      {
+        "path": "extract_audio_features_30s.py",
+        "line_number": 240,
+        "line": "raise FileNotFoundError(f\"Missing audio file: {audio_path}\")"
+      },
+      {
+        "path": "extract_image_features.py",
+        "line_number": 77,
+        "line": "missing_cols = required_cols - set(df.columns)"
+      },
+      {
+        "path": "extract_image_features.py",
+        "line_number": 79,
+        "line": "if missing_cols:"
+      },
+      {
+        "path": "extract_image_features.py",
+        "line_number": 80,
+        "line": "raise ValueError(f\"Missing required columns: {missing_cols}\")"
+      },
+      {
+        "path": "extract_image_features.py",
+        "line_number": 94,
+        "line": "raise FileNotFoundError(f\"Missing image file: {image_path}\")"
+      },
+      {
+        "path": "extract_text_features.py",
+        "line_number": 32,
+        "line": "missing = required_cols - set(df.columns)"
+      },
+      {
+        "path": "extract_text_features.py",
+        "line_number": 34,
+        "line": "if missing:"
+      },
+      {
+        "path": "extract_text_features.py",
+        "line_number": 36,
+        "line": "f\"Missing required columns: {missing}\""
+      },
+      {
+        "path": "extract_text_features.py",
+        "line_number": 49,
+        "line": ".fillna(\"\")"
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 984,
+        "line": "missing = ("
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 997,
+        "line": "f\"Missing: {sorted(missing)}\\n\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 1005,
+        "line": "\"but the calibrated image classifier is missing:\\n\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 1013,
+        "line": "\"but its image feature schema is missing:\\n\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 1739,
+        "line": ".zero_crossing_rate("
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2209,
+        "line": "\"but its feature schema is missing.\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2212,
+        "line": "missing = ["
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2219,
+        "line": "if missing:"
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2223,
+        "line": "f\"Missing CLIP columns: {missing[:20]}\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2385,
+        "line": "Missing required features are fatal."
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2397,
+        "line": "missing = ["
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2404,
+        "line": "if missing:"
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2410,
+        "line": "f\"Missing feature count: {len(missing)}\\n\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 2411,
+        "line": "f\"Missing examples: {missing[:30]}\""
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 571,
+        "line": "missing = ["
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 578,
+        "line": "if missing:"
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 580,
+        "line": "\"Required image inference artifacts are missing:\\n\\n\""
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 584,
+        "line": "in missing"
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 704,
+        "line": "text=\"Visual Input: Missing\","
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 1055,
+        "line": "missing = ["
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 1062,
+        "line": "if missing:"
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 1067,
+        "line": "f\"Missing examples: {missing[:20]}\""
+      },
+      {
+        "path": "image_live_gui.py",
+        "line_number": 2324,
+        "line": "text=\"Visual Input: Missing\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 15,
+        "line": "2. Inference-time missing-modality robustness"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 33,
+        "line": "- the production missing-input / zero-fill implementation;"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 49,
+        "line": "- invent missing feature-group mappings;"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 324,
+        "line": "\"missing_modality\": ("
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 325,
+        "line": "\"fillna\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 326,
+        "line": "\"fill_value\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 327,
+        "line": "\"np.zeros\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 328,
+        "line": "\"numpy.zeros\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 329,
+        "line": "\"zero\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 330,
+        "line": "\"missing\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 331,
+        "line": "\"reindex\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2894,
+        "line": "missing_evidence: list[SourceEvidence],"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 2970,
+        "line": "\"missing-modality experiments.\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3176,
+        "line": "if not missing_evidence:"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3180,
+        "line": "code=\"ZERO_FILL_NOT_RESOLVED\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3183,
+        "line": "\"missing-value or zero-fill behaviour \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3185,
+        "line": "\"missing-modality experiment until the \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3405,
+        "line": "missing_evidence: list[SourceEvidence],"
+      }
+    ],
+    "fastapi_prediction": [
+      {
+        "path": "evaluate_multimodal_results.py",
+        "line_number": 16,
+        "line": "FinalMultimodalInference.predict(...)"
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 45,
+        "line": "FinalMultimodalInference.predict(...)"
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 593,
+        "line": "class FinalMultimodalInference:"
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 1230,
+        "line": "\"FinalMultimodalInference initialised successfully.\""
+      },
+      {
+        "path": "final_multimodal_inference.py",
+        "line_number": 3040,
+        "line": "FinalMultimodalInference()"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 334,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 335,
+        "line": "\"predict_live\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 336,
+        "line": "\"FinalMultimodalInference\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 337,
+        "line": "\"predictor.predict\","
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3161,
+        "line": "== \"/predict_live\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3170,
+        "line": "\"FastAPI POST /predict_live was not \""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3568,
+        "line": "\"predict_live_routes\":"
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 3576,
+        "line": "== \"/predict_live\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 4399,
+        "line": "\"7. FastAPI /predict_live:\""
+      },
+      {
+        "path": "inspect_final_experiments_preflight.py",
+        "line_number": 4403,
+        "line": "\"predict_live_routes\""
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 3769,
+        "line": "def predict_live_behaviour("
+      },
+      {
+        "path": "keystroke_live_gui_emosurv_ieee.py",
+        "line_number": 4810,
+        "line": "result = predict_live_behaviour("
+      },
+      {
+        "path": "live_fusion_gui.py",
+        "line_number": 26,
+        "line": "from final_multimodal_inference import FinalMultimodalInference"
+      },
+      {
+        "path": "live_fusion_gui.py",
+        "line_number": 837,
+        "line": "FinalMultimodalInference()"
+      },
+      {
+        "path": "live_fusion_gui.py",
+        "line_number": 3255,
+        "line": "self.predictor.predict("
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 18,
+        "line": "Audio ───────────┼──> FinalMultimodalInference"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 53,
+        "line": "FinalMultimodalInference"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2230,
+        "line": "\"FinalMultimodalInference must \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2238,
+        "line": "\"FinalMultimodalInference\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2265,
+        "line": "\"FinalMultimodalInference.predict(...) \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2416,
+        "line": "\"self.predictor.predict\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2587,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2616,
+        "line": "\"predictor.predict\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2941,
+        "line": "def test_predict_live_supports_stream_audio_snapshot() -> str:"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2947,
+        "line": "predict_live()."
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2949,
+        "line": "That is unnecessarily restrictive. It is valid for predict_live()"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2969,
+        "line": "\"predict_live\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 2999,
+        "line": "\"predict_live() is missing core \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3012,
+        "line": "#   predict_live directly writes:"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3016,
+        "line": "#   predict_live passes:"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3113,
+        "line": "\"predict_live() to the prediction \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3119,
+        "line": "\"predict_live() snapshots continuous PCM16 \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3527,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3986,
+        "line": "\"import FinalMultimodalInference; \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 3987,
+        "line": "\"m = FinalMultimodalInference(); \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 4031,
+        "line": "\"FinalMultimodalInference \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 4309,
+        "line": "\"Instantiate FinalMultimodalInference \""
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 4645,
+        "line": "\"predict_live streamed audio snapshot\","
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 4647,
+        "line": "test_predict_live_supports_stream_audio_snapshot,"
+      },
+      {
+        "path": "run_all_tests.py",
+        "line_number": 4729,
+        "line": "\"FinalMultimodalInference initialisation\","
+      },
+      {
+        "path": "temporal_fusion.py",
+        "line_number": 87,
+        "line": "DOES NOT invoke FinalMultimodalInference."
+      },
+      {
+        "path": "temporal_fusion.py",
+        "line_number": 89,
+        "line": "FinalMultimodalInference should remain responsible for producing ONE"
+      },
+      {
+        "path": "temporal_fusion.py",
+        "line_number": 1407,
+        "line": "FinalMultimodalInference.predict(...)."
+      },
+      {
+        "path": "tests\\test_02_integration.py",
+        "line_number": 729,
+        "line": "\"FinalMultimodalInference\","
+      },
+      {
+        "path": "tests\\test_02_integration.py",
+        "line_number": 770,
+        "line": "module.FinalMultimodalInference"
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 579,
+        "line": "def test_predict_live_rejects_short_text("
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 593,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 633,
+        "line": "def test_predict_live_rejects_insufficient_keystrokes("
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 647,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 948,
+        "line": "def test_predict_live_rejects_stale_generation("
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 983,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 1170,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 1395,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "tests\\test_03_system.py",
+        "line_number": 1484,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "tests\\test_sensefuzeai.py",
+        "line_number": 842,
+        "line": "\"/predict_live\","
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 108,
+        "line": "FinalMultimodalInference,"
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 922,
+        "line": "FinalMultimodalInference"
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 952,
+        "line": "\"FinalMultimodalInference\""
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 1023,
+        "line": "FinalMultimodalInference()"
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 1529,
+        "line": "return predictor.predict("
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 3168,
+        "line": "\"/predict_live\""
+      },
+      {
+        "path": "web_app\\app.py",
+        "line_number": 3170,
+        "line": "async def predict_live("
+      }
+    ]
+  },
+  "issues": [
+    {
+      "severity": "WARNING",
+      "code": "MULTIPLE_DATASET_MATCHES",
+      "message": "More than one dataset exactly matches the proposed Chapter-5 protocol. The authoritative evaluation dataset must be selected explicitly."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "FEATURE_GROUP_NOT_RESOLVED_KEYSTROKE",
+      "message": "No explicit repository definition was found for the keystroke feature group. The inspector will not invent feature boundaries."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "FEATURE_GROUP_NOT_RESOLVED_TEXT",
+      "message": "No explicit repository definition was found for the text feature group. The inspector will not invent feature boundaries."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "FEATURE_GROUP_NOT_RESOLVED_AUDIO",
+      "message": "No explicit repository definition was found for the audio feature group. The inspector will not invent feature boundaries."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "FEATURE_GROUP_NOT_RESOLVED_VISION",
+      "message": "No explicit repository definition was found for the vision feature group. The inspector will not invent feature boundaries."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "FEATURE_GROUP_NOT_RESOLVED_DERIVED",
+      "message": "No explicit repository definition was found for the derived feature group. The inspector will not invent feature boundaries."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "SIX_DERIVED_FEATURES_NOT_RESOLVED",
+      "message": "The six derived predictors have not been resolved explicitly."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "DERIVED_DEPENDENCIES_NOT_RESOLVED",
+      "message": "No explicit mapping was found describing which modalities each derived predictor depends on. This is required for a valid leave-one-modality-out experiment."
+    },
+    {
+      "severity": "WARNING",
+      "code": "MULTIPLE_RF_CONFIGURATIONS",
+      "message": "Multiple fusion Random Forest artifacts with different parameter configurations were found. Confirm which one corresponds to the Chapter-5 complete-fusion result."
+    },
+    {
+      "severity": "BLOCKER",
+      "code": "DOCUMENTED_FEATURE_COUNT_CONFLICT",
+      "message": "Repository documentation/source contains both 2,367 and 2,373 feature-count references. Determine the authoritative fusion schema before proceeding."
+    }
+  ],
+  "summary": {
+    "blockers": 8,
+    "warnings": 2,
+    "ready_for_experiment_implementation": false
+  },
+  "proposed_scripts_after_approval": [
+    {
+      "filename": "evaluate_leave_one_modality_out.py",
+      "purpose": "Five-fold Random Forest retraining with one modality removed at a time, using the authoritative feature schema and derived-feature dependency map."
+    },
+    {
+      "filename": "evaluate_missing_modality_robustness.py",
+      "purpose": "Inference-time modality suppression using the frozen complete-fusion model and exactly the production missing-input representation."
+    },
+    {
+      "filename": "benchmark_cpu_inference_latency.py",
+      "purpose": "Repeated CPU-only latency benchmarking of the canonical inference path with warm-up, repeated measurements, distribution summaries and CSV/JSON exports."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+configuration,dimensions,removed_groups,removed_feature_count,mean_accuracy,accuracy_sd,mean_macro_f1,macro_f1_sd,delta_macro_f1
+Full fusion,2373,,0,1.0,0.0,1.0,0.0,0.0
+Fusion - Keystroke,2351,keystroke,22,1.0,0.0,1.0,0.0,0.0
+Fusion - Text,1605,text,768,0.9935483870967742,0.012903225806451599,0.9934873949579831,0.013025210084033567,0.006512605042016895
+Fusion - Audio,1564,audio,809,1.0,0.0,1.0,0.0,0.0
+Fusion - Vision,1599,vision+derived,774,0.9967741935483871,0.0064516129032258,0.9967607105538139,0.006478578892371978,0.003239289446186122
