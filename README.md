@@ -29,6 +29,8 @@ The project investigates whether multimodal fusion improves behavioural-state re
 
 The final runtime architecture separates raw multimodal inference from temporal post-processing. `final_multimodal_inference.py` produces one stateless four-class probability distribution, while the shared `temporal_fusion.py` module performs temporal aggregation for the desktop application, web application, training comparison, and evaluation workflows.
 
+The project additionally evaluates keystroke generalisation using the multi-user EmoSurv IEEE dataset as an external baseline. SenseFuzeAI raw keystroke events are reprocessed into the same feature representation used for EmoSurv, enabling baseline, augmentation, and cross-dataset comparison experiments without altering the final multimodal runtime dataset.
+
 ---
 
 ## Research Objective
@@ -43,6 +45,7 @@ The project aims to:
 6. Evaluate raw and temporally aggregated predictions using held-out data and appropriate multiclass metrics.
 7. Provide interpretable diagnostics for technical evaluation while presenting one clear behavioural state to the user.
 8. Validate the integrated software through unit, integration, system, acceptance, smoke, and runtime testing.
+9. Evaluate keystroke-domain generalisation using the multi-user EmoSurv IEEE dataset as an external baseline and compare EmoSurv-only, SenseFuzeAI-only, augmented,   and cross-dataset training configurations.
 
 ---
 
@@ -57,7 +60,9 @@ The project aims to:
 
 ---
 
-## Dataset
+## Datasets
+
+### Main SenseFuzeAI Multimodal Dataset
 
 The project dataset contains:
 
@@ -78,6 +83,23 @@ The 309 samples represent individual multimodal observations. Temporal fusion is
 A `session_id` identifies one multimodal observation. Where explicitly collected temporal metadata is available, multiple observations may additionally share a participant/trial/generation grouping and an ordered `sequence_index`.
 
 Historical observations collected before explicit temporal-sequence metadata was introduced remain valid for raw multimodal model training and evaluation. Temporal group identifiers are not fabricated retrospectively for historical samples.
+
+### External EmoSurv Keystroke Comparison Dataset
+
+A separate external-data experiment uses the EmoSurv IEEE keystroke dataset
+as a multi-user baseline.
+
+EmoSurv contains keystroke information only and therefore does not replace the main SenseFuzeAI multimodal dataset used by the final application.
+
+For comparison purposes, the raw SenseFuzeAI key-down key-up timing events are reprocessed using the same 23-feature representation and windowing procedure used for EmoSurv. This produces harmonised SenseFuzeAI and
+EmoSurv keystroke datasets with a common feature schema.
+
+The comparison pipeline therefore distinguishes between:
+
+- the original SenseFuzeAI multimodal dataset used for multimodal model development and final-system evaluation; and
+- derived harmonised keystroke datasets used specifically for external baseline, augmentation, and cross-dataset experiments.
+
+The original SenseFuzeAI data files are not overwritten by this process.
 
 ---
 
@@ -158,6 +180,15 @@ Main live GUI:
 python keystroke_live_gui.py
 ```
 
+#### Keystroke Feature Representations
+
+The main SenseFuzeAI multimodal pipeline retains its original project-specific engineered keystroke representation.
+
+For the external EmoSurv comparison experiment, the retained raw SenseFuzeAI key-down/key-up events are independently reprocessed using the same 23-feature representation and windowing procedure used by the
+EmoSurv pipeline.
+
+The harmonised representation is therefore a derived experimental dataset and does not replace the original keystroke representation used by the main multimodal dataset.
+
 ### 2. Text Pipeline
 
 The text pipeline uses MPNet sentence embeddings to represent semantic and contextual information from user-written text.
@@ -194,6 +225,8 @@ python audio_live_gui.py
 ```
 
 ### 4. Image Pipeline
+
+#### 4.1 Webcam Calibration Pipeline
 
 The image pipeline uses CLIP visual embeddings for image, video, and webcam-based behavioural-state inference.
 
@@ -310,7 +343,7 @@ Changing an active audio or visual source resets the temporal history so that ob
 
 ---
 
-### 6. Webcam Calibration Pipeline
+### 7. Webcam Calibration Pipeline
 
 A dedicated webcam-calibration pipeline is included to address the domain difference between the original image-training data and frames captured from a live webcam.
 
@@ -375,6 +408,28 @@ Technical panels additionally expose:
 - runtime
 
 This separates the primary behavioural result from implementation and evaluation diagnostics.
+
+---
+
+## Web Interface Design
+
+The final web interface is organised around the user workflow rather than the internal model architecture.
+
+![SenseFuzeAI Web Application](web_app_screenshot.png)
+
+The interface provides:
+
+- system/model readiness indicators;
+- multimodal input controls;
+- live session controls;
+- clear indication of missing or ready inputs;
+- one primary behavioural-state result;
+- confidence information;
+- temporal-session status;
+- reset and stop controls; and
+- expandable technical diagnostics for development and evaluation.
+
+Internal raw and temporal-processing diagnostics are retained for technical inspection, while ordinary users are expected to interact primarily with the final behavioural-state result and session controls.
 
 ---
 
@@ -501,6 +556,8 @@ python build_webcam_calibration_dataset.py
 python retrain_image_webcam_calibrated.py
 python train_fusion_demo_pipeline.py
 python train_multimodal_comparison.py
+python build_keystroke_dataset_comparison.py
+python train_keystroke_dataset_comparison.py
 ```
 
 The image workflow additionally supports webcam-specific calibration. `build_webcam_calibration_dataset.py` prepares the calibration data, while `retrain_image_webcam_calibrated.py` evaluates candidate classifiers and generates the calibrated image pipeline used by the live webcam workflow.
@@ -532,6 +589,10 @@ and may include:
 - `multimodal_all_raw_vs_temporal.json`
 
 The held-out prediction files allow the evaluation stage to reproduce temporal aggregation independently rather than relying only on summary scores produced during training.
+
+`build_keystroke_dataset_comparison.py` constructs harmonised EmoSurv and SenseFuzeAI keystroke datasets using a shared 23-feature representation.
+
+`train_keystroke_dataset_comparison.py` performs the frozen A-F baseline, augmentation, and cross-dataset experiments using group-aware evaluation and paired bootstrap analysis.
 
 ---
 
@@ -587,6 +648,52 @@ The comparison stage produces held-out prediction files for different modality c
 For the current all-modality configuration, an example held-out prediction file is:
 
 > `data/processed/multimodal_comparison_results/multimodal_all_catboost_heldout_predictions.csv`
+
+### External Keystroke Dataset Comparison
+
+The project includes an external keystroke-domain evaluation using the multi-user EmoSurv IEEE dataset.
+
+Dataset harmonisation is performed using:
+
+```powershell
+python build_keystroke_dataset_comparison.py
+```
+
+The comparison experiments are performed using:
+
+```powershell
+python train_keystroke_dataset_comparison.py
+```
+
+Both EmoSurv and SenseFuzeAI keystroke observations are
+represented using the same 23-feature schema before comparison.
+
+The primary harmonised comparison uses three behavioural classes: focused, fatigued, and overloaded. For EmoSurv, these classes are obtained through the defined proxy mapping from the original emotion labels.
+
+The four-class analysis additionally includes distracted, but is treated as exploratory because the distracted EmoSurv label is derived through a weakly supervised proxy rather than being an original EmoSurv behavioural label.
+
+Six fixed experimental configurations are evaluated:
+
+| Experiment | Training Data                       | Evaluation Data                    |
+| ---------- | ----------------------------------- | ---------------------------------- |
+| A          | EmoSurv                             | held-out EmoSurv                   |
+| B          | SenseFuzeAI                         | held-out SenseFuzeAI               |
+| C          | EmoSurv + SenseFuzeAI training data | same held-out EmoSurv set as A     |
+| D          | EmoSurv                             | held-out SenseFuzeAI               |
+| E          | EmoSurv + SenseFuzeAI training data | same held-out SenseFuzeAI set as D |
+| F          | SenseFuzeAI                         | held-out EmoSurv                   |
+
+EmoSurv splitting is participant-aware. Because the currently collected SenseFuzeAI observations originate
+from one participant, SenseFuzeAI splitting
+uses session identifiers rather than fabricating
+multiple participant identities.
+
+Frozen split manifests are retained so that baseline and
+augmented experiments are evaluated on identical held-out observations.
+
+Results are stored under:
+
+`data/processed/keystroke_dataset_comparison/`
 
 ### Raw and Temporal Evaluation
 
@@ -654,6 +761,7 @@ Test files:
 > `tests/test_02_integration.py` <br>
 > `tests/test_03_system.py` <br>
 > `tests/test_04_acceptance.py` <br>
+> `tests/test_05_keystroke_dataset_comparison.py` <br>
 > `tests/test_sensefuzeai.py`
 
 Run the complete pytest suite:
@@ -697,6 +805,8 @@ JavaScript syntax can also be checked directly using:
 ```powershell
 node --check web_app/static/script.js
 ```
+
+`test_05_keystroke_dataset_comparison.py` verifies the external-dataset comparison pipeline, including the shared harmonised feature schema, dataset provenance, valid labels, sample identifiers, group-aware splitting, leakage prevention, frozen held-out evaluation sets, and comparison-result artifacts.
 
 ### Saving Test Evidence
 
@@ -957,6 +1067,22 @@ Confidence and confidence-gap diagnostics describe the current probability distr
 14. Large pretrained embedding-model weights must be downloaded or restored separately before workflows that require them can run.
 15. The webcam-calibrated image model is based on a limited project-specific calibration dataset and should not be interpreted as demonstrating generalisation across different users, cameras, environments, or deployment conditions.
 16. SenseFuzeAI is an academic research prototype and is not intended for clinical, safety-critical, employment-monitoring, or production decision-making.
+17. The current SenseFuzeAI self-collected dataset
+represents one participant, so participant-independent
+generalisation of the complete multimodal system has not
+yet been established.
+18. EmoSurv contains keystroke data only and cannot
+directly provide external validation of the text, audio,
+image, or complete multimodal fusion pipeline.
+19. EmoSurv emotion categories do not correspond exactly
+to the SenseFuzeAI behavioural-state taxonomy. The
+three-class mapping is therefore used as the primary
+external comparison, while the four-class distracted
+mapping is treated as exploratory weak supervision.
+20. Harmonising feature representations does not
+eliminate differences between data-collection protocols,
+participant populations, devices, typing tasks, or
+other source-domain characteristics.
 
 ---
 
@@ -968,7 +1094,8 @@ Potential future work includes:
 * participant-independent and longitudinal evaluation
 * additional controlled temporal-sequence data
 * user-specific calibration
-* * learned temporal sequence models beyond the current five-observation arithmetic probability mean
+* learned temporal sequence models beyond the current
+five-observation arithmetic probability mean
 * adaptive temporal-window selection
 * multimodal transformer architectures
 * uncertainty-aware decision logic
@@ -1002,6 +1129,13 @@ SenseFuzeAI contributes an end-to-end multimodal behavioural AI framework that i
 * generation-safe temporal reset handling
 * automated unit, integration, system, acceptance, and smoke testing
 * evaluation and diagnostic reporting
+* external multi-user keystroke baseline evaluation using EmoSurv IEEE
+* harmonised cross-dataset keystroke feature
+representation
+* baseline, augmentation, and cross-domain keystroke
+experiments
+* frozen group-aware evaluation splits and paired bootstrap comparison
+* empirical analysis of cross-dataset domain shift
 
 The system demonstrates how multiple pretrained AI models from different data domains can be orchestrated with engineered behavioural features, learned multimodal fusion, temporal post-processing, software integration, and evaluation to achieve a unified behavioural-state prediction goal.
 
@@ -1011,13 +1145,6 @@ The system demonstrates how multiple pretrained AI models from different data do
 
 ```text
 .
-├── data/
-│   ├── processed/
-│   │   ├── keystroke_baseline_results/
-│   │   ├── multimodal_comparison_results/
-│   │   ├── multimodal_evaluation_summary/
-│   │   └── webcam_calibration_evaluation/
-│   └── session_aligned/
 ├── evaluation_results/
 ├── models/
 │   ├── all-mpnet-base-v2/
@@ -1032,6 +1159,7 @@ The system demonstrates how multiple pretrained AI models from different data do
 │   ├── test_02_integration.py
 │   ├── test_03_system.py
 │   ├── test_04_acceptance.py
+|   ├── test_05_keystroke_dataset_comparison.py
 │   └── test_sensefuzeai.py
 ├── utils/
 ├── web_app/
@@ -1044,15 +1172,18 @@ The system demonstrates how multiple pretrained AI models from different data do
 │   └── app.py
 ├── build_multimodal_dataset.py
 ├── build_webcam_calibration_dataset.py
+├── build_keystroke_dataset_comparison.py
 ├── collect_multimodal_session.py
 ├── create_sample_dataset.py
 ├── evaluate_multimodal_results.py
 ├── final_multimodal_inference.py
+├── keystroke_live_gui_emosurv_ieee.py
 ├── live_fusion_gui.py
 ├── retrain_image_webcam_calibrated.py
 ├── run_all_tests.py
 ├── temporal_fusion.py
 ├── train_multimodal_comparison.py
+├── train_keystroke_dataset_comparison.py
 ├── train_*.py
 ├── *_live_gui.py
 ├── requirements.txt
@@ -1091,6 +1222,7 @@ Five-observation temporal probability distribution
           │
           ▼
 Focused / Distracted / Fatigued / Overloaded
+```
 
 ---
 
