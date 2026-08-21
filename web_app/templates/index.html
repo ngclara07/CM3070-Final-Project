@@ -16,7 +16,9 @@
     content="SenseFuzeAI live multimodal behavioural inference system"
   />
 
-  <title>SenseFuzeAI | Live Multimodal Fusion</title>
+  <title>
+    SenseFuzeAI | Live Multimodal Fusion
+  </title>
 
   <link
     rel="stylesheet"
@@ -50,7 +52,7 @@
 
 
     <!-- ======================================================= -->
-    <!-- APPLICATION HEADER -->
+    <!-- HERO -->
     <!-- ======================================================= -->
 
     <header class="hero-card">
@@ -77,11 +79,12 @@
             Live Multimodal Behavioural AI System
           </p>
 
+
           <div class="hero-modalities">
 
             <span>Keystroke</span>
             <span>Text</span>
-            <span>Audio</span>
+            <span>Live Audio</span>
             <span>Webcam</span>
             <span>Temporal Fusion</span>
 
@@ -103,7 +106,8 @@
         </strong>
 
         <small>
-          Temporally aggregated multimodal prediction
+          Continuous multimodal acquisition with
+          temporally aggregated prediction
         </small>
 
       </div>
@@ -116,7 +120,6 @@
     <!-- ======================================================= -->
 
     <section class="system-panel">
-
 
       <div class="section-header">
 
@@ -145,11 +148,8 @@
       </div>
 
 
-      <!-- ===================================================== -->
-      <!-- READINESS ITEMS -->
-      <!-- ===================================================== -->
-
       <div class="readiness-grid">
+
 
         <div
           class="ready-item"
@@ -255,7 +255,7 @@
           </div>
 
           <b>
-            Optional
+            Required
           </b>
 
         </div>
@@ -271,13 +271,13 @@
             <span class="ready-dot"></span>
 
             <span>
-              Webcam Input
+              Visual Input
             </span>
 
           </div>
 
           <b>
-            Optional
+            Required
           </b>
 
         </div>
@@ -285,16 +285,11 @@
       </div>
 
 
-      <!-- ===================================================== -->
-      <!-- MODEL STATUS -->
-      <!-- ===================================================== -->
-
       <div class="system-message-area">
 
         <p id="modelStatusText">
           Checking model status...
         </p>
-
 
         <p
           id="webcamModelStatusText"
@@ -306,10 +301,6 @@
       </div>
 
 
-      <!-- ===================================================== -->
-      <!-- TEMPORAL FUSION STATUS -->
-      <!-- ===================================================== -->
-
       <div class="temporal-status-banner">
 
         <div class="temporal-status-main">
@@ -317,7 +308,6 @@
           <span class="temporal-icon">
             TF
           </span>
-
 
           <div>
 
@@ -352,14 +342,14 @@
 
 
     <!-- ======================================================= -->
-    <!-- PRIMARY LIVE WORKSPACE -->
+    <!-- MAIN LIVE WORKSPACE -->
     <!-- ======================================================= -->
 
     <div class="live-workspace">
 
 
       <!-- ===================================================== -->
-      <!-- LEFT: LIVE MODALITIES -->
+      <!-- LEFT: INPUT MODALITIES -->
       <!-- ===================================================== -->
 
       <section class="fusion-panel">
@@ -377,8 +367,8 @@
             </h2>
 
             <p>
-              Real-time acquisition of behavioural
-              signals used by the fusion model.
+              Continuous acquisition of behavioural signals
+              consumed by the multimodal fusion model.
             </p>
 
           </div>
@@ -465,7 +455,7 @@
 
 
           <!-- ================================================= -->
-          <!-- WEBCAM -->
+          <!-- VISUAL INPUT -->
           <!-- ================================================= -->
 
           <article
@@ -482,7 +472,7 @@
                 </span>
 
                 <h3>
-                  Live Webcam
+                  Live Visual Input
                 </h3>
 
               </div>
@@ -504,6 +494,12 @@
                 playsinline
               ></video>
 
+              <img
+                id="staticImagePreview"
+                class="static-image-preview hidden"
+                alt="Selected visual input"
+              />
+
             </div>
 
 
@@ -517,7 +513,7 @@
               id="webcamStatus"
               class="modality-status"
             >
-              Webcam inactive.
+              Visual input inactive.
             </p>
 
 
@@ -526,11 +522,48 @@
               webcam-calibrated image classifier.
             </p>
 
+
+            <div class="source-action-row">
+
+              <button
+                id="chooseImageBtn"
+                type="button"
+                class="source-btn"
+              >
+                Choose Image
+              </button>
+
+
+              <button
+                id="chooseVideoBtn"
+                type="button"
+                class="source-btn"
+              >
+                Choose Video
+              </button>
+
+            </div>
+
+
+            <input
+              id="imageFileInput"
+              type="file"
+              accept="image/*"
+              class="hidden"
+            />
+
+            <input
+              id="videoFileInput"
+              type="file"
+              accept="video/*"
+              class="hidden"
+            />
+
           </article>
 
 
           <!-- ================================================= -->
-          <!-- AUDIO -->
+          <!-- CONTINUOUS AUDIO STREAM -->
           <!-- ================================================= -->
 
           <article
@@ -547,7 +580,7 @@
                 </span>
 
                 <h3>
-                  Live Audio
+                  Continuous Live Audio
                 </h3>
 
               </div>
@@ -563,6 +596,7 @@
             <div class="audio-visual">
 
               <div class="audio-bars">
+
                 <span></span>
                 <span></span>
                 <span></span>
@@ -571,6 +605,65 @@
                 <span></span>
                 <span></span>
                 <span></span>
+                <span></span>
+                <span></span>
+
+              </div>
+
+            </div>
+
+
+            <div class="audio-stream-grid">
+
+              <div>
+
+                <span>
+                  Stream
+                </span>
+
+                <strong id="audioStreamState">
+                  Stopped
+                </strong>
+
+              </div>
+
+
+              <div>
+
+                <span>
+                  Rolling Buffer
+                </span>
+
+                <strong id="audioBufferedSeconds">
+                  0.0 s
+                </strong>
+
+              </div>
+
+
+              <div>
+
+                <span>
+                  Level
+                </span>
+
+                <strong id="audioLiveLevel">
+                  —
+                </strong>
+
+              </div>
+
+
+              <div>
+
+                <span>
+                  Packets
+                </span>
+
+                <strong id="audioPacketCount">
+                  0
+                </strong>
+
               </div>
 
             </div>
@@ -580,14 +673,62 @@
               id="audioStatus"
               class="modality-status"
             >
-              Microphone inactive.
+              Microphone stream inactive.
             </p>
+
+
+            <p
+              id="audioDiagnostic"
+              class="audio-diagnostic"
+            >
+              Audio condition: —
+            </p>
+
+
+            <div class="audio-control-grid">
+
+              <button
+                id="startMicBtn"
+                type="button"
+                class="source-btn source-btn-live"
+              >
+                Start Live Microphone
+              </button>
+
+
+              <button
+                id="stopMicBtn"
+                type="button"
+                class="source-btn source-btn-stop"
+                disabled
+              >
+                Stop Microphone
+              </button>
+
+
+              <button
+                id="chooseAudioBtn"
+                type="button"
+                class="source-btn source-btn-wide"
+              >
+                Use Audio File Instead
+              </button>
+
+            </div>
+
+
+            <input
+              id="audioFileInput"
+              type="file"
+              accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.webm"
+              class="hidden"
+            />
 
           </article>
 
 
           <!-- ================================================= -->
-          <!-- SESSION CONTROLS -->
+          <!-- SESSION / VISUAL CONTROLS -->
           <!-- ================================================= -->
 
           <article class="modality-card control-card">
@@ -601,7 +742,7 @@
                 </span>
 
                 <h3>
-                  Session Controls
+                  Visual Session Controls
                 </h3>
 
               </div>
@@ -615,7 +756,7 @@
                 id="startBtn"
                 class="control-btn primary"
               >
-                Start Live Session
+                Start Webcam Stream
               </button>
 
 
@@ -624,7 +765,7 @@
                 class="control-btn danger"
                 disabled
               >
-                Stop Session
+                Stop Visual Stream
               </button>
 
 
@@ -640,7 +781,7 @@
                 id="resetBtn"
                 class="control-btn neutral"
               >
-                Reset Session
+                Reset Entire Session
               </button>
 
             </div>
@@ -664,7 +805,7 @@
 
 
       <!-- ===================================================== -->
-      <!-- RIGHT: LIVE INFERENCE -->
+      <!-- RIGHT: INFERENCE -->
       <!-- ===================================================== -->
 
       <section class="result-panel">
@@ -701,14 +842,14 @@
           <span class="result-status-dot"></span>
 
           <p id="status">
-            Awaiting live session...
+            Awaiting multimodal input...
           </p>
 
         </div>
 
 
         <!-- =================================================== -->
-        <!-- MAIN FUSION STATE -->
+        <!-- AGGREGATED RESULT -->
         <!-- =================================================== -->
 
         <div class="state-display">
@@ -812,7 +953,7 @@
 
 
         <!-- =================================================== -->
-        <!-- RAW CURRENT OBSERVATION -->
+        <!-- RAW CURRENT RESULT -->
         <!-- =================================================== -->
 
         <section class="result-subcard raw-result-card">
@@ -878,7 +1019,7 @@
 
 
         <!-- =================================================== -->
-        <!-- WEBCAM MODALITY RESULT -->
+        <!-- WEBCAM RESULT -->
         <!-- =================================================== -->
 
         <section class="result-subcard webcam-result-card">
@@ -934,13 +1075,12 @@
 
 
     <!-- ======================================================= -->
-    <!-- TECHNICAL / DIAGNOSTIC DETAILS -->
+    <!-- DIAGNOSTICS -->
     <!-- ======================================================= -->
 
     <section class="diagnostics-panel">
 
       <details class="technical-details">
-
 
         <summary>
 
@@ -960,7 +1100,8 @@
 
 
             <span class="summary-hint">
-              Model metadata and probability distributions
+              Model metadata, runtime validation and
+              probability distributions
             </span>
 
           </div>
@@ -970,10 +1111,6 @@
 
         <div class="technical-content">
 
-
-          <!-- ================================================= -->
-          <!-- METADATA -->
-          <!-- ================================================= -->
 
           <div class="technical-grid">
 
@@ -1075,7 +1212,7 @@
               </span>
 
               <strong id="technicalTemporalSamples">
-                —
+                0
               </strong>
 
             </div>
@@ -1096,11 +1233,14 @@
           </div>
 
 
-          <!-- ================================================= -->
-          <!-- PROBABILITY DISTRIBUTIONS -->
-          <!-- ================================================= -->
+          <p
+            id="validationStatus"
+            class="validation-line"
+          ></p>
+
 
           <div class="distribution-grid">
+
 
             <section class="distribution-card">
 
@@ -1141,10 +1281,6 @@
 
   </main>
 
-
-  <!-- ========================================================= -->
-  <!-- APPLICATION SCRIPT -->
-  <!-- ========================================================= -->
 
   <script
     src="{{ url_for('static', path='/script.js') }}"

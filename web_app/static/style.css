@@ -6,70 +6,38 @@
    ============================================================ */
 
 :root {
-
-  /* Background */
   --bg-0: #030711;
   --bg-1: #07101f;
   --bg-2: #0b1630;
 
-  /* Panels */
-  --panel:
-    rgba(21, 31, 55, 0.76);
+  --panel: rgba(21, 31, 55, 0.76);
+  --panel-raised: rgba(31, 43, 71, 0.84);
+  --panel-soft: rgba(255, 255, 255, 0.055);
+  --panel-dark: rgba(5, 11, 24, 0.36);
 
-  --panel-raised:
-    rgba(31, 43, 71, 0.84);
+  --border: rgba(184, 204, 255, 0.14);
+  --border-strong: rgba(184, 204, 255, 0.22);
+  --border-cyan: rgba(112, 241, 255, 0.30);
 
-  --panel-soft:
-    rgba(255, 255, 255, 0.055);
-
-  --panel-dark:
-    rgba(5, 11, 24, 0.36);
-
-
-  /* Borders */
-  --border:
-    rgba(184, 204, 255, 0.14);
-
-  --border-strong:
-    rgba(184, 204, 255, 0.22);
-
-  --border-cyan:
-    rgba(112, 241, 255, 0.30);
-
-
-  /* Accent colours */
   --cyan: #87f3ff;
   --cyan-strong: #63e9f8;
-
   --green: #78f6d0;
   --yellow: #ffd574;
   --red: #ff8197;
   --purple: #9478ff;
-
   --blue: #78a8ff;
 
-
-  /* Typography */
   --text-primary: #f5f8ff;
   --text-secondary: #c4cce0;
-  --text-muted: #8f9bb8;
+  --text-muted: #99a5c0;
 
-
-  /* Shadows */
   --shadow-panel:
     0 24px 70px rgba(0, 0, 0, 0.34);
 
-  --shadow-soft:
-    0 14px 34px rgba(0, 0, 0, 0.20);
-
-
-  /* Radius */
   --radius-panel: 24px;
   --radius-card: 18px;
   --radius-small: 13px;
 
-
-  /* Layout */
   --workspace-gap: 24px;
 }
 
@@ -107,7 +75,6 @@ body {
     sans-serif;
 
   font-size: 15px;
-
   line-height: 1.5;
 
   background:
@@ -141,12 +108,11 @@ select {
 
 
 /* ============================================================
-   BACKGROUND DECORATION
+   BACKGROUND
    ============================================================ */
 
 .scene-bg {
   position: fixed;
-
   inset: 0;
 
   pointer-events: none;
@@ -193,9 +159,7 @@ select {
       transparent 1px
     );
 
-  background-size:
-    82px
-    82px;
+  background-size: 82px 82px;
 
   transform:
     perspective(900px)
@@ -206,7 +170,7 @@ select {
 
 
 /* ============================================================
-   APPLICATION SHELL
+   APPLICATION
    ============================================================ */
 
 .app-shell {
@@ -220,19 +184,14 @@ select {
       1560px
     );
 
-  margin:
-    0
-    auto;
+  margin: 0 auto;
 
-  padding:
-    28px
-    0
-    56px;
+  padding: 28px 0 56px;
 }
 
 
 /* ============================================================
-   SHARED PANEL STYLE
+   SHARED PANELS
    ============================================================ */
 
 .hero-card,
@@ -259,31 +218,12 @@ select {
   box-shadow:
     var(--shadow-panel);
 
-  backdrop-filter:
-    blur(20px);
-
-  -webkit-backdrop-filter:
-    blur(20px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 
   overflow: hidden;
 }
 
-
-.system-panel,
-.fusion-panel,
-.result-panel,
-.diagnostics-panel {
-  padding: 28px;
-}
-
-
-.system-panel,
-.diagnostics-panel {
-  margin-top: 24px;
-}
-
-
-/* Subtle upper highlight */
 
 .hero-card::before,
 .system-panel::before,
@@ -306,11 +246,25 @@ select {
     linear-gradient(
       90deg,
       transparent,
-      rgba(255, 255, 255, 0.28),
+      rgba(255, 255, 255, 0.27),
       transparent
     );
 
   pointer-events: none;
+}
+
+
+.system-panel,
+.fusion-panel,
+.result-panel,
+.diagnostics-panel {
+  padding: 28px;
+}
+
+
+.system-panel,
+.diagnostics-panel {
+  margin-top: 24px;
 }
 
 
@@ -319,11 +273,9 @@ select {
    ============================================================ */
 
 .hero-card {
-  min-height: 168px;
+  min-height: 150px;
 
-  padding:
-    32px
-    38px;
+  padding: 28px 36px;
 
   display: flex;
 
@@ -331,7 +283,7 @@ select {
 
   justify-content: space-between;
 
-  gap: 36px;
+  gap: 34px;
 }
 
 
@@ -340,20 +292,17 @@ select {
 
   align-items: center;
 
-  gap: 24px;
+  gap: 23px;
 
   min-width: 0;
 }
 
 
 .orb {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
-  width: 82px;
-  height: 82px;
+  width: 74px;
+  height: 74px;
 
   border-radius: 50%;
 
@@ -380,18 +329,14 @@ select {
 
 
 @keyframes orbFloat {
-
   0%,
   100% {
-    transform:
-      translateY(0);
+    transform: translateY(0);
   }
 
   50% {
-    transform:
-      translateY(-6px);
+    transform: translateY(-6px);
   }
-
 }
 
 
@@ -400,28 +345,29 @@ select {
 }
 
 
-.hero-eyebrow {
+.hero-eyebrow,
+.section-eyebrow {
   display: block;
-
-  margin-bottom: 5px;
 
   color: var(--cyan);
 
-  font-size: 11px;
+  font-size: 10px;
 
   font-weight: 800;
 
-  letter-spacing: 1.45px;
+  letter-spacing: 1.35px;
 
   text-transform: uppercase;
 }
 
 
+.hero-eyebrow {
+  margin-bottom: 5px;
+}
+
+
 .hero-copy h1 {
-  margin:
-    0
-    0
-    7px;
+  margin: 0 0 7px;
 
   color: #9bf5ff;
 
@@ -429,22 +375,17 @@ select {
     clamp(
       38px,
       4vw,
-      55px
+      52px
     );
 
   line-height: 1;
 
-  letter-spacing: -1.5px;
+  letter-spacing: -1.4px;
 }
 
 
 .hero-copy p {
-  margin:
-    0
-    0
-    12px;
-
-  color: var(--text-primary);
+  margin: 0 0 12px;
 
   font-size: 16px;
 
@@ -457,14 +398,12 @@ select {
 
   flex-wrap: wrap;
 
-  gap: 8px;
+  gap: 7px;
 }
 
 
 .hero-modalities span {
-  padding:
-    5px
-    9px;
+  padding: 5px 9px;
 
   border:
     1px solid
@@ -482,14 +421,9 @@ select {
 
 
 .hero-meta {
-  flex:
-    0
-    0
-    275px;
+  flex: 0 0 300px;
 
-  padding:
-    18px
-    20px;
+  padding: 18px 20px;
 
   border:
     1px solid
@@ -526,7 +460,7 @@ select {
 .hero-meta strong {
   display: block;
 
-  margin-bottom: 3px;
+  margin-bottom: 4px;
 
   font-size: 15px;
 }
@@ -536,11 +470,13 @@ select {
   color: var(--text-muted);
 
   font-size: 11px;
+
+  line-height: 1.5;
 }
 
 
 /* ============================================================
-   SECTION HEADERS
+   SECTION HEADER
    ============================================================ */
 
 .section-header {
@@ -552,37 +488,17 @@ select {
 
   gap: 24px;
 
-  margin-bottom: 24px;
-}
-
-
-.section-header > div:first-child {
-  min-width: 0;
+  margin-bottom: 23px;
 }
 
 
 .section-eyebrow {
-  display: block;
-
   margin-bottom: 4px;
-
-  color: var(--cyan);
-
-  font-size: 10px;
-
-  font-weight: 800;
-
-  letter-spacing: 1.35px;
-
-  text-transform: uppercase;
 }
 
 
 .section-header h2 {
-  margin:
-    0
-    0
-    6px;
+  margin: 0 0 6px;
 
   font-size: 24px;
 
@@ -593,7 +509,7 @@ select {
 
 
 .section-header p {
-  max-width: 560px;
+  max-width: 590px;
 
   margin: 0;
 
@@ -604,10 +520,7 @@ select {
 
 
 .section-index {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   color:
     rgba(133, 242, 255, 0.28);
@@ -621,7 +534,7 @@ select {
 
 
 /* ============================================================
-   SYSTEM READINESS
+   READINESS
    ============================================================ */
 
 .readiness-grid {
@@ -642,9 +555,7 @@ select {
 
   min-height: 58px;
 
-  padding:
-    13px
-    15px;
+  padding: 13px 15px;
 
   display: flex;
 
@@ -684,10 +595,7 @@ select {
 
 
 .ready-dot {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   width: 7px;
   height: 7px;
@@ -697,19 +605,13 @@ select {
   background: #6f7893;
 
   box-shadow:
-    0
-    0
-    0
-    4px
+    0 0 0 4px
     rgba(255, 255, 255, 0.025);
 }
 
 
 .ready-item b {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   color: #ffabb8;
 
@@ -729,14 +631,6 @@ select {
       rgba(83, 234, 194, 0.09),
       rgba(255, 255, 255, 0.045)
     );
-
-  box-shadow:
-    inset
-    0
-    0
-    0
-    1px
-    rgba(73, 244, 204, 0.035);
 }
 
 
@@ -744,9 +638,7 @@ select {
   background: var(--green);
 
   box-shadow:
-    0
-    0
-    10px
+    0 0 10px
     rgba(103, 255, 214, 0.65);
 }
 
@@ -801,15 +693,13 @@ select {
 
 
 /* ============================================================
-   TEMPORAL STATUS -->
+   TEMPORAL STATUS
    ============================================================ */
 
 .temporal-status-banner {
   margin-top: 18px;
 
-  padding:
-    13px
-    15px;
+  padding: 13px 15px;
 
   display: flex;
 
@@ -871,11 +761,11 @@ select {
 .small-label {
   display: block;
 
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   font-weight: 700;
 
@@ -893,17 +783,14 @@ select {
 
 
 .temporal-window-status {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   text-align: right;
 }
 
 
 /* ============================================================
-   LIVE WORKSPACE
+   WORKSPACE
    ============================================================ */
 
 .live-workspace {
@@ -927,7 +814,7 @@ select {
 
 
 /* ============================================================
-   MODALITY GRID
+   MODALITY CARDS
    ============================================================ */
 
 .modality-grid {
@@ -967,7 +854,6 @@ select {
   overflow: hidden;
 
   transition:
-    transform 0.22s ease,
     border-color 0.22s ease,
     box-shadow 0.22s ease,
     background 0.22s ease;
@@ -992,10 +878,14 @@ select {
     );
 
   box-shadow:
-    0
-    12px
-    32px
+    0 12px 32px
     rgba(0, 0, 0, 0.18);
+}
+
+
+.modality-card.streaming {
+  border-color:
+    rgba(99, 233, 248, 0.42);
 }
 
 
@@ -1026,7 +916,7 @@ select {
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   font-weight: 700;
 
@@ -1044,20 +934,13 @@ select {
   font-size: 18px;
 
   line-height: 1.2;
-
-  letter-spacing: -0.2px;
 }
 
 
 .badge {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
-  padding:
-    4px
-    9px;
+  padding: 4px 9px;
 
   border:
     1px solid
@@ -1079,17 +962,24 @@ select {
 
 
 .modality-card.active .badge {
-  border-color:
-    rgba(100, 245, 207, 0.30);
-
   color: #071411;
 
   background: var(--green);
+
+  border-color:
+    rgba(100, 245, 207, 0.30);
+}
+
+
+.modality-card.streaming:not(.active) .badge {
+  color: #08151a;
+
+  background: var(--cyan);
 }
 
 
 /* ============================================================
-   TEXT INPUT
+   TEXT
    ============================================================ */
 
 textarea {
@@ -1112,15 +1002,11 @@ textarea {
 
   color: #162032;
 
-  background: #f8faff;
+  background: #f2f6fc;
 
   font-size: 14px;
 
   line-height: 1.5;
-
-  transition:
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
 }
 
 
@@ -1134,17 +1020,10 @@ textarea:focus {
     rgba(109, 230, 244, 0.82);
 
   box-shadow:
-    0
-    0
-    0
-    3px
+    0 0 0 3px
     rgba(82, 221, 239, 0.13);
 }
 
-
-/* ============================================================
-   METRICS
-   ============================================================ */
 
 .metric-grid {
   display: grid;
@@ -1161,10 +1040,9 @@ textarea:focus {
 }
 
 
-.metric-grid > div {
-  padding:
-    10px
-    12px;
+.metric-grid > div,
+.audio-stream-grid > div {
+  padding: 10px 12px;
 
   border-radius: 11px;
 
@@ -1177,14 +1055,15 @@ textarea:focus {
 }
 
 
-.metric-grid span {
+.metric-grid span,
+.audio-stream-grid span {
   display: block;
 
-  margin-bottom: 1px;
+  margin-bottom: 2px;
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 }
 
 
@@ -1192,19 +1071,19 @@ textarea:focus {
   color: var(--cyan);
 
   font-size: 18px;
-
-  line-height: 1.1;
 }
 
 
 /* ============================================================
-   VIDEO
+   VISUAL
    ============================================================ */
 
 .video-frame {
   position: relative;
 
   width: 100%;
+
+  min-height: 170px;
 
   overflow: hidden;
 
@@ -1218,25 +1097,8 @@ textarea:focus {
 }
 
 
-.video-frame::after {
-  content: "";
-
-  position: absolute;
-
-  inset: 0;
-
-  pointer-events: none;
-
-  box-shadow:
-    inset
-    0
-    0
-    35px
-    rgba(0, 0, 0, 0.28);
-}
-
-
-video {
+video,
+.static-image-preview {
   display: block;
 
   width: 100%;
@@ -1249,10 +1111,7 @@ video {
 
 
 .modality-status {
-  margin:
-    12px
-    0
-    0;
+  margin: 12px 0 0;
 
   color: var(--text-secondary);
 
@@ -1263,10 +1122,7 @@ video {
 
 
 .calibration-note {
-  margin:
-    8px
-    0
-    0;
+  margin: 7px 0 0;
 
   color: var(--yellow);
 
@@ -1277,24 +1133,79 @@ video {
 
 
 /* ============================================================
-   AUDIO -->
+   SOURCE BUTTONS
    ============================================================ */
 
-.audio-card {
-  min-height: 260px;
+.source-action-row {
+  display: flex;
+
+  flex-wrap: wrap;
+
+  gap: 8px;
+
+  margin-top: 12px;
 }
 
 
+.source-btn {
+  min-height: 39px;
+
+  padding: 9px 12px;
+
+  border:
+    1px solid
+    rgba(156, 205, 244, 0.16);
+
+  border-radius: 10px;
+
+  color: var(--text-primary);
+
+  background:
+    rgba(255, 255, 255, 0.065);
+
+  font-size: 11px;
+
+  font-weight: 750;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.17s ease,
+    border-color 0.17s ease,
+    background 0.17s ease;
+}
+
+
+.source-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+
+  border-color:
+    rgba(135, 243, 255, 0.32);
+
+  background:
+    rgba(135, 243, 255, 0.09);
+}
+
+
+.source-btn:disabled {
+  opacity: 0.42;
+
+  cursor: not-allowed;
+}
+
+
+/* ============================================================
+   CONTINUOUS AUDIO
+   ============================================================ */
+
 .audio-visual {
-  height: 72px;
+  height: 78px;
 
   display: flex;
 
   align-items: center;
 
-  padding:
-    0
-    16px;
+  padding: 0 16px;
 
   border:
     1px solid
@@ -1309,8 +1220,7 @@ video {
 
 .audio-bars {
   width: 100%;
-
-  height: 34px;
+  height: 40px;
 
   display: flex;
 
@@ -1318,7 +1228,7 @@ video {
 
   justify-content: center;
 
-  gap: 7px;
+  gap: 6px;
 }
 
 
@@ -1331,93 +1241,143 @@ video {
     linear-gradient(
       180deg,
       var(--cyan),
-      rgba(135, 243, 255, 0.28)
+      rgba(135, 243, 255, 0.25)
     );
 
-  opacity: 0.38;
+  opacity: 0.28;
 }
 
 
-.audio-bars span:nth-child(1) {
-  height: 11px;
-}
+.audio-bars span:nth-child(1) { height: 10px; }
+.audio-bars span:nth-child(2) { height: 17px; }
+.audio-bars span:nth-child(3) { height: 28px; }
+.audio-bars span:nth-child(4) { height: 20px; }
+.audio-bars span:nth-child(5) { height: 34px; }
+.audio-bars span:nth-child(6) { height: 25px; }
+.audio-bars span:nth-child(7) { height: 31px; }
+.audio-bars span:nth-child(8) { height: 19px; }
+.audio-bars span:nth-child(9) { height: 26px; }
+.audio-bars span:nth-child(10) { height: 13px; }
 
 
-.audio-bars span:nth-child(2) {
-  height: 19px;
-}
-
-
-.audio-bars span:nth-child(3) {
-  height: 28px;
-}
-
-
-.audio-bars span:nth-child(4) {
-  height: 17px;
-}
-
-
-.audio-bars span:nth-child(5) {
-  height: 31px;
-}
-
-
-.audio-bars span:nth-child(6) {
-  height: 21px;
-}
-
-
-.audio-bars span:nth-child(7) {
-  height: 13px;
-}
-
-
-.audio-bars span:nth-child(8) {
-  height: 24px;
-}
-
-
-.audio-card.active .audio-bars span {
-  opacity: 0.85;
+.audio-card.streaming .audio-bars span {
+  opacity: 0.86;
 
   animation:
     audioPulse
-    1.2s
+    0.9s
     ease-in-out
     infinite
     alternate;
 }
 
 
-.audio-card.active .audio-bars span:nth-child(2n) {
-  animation-delay: -0.4s;
+.audio-card.streaming .audio-bars span:nth-child(2n) {
+  animation-delay: -0.28s;
+}
+
+
+.audio-card.streaming .audio-bars span:nth-child(3n) {
+  animation-delay: -0.51s;
 }
 
 
 @keyframes audioPulse {
-
   from {
-    transform:
-      scaleY(0.55);
+    transform: scaleY(0.48);
   }
 
   to {
-    transform:
-      scaleY(1);
+    transform: scaleY(1);
   }
+}
 
+
+.audio-stream-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 8px;
+
+  margin-top: 12px;
+}
+
+
+.audio-stream-grid strong {
+  display: block;
+
+  color: var(--cyan);
+
+  font-size: 12px;
+
+  overflow-wrap: anywhere;
+}
+
+
+.audio-diagnostic {
+  min-height: 32px;
+
+  margin: 7px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 10px;
+
+  line-height: 1.45;
+}
+
+
+.audio-control-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      2,
+      minmax(0, 1fr)
+    );
+
+  gap: 8px;
+
+  margin-top: 13px;
+}
+
+
+.source-btn-live {
+  color: #061510;
+
+  background:
+    linear-gradient(
+      120deg,
+      #75edd9,
+      #73bdf2
+    );
+
+  border-color: transparent;
+}
+
+
+.source-btn-stop {
+  background:
+    rgba(255, 113, 142, 0.10);
+
+  border-color:
+    rgba(255, 129, 151, 0.24);
+}
+
+
+.source-btn-wide {
+  grid-column: 1 / -1;
 }
 
 
 /* ============================================================
-   CONTROLS
+   SESSION CONTROLS
    ============================================================ */
-
-.control-card {
-  min-height: 260px;
-}
-
 
 .control-stack {
   display: grid;
@@ -1431,9 +1391,7 @@ video {
 
   min-height: 45px;
 
-  padding:
-    11px
-    14px;
+  padding: 11px 14px;
 
   border: 0;
 
@@ -1445,20 +1403,16 @@ video {
 
   font-weight: 800;
 
-  letter-spacing: 0.05px;
-
   cursor: pointer;
 
   transition:
     transform 0.18s ease,
-    box-shadow 0.18s ease,
     opacity 0.18s ease;
 }
 
 
 .control-btn:hover:not(:disabled) {
-  transform:
-    translateY(-1px);
+  transform: translateY(-1px);
 }
 
 
@@ -1469,12 +1423,6 @@ video {
       #65dff0,
       #7064ef
     );
-
-  box-shadow:
-    0
-    8px
-    20px
-    rgba(82, 138, 240, 0.16);
 }
 
 
@@ -1499,14 +1447,14 @@ video {
 
 
 .control-btn.neutral {
-  color: #edf1fa;
+  color: var(--text-secondary);
 
   background:
-    linear-gradient(
-      120deg,
-      #58657c,
-      #75829a
-    );
+    rgba(255, 255, 255, 0.07);
+
+  border:
+    1px solid
+    rgba(185, 204, 235, 0.13);
 }
 
 
@@ -1574,9 +1522,7 @@ video {
 
   margin-bottom: 14px;
 
-  padding:
-    10px
-    13px;
+  padding: 10px 13px;
 
   display: flex;
 
@@ -1596,10 +1542,7 @@ video {
 
 
 .result-status-dot {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   width: 7px;
   height: 7px;
@@ -1607,13 +1550,6 @@ video {
   border-radius: 50%;
 
   background: #8290ab;
-
-  box-shadow:
-    0
-    0
-    0
-    4px
-    rgba(255, 255, 255, 0.025);
 }
 
 
@@ -1627,14 +1563,11 @@ video {
 
 
 /* ============================================================
-   MAIN STATE DISPLAY
+   MAIN RESULT
    ============================================================ */
 
 .state-display {
-  padding:
-    27px
-    25px
-    22px;
+  padding: 27px 25px 22px;
 
   border:
     1px solid
@@ -1655,13 +1588,6 @@ video {
       rgba(49, 75, 96, 0.40),
       rgba(27, 39, 65, 0.47)
     );
-
-  box-shadow:
-    inset
-    0
-    1px
-    0
-    rgba(255, 255, 255, 0.035);
 }
 
 
@@ -1670,7 +1596,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   font-weight: 700;
 
@@ -1681,10 +1607,7 @@ video {
 
 
 .prediction-box {
-  margin:
-    16px
-    0
-    20px;
+  margin: 16px 0 20px;
 
   color: var(--cyan);
 
@@ -1704,24 +1627,15 @@ video {
   overflow-wrap: anywhere;
 
   text-shadow:
-    0
-    0
-    28px
+    0 0 28px
     rgba(94, 234, 247, 0.25);
 }
 
 
-/* ============================================================
-   CONFIDENCE
-   ============================================================ */
-
 .confidence-block {
   width: 88%;
 
-  margin:
-    0
-    auto
-    18px;
+  margin: 0 auto 18px;
 }
 
 
@@ -1741,7 +1655,7 @@ video {
 .confidence-heading span {
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   text-transform: uppercase;
 }
@@ -1782,12 +1696,6 @@ video {
       #7ff1cf
     );
 
-  box-shadow:
-    0
-    0
-    14px
-    rgba(103, 234, 237, 0.33);
-
   transition:
     width
     0.8s
@@ -1807,7 +1715,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   text-transform: uppercase;
 }
@@ -1833,10 +1741,6 @@ video {
 }
 
 
-/* ============================================================
-   TEMPORAL RESULT SUMMARY
-   ============================================================ */
-
 .temporal-result-info {
   margin-top: 20px;
 
@@ -1855,13 +1759,7 @@ video {
 .temporal-result-info > div {
   min-width: 0;
 
-  padding:
-    10px
-    7px;
-
-  border:
-    1px solid
-    rgba(182, 210, 245, 0.06);
+  padding: 10px 7px;
 
   border-radius: 11px;
 
@@ -1877,7 +1775,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 8px;
+  font-size: 9px;
 
   text-transform: uppercase;
 }
@@ -1889,8 +1787,6 @@ video {
   color: var(--cyan);
 
   font-size: 12px;
-
-  line-height: 1.25;
 
   overflow-wrap: anywhere;
 }
@@ -1959,7 +1855,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 8px;
+  font-size: 10px;
 
   font-weight: 700;
 
@@ -1975,15 +1871,11 @@ video {
   color: var(--text-secondary);
 
   font-size: 13px;
-
-  font-weight: 700;
 }
 
 
 .subcard-tag {
-  padding:
-    3px
-    7px;
+  padding: 3px 7px;
 
   border-radius: 999px;
 
@@ -1992,11 +1884,9 @@ video {
   background:
     rgba(129, 100, 244, 0.11);
 
-  font-size: 8px;
+  font-size: 9px;
 
   font-weight: 800;
-
-  text-transform: uppercase;
 }
 
 
@@ -2016,11 +1906,7 @@ video {
 
 
 .raw-result-grid > div {
-  min-width: 0;
-
-  padding:
-    10px
-    11px;
+  padding: 10px 11px;
 
   border-radius: 10px;
 
@@ -2034,7 +1920,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 8px;
+  font-size: 9px;
 
   text-transform: uppercase;
 }
@@ -2048,34 +1934,22 @@ video {
   color: var(--text-primary);
 
   font-size: 16px;
-
-  overflow-wrap: anywhere;
 }
 
 
 .subcard-description {
-  margin:
-    10px
-    0
-    0;
+  margin: 10px 0 0;
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   line-height: 1.5;
 }
 
 
-/* ============================================================
-   WEBCAM RESULT
-   ============================================================ */
-
 .webcam-confidence {
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   text-align: right;
 }
@@ -2086,7 +1960,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 8px;
+  font-size: 9px;
 
   text-transform: uppercase;
 }
@@ -2096,8 +1970,6 @@ video {
   display: block;
 
   margin-top: 2px;
-
-  color: var(--text-primary);
 
   font-size: 17px;
 }
@@ -2111,10 +1983,6 @@ video {
   color: var(--yellow);
 
   font-size: 25px;
-
-  line-height: 1.1;
-
-  overflow-wrap: anywhere;
 }
 
 
@@ -2124,16 +1992,11 @@ video {
 
 
 /* ============================================================
-   DIAGNOSTIC PANEL
+   DIAGNOSTICS
    ============================================================ */
 
 .diagnostics-panel {
   margin-top: 24px;
-}
-
-
-.technical-details {
-  width: 100%;
 }
 
 
@@ -2163,10 +2026,7 @@ video {
 .summary-content::after {
   content: "+";
 
-  flex:
-    0
-    0
-    auto;
+  flex: 0 0 auto;
 
   width: 28px;
   height: 28px;
@@ -2199,8 +2059,6 @@ video {
 .summary-content strong {
   display: block;
 
-  color: var(--text-primary);
-
   font-size: 18px;
 }
 
@@ -2225,10 +2083,6 @@ video {
 }
 
 
-/* ============================================================
-   TECHNICAL METADATA
-   ============================================================ */
-
 .technical-grid {
   display: grid;
 
@@ -2245,13 +2099,7 @@ video {
 .technical-grid > div {
   min-width: 0;
 
-  padding:
-    14px
-    15px;
-
-  border:
-    1px solid
-    rgba(177, 204, 241, 0.07);
+  padding: 14px 15px;
 
   border-radius: 12px;
 
@@ -2267,7 +2115,7 @@ video {
 
   color: var(--text-muted);
 
-  font-size: 9px;
+  font-size: 10px;
 
   text-transform: uppercase;
 }
@@ -2276,17 +2124,22 @@ video {
 .technical-grid strong {
   display: block;
 
-  color: var(--text-primary);
-
   font-size: 14px;
 
   overflow-wrap: anywhere;
 }
 
 
-/* ============================================================
-   DISTRIBUTION GRID
-   ============================================================ */
+.validation-line {
+  min-height: 24px;
+
+  margin: 18px 0 0;
+
+  color: var(--text-muted);
+
+  font-size: 11px;
+}
+
 
 .distribution-grid {
   margin-top: 20px;
@@ -2320,10 +2173,7 @@ video {
 
 
 .distribution-card h3 {
-  margin:
-    2px
-    0
-    18px;
+  margin: 2px 0 18px;
 
   color: var(--text-secondary);
 
@@ -2335,17 +2185,13 @@ video {
    PROBABILITY BARS
    ============================================================ */
 
-.prob-row {
-  margin:
-    12px
-    0;
+.sf-prob-row {
+  margin: 12px 0;
 }
 
 
-.prob-label {
+.sf-prob-label {
   display: flex;
-
-  align-items: center;
 
   justify-content: space-between;
 
@@ -2359,7 +2205,7 @@ video {
 }
 
 
-.track {
+.sf-prob-track {
   height: 8px;
 
   overflow: hidden;
@@ -2371,7 +2217,7 @@ video {
 }
 
 
-.fill {
+.sf-prob-fill {
   height: 100%;
 
   width: 0%;
@@ -2392,7 +2238,7 @@ video {
 }
 
 
-.raw-fill {
+.sf-prob-fill.raw {
   background:
     linear-gradient(
       90deg,
@@ -2402,7 +2248,7 @@ video {
 }
 
 
-.webcam-fill {
+.sf-prob-fill.webcam {
   background:
     linear-gradient(
       90deg,
@@ -2412,12 +2258,33 @@ video {
 }
 
 
+.sf-prob-sum {
+  display: flex;
+
+  justify-content: space-between;
+
+  gap: 12px;
+
+  margin-top: 10px;
+
+  padding-top: 8px;
+
+  border-top:
+    1px solid
+    rgba(148, 163, 184, 0.18);
+
+  color: var(--text-muted);
+
+  font-size: 10px;
+}
+
+
 /* ============================================================
    UTILITIES
    ============================================================ */
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 
@@ -2454,7 +2321,7 @@ video {
 
 
 /* ============================================================
-   LAPTOP / MEDIUM DESKTOP
+   LAPTOP
    ============================================================ */
 
 @media (max-width: 1220px) {
@@ -2536,19 +2403,15 @@ video {
 
 
 /* ============================================================
-   SMALL TABLET / MOBILE
+   MOBILE
    ============================================================ */
 
 @media (max-width: 720px) {
 
   .app-shell {
-    width:
-      calc(100% - 20px);
+    width: calc(100% - 20px);
 
-    padding:
-      10px
-      0
-      32px;
+    padding: 10px 0 32px;
   }
 
 
@@ -2562,15 +2425,10 @@ video {
 
 
   .hero-card {
-    padding:
-      24px
-      20px;
+    padding: 24px 20px;
 
     flex-direction: column;
-  }
 
-
-  .hero-identity {
     align-items: flex-start;
   }
 
@@ -2596,11 +2454,6 @@ video {
   }
 
 
-  .section-header {
-    margin-bottom: 20px;
-  }
-
-
   .section-index {
     display: none;
   }
@@ -2609,12 +2462,6 @@ video {
   .readiness-grid,
   .modality-grid {
     grid-template-columns: 1fr;
-  }
-
-
-  .audio-card,
-  .control-card {
-    min-height: auto;
   }
 
 
@@ -2635,11 +2482,6 @@ video {
   }
 
 
-  .summary-content {
-    align-items: flex-start;
-  }
-
-
   .summary-hint {
     display: none;
   }
@@ -2648,13 +2490,15 @@ video {
 
 
 /* ============================================================
-   MOBILE
+   SMALL MOBILE
    ============================================================ */
 
 @media (max-width: 520px) {
 
   .hero-identity {
     flex-direction: column;
+
+    align-items: flex-start;
 
     gap: 16px;
   }
@@ -2665,46 +2509,24 @@ video {
   }
 
 
-  .hero-modalities {
-    gap: 6px;
-  }
-
-
-  .hero-modalities span {
-    font-size: 10px;
-  }
-
-
   .section-header h2 {
     font-size: 21px;
   }
 
 
-  .card-head {
-    min-height: 0;
+  .audio-stream-grid,
+  .audio-control-grid {
+    grid-template-columns: 1fr;
   }
 
 
-  .card-head h3 {
-    font-size: 17px;
-  }
-
-
-  textarea {
-    height: 150px;
-  }
-
-
-  video {
-    height: 200px;
+  .source-btn-wide {
+    grid-column: auto;
   }
 
 
   .state-display {
-    padding:
-      23px
-      16px
-      18px;
+    padding: 23px 16px 18px;
   }
 
 
@@ -2722,16 +2544,10 @@ video {
     align-items: flex-start;
 
     flex-direction: column;
-
-    gap: 5px;
   }
 
 
-  .temporal-result-info {
-    grid-template-columns: 1fr;
-  }
-
-
+  .temporal-result-info,
   .raw-result-grid {
     grid-template-columns: 1fr;
   }
