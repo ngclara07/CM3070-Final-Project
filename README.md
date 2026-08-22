@@ -4,7 +4,9 @@
 
 **Multimodal Behavioural AI System**
 
-SenseFuzeAI is a multimodal artificial intelligence system for real-time behavioural-state inference. It combines keystroke dynamics, semantic text embeddings, audio representations, visual embeddings, learned multimodal fusion, and temporal probability aggregation to classify a user into one of four behavioural states:
+SenseFuzeAI is a multimodal artificial intelligence
+system for interactive, near-real-time behavioural-state
+inference. It combines keystroke dynamics, semantic text embeddings, audio representations, visual embeddings,learned multimodal fusion, and temporal probability aggregation to classify a user into one of four behavioural states:
 
 - focused
 - distracted
@@ -25,7 +27,14 @@ SenseFuzeAI is a research-oriented multimodal behavioural intelligence platform 
 - CLIP image embeddings
 - multimodal fusion features
 
-The project investigates whether multimodal fusion improves behavioural-state recognition compared with unimodal classification and whether short-window temporal aggregation can improve prediction stability. It includes model training pipelines, standalone live GUIs, a FastAPI web application, live multimodal acquisition, webcam-specific image calibration, a shared temporal-fusion module, raw-versus-temporal evaluation, group-aware model comparison, automated software testing, and dissertation-ready evaluation outputs.
+The project investigates whether multimodal fusion improves behavioural-state recognition compared with
+unimodal classification and whether short-window
+temporal aggregation can improve prediction stability.
+It includes model training pipelines, standalone live
+GUIs, a FastAPI web application, live multimodal
+acquisition, webcam-specific image calibration, a shared
+temporal-fusion module, raw-versus-temporal evaluation, group-aware model comparison, leave-one-modality-out ablation, inference-time missing-modality stress
+testing, reproducible CPU latency benchmarking, automated software testing, and dissertation-ready evaluation outputs.
 
 The final runtime architecture separates raw multimodal inference from temporal post-processing. `final_multimodal_inference.py` produces one stateless four-class probability distribution, while the shared `temporal_fusion.py` module performs temporal aggregation for the desktop application, web application, training comparison, and evaluation workflows.
 
@@ -40,12 +49,13 @@ The project aims to:
 1. Investigate behavioural-state recognition using multimodal AI signals.
 2. Compare unimodal and multimodal prediction performance.
 3. Evaluate multiple machine-learning classifiers across modality combinations.
-4. Build a working real-time multimodal behavioural AI system.
+4. Build a working interactive, near-real-time multimodal behavioural AI system.
 5. Investigate whether temporal aggregation of repeated multimodal predictions improves prediction stability.
 6. Evaluate raw and temporally aggregated predictions using held-out data and appropriate multiclass metrics.
 7. Provide interpretable diagnostics for technical evaluation while presenting one clear behavioural state to the user.
 8. Validate the integrated software through unit, integration, system, acceptance, smoke, and runtime testing.
 9. Evaluate keystroke-domain generalisation using the multi-user EmoSurv IEEE dataset as an external baseline and compare EmoSurv-only, SenseFuzeAI-only, augmented,   and cross-dataset training configurations.
+10. Quantify modality contribution, inference-time missing-modality sensitivity, and CPU-only computational latency using reproducible final-system experiments.
 
 ---
 
@@ -71,10 +81,11 @@ The project dataset contains:
 | Samples | 309 |
 | Classes | 4 |
 | Keystroke features | 22 |
-| Text features | 768 |
+| Text / MPNet features | 768 |
 | Audio features | 809 |
-| Image features | 768 |
-| Fusion features | 2367 |
+| CLIP visual features | 768 |
+| Visual-derived calibration features | 6 |
+| Final fusion classifier features | 2373 |
 
 ### Observation and Temporal-Sequence Distinction
 
@@ -122,7 +133,9 @@ The sample dataset is intended for:
 - demonstrating the end-to-end processing and inference workflow
 - performing lightweight validation and smoke testing
 
-The full research dataset (309 multimodal sessions) is not included in this repository.
+The complete 309-observation research dataset is retained in the local research workspace for training and evaluation but is not intended for public GitHub
+distribution. The public repository contains only the
+authorised balanced 20-session demonstration subset.
 
 The sample dataset should contain only data authorised for academic distribution. Audio recordings, facial images, typed text, keystroke records, sensitive identifiers, and confidential content must be reviewed and appropriately anonymised before publication.
 
@@ -270,11 +283,30 @@ python image_live_gui.py
 
 ### 5. Fusion Pipeline
 
-The fusion pipeline combines all modality features into a single 2367-dimensional feature vector.
+The final fusion pipeline combines the complete multimodal representation into a single 2,373-dimensional classifier input.
+
+The persisted final fusion schema contains:
+
+- 22 engineered keystroke predictors
+- 768 MPNet text-embedding predictors
+- 809 WavLM/Librosa audio predictors
+- 768 CLIP visual-embedding predictors
+- 6 webcam-calibrated visual-derived predictors
+
+The six visual-derived predictors are:
+
+- `image_webcam_focused_prob`
+- `image_webcam_distracted_prob`
+- `image_webcam_fatigued_prob`
+- `image_webcam_overloaded_prob`
+- `image_webcam_top_probability`
+- `image_webcam_confidence_gap`
+
+These six predictors depend on the visual/CLIP branch and are therefore treated as visual information during modality-removal and missing-modality experiments.
 
 Fusion input:
 
-> keystroke + text + audio + image
+> keystroke + text/MPNet + audio/WavLM/Librosa + image CLIP + visual-derived calibration features
 
 Main live GUI:
 
@@ -435,7 +467,7 @@ Internal raw and temporal-processing diagnostics are retained for technical insp
 
 ## Web Application
 
-The project includes a real-time FastAPI web application supporting:
+The project includes a live FastAPI web application supporting:
 
 - live text input
 - browser keystroke capture
@@ -745,6 +777,115 @@ may also be analysed for runtime, probability validity, temporal consistency, an
 
 ---
 
+### Final Fusion Evaluation Experiments
+
+Three additional experiments evaluate the final 2,373-feature Random Forest
+fusion system.
+
+The classification experiments use the authoritative 309-observation
+SenseFuzeAI dataset with class counts of 77 focused, 77 distracted,
+77 fatigued, and 78 overloaded observations.
+
+The common evaluation protocol is:
+
+```python
+StratifiedKFold(
+    n_splits=5,
+    shuffle=True,
+    random_state=42,
+)
+```
+
+Macro-F1 is the primary classification metric and accuracy is reported as a complementary metric.
+
+#### Leave-One-Modality-Out Ablation
+
+Run:
+
+```powershell
+python evaluate_leave_one_modality_out.py
+```
+
+Each modality is removed before model fitting and the same Random Forest configuration is retrained using the remaining predictors.
+
+The complete fusion model reproduced the existing Chapter 5 result (mean macro-F1 = 1.0000).
+
+Measured changes relative to full fusion were:
+
+| Ablated Modality | Mean Macro-F1 | Δ Macro-F1 |
+| ---------------- | ------------: | ---------: |
+| Keystroke        |        1.0000 |     0.0000 |
+| Text             |        0.9935 |     0.0065 |
+| Audio            |        1.0000 |     0.0000 |
+| Vision           |        0.9968 |     0.0032 |
+
+Text removal produced the largest measured degradation. Keystroke and Audio were tied for the smallest measured degradation.
+
+The six `image_webcam_*` visual-derived predictors are removed together with the CLIP visual features when Vision is ablated.
+
+Evidence:
+
+> `data/processed/final_experiments/leave_one_modality_out/`
+
+#### Inference-Time Missing-Modality Stress Test
+
+Run:
+
+```powershell
+python evaluate_missing_modality_robustness.py
+```
+
+For each cross-validation fold, the complete model is fitted once and reused without retraining while one held-out modality block is synthetically zero-masked.
+
+| Missing Modality | Mean Macro-F1 | Δ Macro-F1 |
+| ---------------- | ------------: | ---------: |
+| Keystroke        |        0.9737 |     0.0263 |
+| Text             |        1.0000 |     0.0000 |
+| Audio            |        1.0000 |     0.0000 |
+| Vision           |        0.9190 |     0.0810 |
+
+Vision loss produced the largest measured degradation, followed by Keystroke loss.
+
+This is a classifier-level robustness stress test. The deployed application still requires all four modalities and does not currently support these zero-masked conditions as normal production input modes.
+
+Evidence:
+
+> `data/processed/final_experiments/missing_modality_robustness/`
+
+#### CPU Inference-Latency Benchmark
+
+Run:
+
+```powershell
+python benchmark_cpu_inference_latency.py
+```
+
+The final benchmark used CPU-only execution, 5 fresh-process cold starts, 30 measured warm repetitions per stage, 20 balanced representative multimodal sessions, and `time.perf_counter_ns()`.
+
+Acquisition duration such as microphone recording time, user typing time, webcam acquisition waiting, and temporal collection intervals is excluded.
+
+Key results were:
+
+| Processing Stage                      | Mean (ms) | p95 (ms) |
+| ------------------------------------- | --------: | -------: |
+| Cold application/model initialisation |   8388.62 | 10258.99 |
+| Keystroke processing                  |      0.51 |     1.06 |
+| Text feature extraction               |     41.59 |    60.51 |
+| Audio feature extraction              |    906.67 |  2191.57 |
+| Visual feature extraction             |   1266.30 |  1649.12 |
+| Fusion/classifier                     |    134.63 |   194.57 |
+| Warm end-to-end processing            |   2501.15 |  3830.72 |
+
+Warm end-to-end processing is measured independently rather than calculated by summing the individual processing stages.
+
+The warm median was 2174.85 ms, below the approximately 2.5-second live update interval. The mean was 2501.15 ms, approximately equal to that interval, while the p95 was 3830.72 ms and exceeded it. The measured implementation is therefore described cautiously as interactive or near-real-time on the tested CPU environment rather than as universally real-time.
+
+Evidence:
+
+> `data/processed/final_experiments/cpu_latency/`
+
+---
+
 ## Automated Software Testing
 
 SenseFuzeAI includes automated tests at multiple levels:
@@ -840,7 +981,7 @@ python image_live_gui.py
 python live_fusion_gui.py
 ```
 
-The standalone modality GUIs provide direct modality-level demonstrations, while `live_fusion_gui.py` provides the complete four-modality real-time system.
+The standalone modality GUIs provide direct modality-level demonstrations, while `live_fusion_gui.py` provides the complete four-modality interactive near-real-time system.
 
 The multimodal live GUI applies the canonical shared `TemporalFusionEngine` after raw multimodal inference. It requires all four modalities to be ready before producing a multimodal observation and evaluates the input periodically while the live session is active.
 
@@ -933,13 +1074,14 @@ The canonical multimodal inference implementation is:
 
 The `FinalMultimodalInference` class performs one stateless multimodal observation at a time. It:
 
-1. extracts keystroke features;
-2. generates MPNet text embeddings;
-3. generates WavLM/audio features;
-4. generates CLIP image features;
-5. applies optional webcam-calibration diagnostics;
-6. constructs the fusion feature vector in the saved training schema order;
-7. executes the trained fusion classifier;
+1. extracts the 22 engineered keystroke predictors;
+2. generates 768 MPNet text-embedding predictors;
+3. generates 809 WavLM/Librosa audio predictors;
+4. generates 768 CLIP visual-embedding predictors;
+5. derives six webcam-calibrated visual predictors from the visual branch;
+6. constructs the complete 2,373-feature fusion vector in the persisted
+   training-schema order;
+7. executes the trained Random Forest fusion classifier;
 8. returns a normalised four-class raw probability distribution.
 
 Temporal history is deliberately **not stored inside this class**. Temporal aggregation is applied externally by `temporal_fusion.py`, allowing desktop, web, training, and evaluation workflows to share the same implementation.
@@ -1083,6 +1225,8 @@ mapping is treated as exploratory weak supervision.
 eliminate differences between data-collection protocols,
 participant populations, devices, typing tasks, or
 other source-domain characteristics.
+21. The missing-modality robustness experiment uses synthetic zero masking at classifier level. These experimental stress conditions are not currently supported production acquisition modes because the deployed application requires all four modalities to satisfy the complete feature contract.
+22. CPU latency was evaluated on one measured hardware and software environment. Although the median warm processing time was below the approximately 2.5-second live update interval, the measured p95 exceeded that interval. The benchmark therefore does not establish universal real-time performance across other devices or workloads.
 
 ---
 
@@ -1102,7 +1246,7 @@ five-observation arithmetic probability mean
 * learned missing-modality fusion
 * improved probability calibration
 * real-time continuous inference optimisation
-* broader latency and resource benchmarking
+* cross-hardware latency, memory, throughput, and resource benchmarking
 * expanded user testing and interface iteration
 * privacy-preserving behavioural modelling
 * evaluation across additional cameras, microphones, keyboards, users, and physical environments
@@ -1124,7 +1268,7 @@ SenseFuzeAI contributes an end-to-end multimodal behavioural AI framework that i
 * raw-versus-temporal held-out evaluation
 * comparative modality and classifier benchmarking
 * group-aware experimental splitting
-* real-time desktop fusion inference
+* interactive near-real-time desktop fusion inference
 * FastAPI web deployment
 * generation-safe temporal reset handling
 * automated unit, integration, system, acceptance, and smoke testing
@@ -1136,6 +1280,12 @@ representation
 experiments
 * frozen group-aware evaluation splits and paired bootstrap comparison
 * empirical analysis of cross-dataset domain shift
+* leakage-safe leave-one-modality-out fusion ablation
+* classifier-level missing-modality robustness stress testing
+* explicit handling of modality-dependent derived predictors during ablation and masking
+* reproducible CPU-only stage-level and end-to-end latency benchmarking
+* fresh-process cold-start measurement and warm inference profiling
+* persisted CSV/JSON experiment evidence for final evaluation reproducibility
 
 The system demonstrates how multiple pretrained AI models from different data domains can be orchestrated with engineered behavioural features, learned multimodal fusion, temporal post-processing, software integration, and evaluation to achieve a unified behavioural-state prediction goal.
 
@@ -1146,6 +1296,12 @@ The system demonstrates how multiple pretrained AI models from different data do
 ```text
 .
 ├── evaluation_results/
+├── data/
+│   └── processed/
+│       └── final_experiments/
+│           ├── leave_one_modality_out/
+│           ├── missing_modality_robustness/
+│           └── cpu_latency/
 ├── models/
 │   ├── all-mpnet-base-v2/
 │   ├── wavlm-base-plus/
@@ -1159,7 +1315,7 @@ The system demonstrates how multiple pretrained AI models from different data do
 │   ├── test_02_integration.py
 │   ├── test_03_system.py
 │   ├── test_04_acceptance.py
-|   ├── test_05_keystroke_dataset_comparison.py
+│   ├── test_05_keystroke_dataset_comparison.py
 │   └── test_sensefuzeai.py
 ├── utils/
 ├── web_app/
@@ -1176,6 +1332,10 @@ The system demonstrates how multiple pretrained AI models from different data do
 ├── collect_multimodal_session.py
 ├── create_sample_dataset.py
 ├── evaluate_multimodal_results.py
+├── inspect_final_experiments_preflight.py
+├── evaluate_leave_one_modality_out.py
+├── evaluate_missing_modality_robustness.py
+├── benchmark_cpu_inference_latency.py
 ├── final_multimodal_inference.py
 ├── keystroke_live_gui_emosurv_ieee.py
 ├── live_fusion_gui.py
@@ -1204,7 +1364,7 @@ The final SenseFuzeAI runtime follows a deliberate separation of responsibilitie
 Pretrained / learned modality encoders
           │
           ▼
-Keystroke + MPNet + WavLM + CLIP features
+Keystroke + MPNet + WavLM/Librosa + CLIP + visual-derived features
           │
           ▼
 FinalMultimodalInference
