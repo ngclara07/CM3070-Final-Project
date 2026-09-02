@@ -34,7 +34,7 @@ It includes model training pipelines, standalone live
 GUIs, a FastAPI web application, live multimodal
 acquisition, webcam-specific image calibration, a shared
 temporal-fusion module, raw-versus-temporal evaluation, group-aware model comparison, leave-one-modality-out ablation, inference-time missing-modality stress
-testing, reproducible CPU latency benchmarking, automated software testing, and dissertation-ready evaluation outputs.
+testing, reproducible CPU latency benchmarking, automated software testing, formative interface usability evaluation, and dissertation-ready evaluation outputs.
 
 The final runtime architecture separates raw multimodal inference from temporal post-processing. `final_multimodal_inference.py` produces one stateless four-class probability distribution, while the shared `temporal_fusion.py` module performs temporal aggregation for the desktop application, web application, training comparison, and evaluation workflows.
 
@@ -56,6 +56,7 @@ The project aims to:
 8. Validate the integrated software through unit, integration, system, acceptance, smoke, and runtime testing.
 9. Evaluate keystroke-domain generalisation using the multi-user EmoSurv IEEE dataset as an external baseline and compare EmoSurv-only, SenseFuzeAI-only, augmented,   and cross-dataset training configurations.
 10. Quantify modality contribution, inference-time missing-modality sensitivity, and CPU-only computational latency using reproducible final-system experiments.
+11. Conduct a formative usability evaluation of the final web interface to assess interface comprehension,perceived usability, control recognition, and opportunities for user-interface refinement.
 
 ---
 
@@ -440,6 +441,39 @@ Technical panels additionally expose:
 - runtime
 
 This separates the primary behavioural result from implementation and evaluation diagnostics.
+
+--- 
+
+## Formative Usability Evaluation
+
+SenseFuzeAI includes a scenario-based screenshot usability evaluation designed to assess the clarity, visual organisation, control recognition, prediction presentation, and perceived usability of the final web interface.
+
+The evaluation presents representative screenshots of the SenseFuzeAI workflow covering:
+
+* system readiness;
+* multimodal input controls;
+* live-session controls;
+* behavioural-state prediction output;
+* confidence information;
+* raw-versus-temporal prediction presentation; and
+* expandable technical diagnostics.
+
+Participants review the screenshots and complete structured multiple-choice, five-point rating, and open-ended feedback questions.
+
+This evaluation is intentionally described as a screenshot-based formative usability evaluation rather than a hands-on operational usability test. Participants evaluate interface comprehension and perceived usability without directly operating the live SenseFuzeAI application.
+
+Participant-facing documentation is stored under:
+
+> `docs/usability_evaluation/`
+
+Current documents include:
+
+> `sensefuzeAI_PI_and_CF_form.pdf`  
+> `sensefuzeAI_usability_evaluation_questionnaire.pdf`
+
+Only blank evaluation instruments are included in the public repository. Signed consent documentation, participant-identifying information, and non-anonymised responses are not published.
+
+The usability evaluation complements the project's automated unit, integration, system, acceptance, and runtime testing by providing independent user-facing feedback on the final interface design.
 
 ---
 
@@ -1295,6 +1329,10 @@ The system demonstrates how multiple pretrained AI models from different data do
 
 ```text
 .
+├── docs/
+│   └── usability_evaluation/
+│       ├── sensefuzeAI_PI_and_CF_form.pdf
+│       └── sensefuzeAI_usability_evaluation_questionnaire.pdf
 ├── evaluation_results/
 ├── data/
 │   └── processed/
@@ -1350,9 +1388,11 @@ The system demonstrates how multiple pretrained AI models from different data do
 └── README.md
 ```
 
-The repository includes application source code, model-training and comparison pipelines, the canonical temporal-fusion implementation, evaluation utilities, automated tests, selected model-support files, processed evaluation artifacts, and a balanced demonstration dataset.
+The repository includes application source code model-training and comparison pipelines, the canonical temporal-fusion implementation, evaluation utilities, automated tests, usability-evaluation documentation, selected model-support files, processed evaluation artifacts, and a balanced demonstration dataset.
 
-The complete research dataset, large pretrained model weight files, local virtual environments, caches, temporary browser/server uploads, archives, and unnecessary generated artefacts are intentionally excluded where appropriate.
+The `docs/usability_evaluation/` directory contains the blank participant-facing materials used to support the formative SenseFuzeAI interface evaluation. Completed consent records, participant-identifying information, and non-anonymised questionnaire responses are intentionally excluded from the public repository.
+
+The complete research dataset, large pretrained model weight files, local virtual environments, caches, temporary browser/server uploads, archives, identifiable participant records, and unnecessary generated artefacts are intentionally excluded where appropriate.
 
 ---
 
