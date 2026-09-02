@@ -1,5 +1,15 @@
 # === web_app/app.py ===
-# command to run: python -m uvicorn web_app.app:app --reload
+#
+# Local development:
+#   python -m uvicorn web_app.app:app --reload
+#
+# Render production:
+#   uvicorn web_app.app:app --host 0.0.0.0 --port $PORT
+#
+# IMPORTANT:
+# Heavy ML models are intentionally loaded lazily.
+# They are NOT loaded during FastAPI/Uvicorn startup.
+# This allows Render to bind its HTTP port promptly.
 
 from __future__ import annotations
 
@@ -95,18 +105,26 @@ if str(ROOT_DIR) not in sys.path:
         str(ROOT_DIR),
     )
 
+# Retained because the existing inference modules may rely on
+# repository-root-relative paths.
 os.chdir(
     ROOT_DIR
 )
 
 
 # ============================================================
-# CANONICAL INFERENCE IMPLEMENTATIONS
+# LIGHTWEIGHT CANONICAL IMPLEMENTATIONS
 # ============================================================
-
-from final_multimodal_inference import (  # noqa: E402
-    FinalMultimodalInference,
-)
+#
+# IMPORTANT:
+# FinalMultimodalInference is deliberately NOT imported here.
+#
+# Importing it at module level may transitively import/load
+# heavyweight ML frameworks and models before Uvicorn can bind
+# Render's HTTP port.
+#
+# It is imported lazily inside initialise_models().
+# ============================================================
 
 from temporal_fusion import (  # noqa: E402
     LABELS,
@@ -917,10 +935,18 @@ LOG_LOCK = (
 # ============================================================
 # PREDICTOR
 # ============================================================
+#
+# IMPORTANT:
+# predictor starts as None intentionally.
+#
+# The complete multimodal ML backend is not constructed during
+# application startup. It is loaded only when /predict_live
+# actually needs inference.
+# ============================================================
 
-predictor: Optional[
-    FinalMultimodalInference
-] = None
+predictor: Optional[Any] = None
+
+PREDICTOR_INITIALISED = False
 
 
 MODEL_STATUS: dict[
@@ -1000,12 +1026,16 @@ MODEL_STATUS: dict[
         "webcam",
     ],
 
-    # Source changes reset temporal history.
-    # Individual microphone PCM packets do NOT.
     "input_change_resets_temporal":
         True,
 
     "stream_packets_reset_temporal":
+        False,
+
+    "lazy_loading":
+        True,
+
+    "initialised":
         False,
 
     "error":
@@ -1014,56 +1044,165 @@ MODEL_STATUS: dict[
 
 
 def initialise_models() -> None:
+    """
+    Lazily initialise the multimodal predictor.
+
+    CRITICAL RENDER DEPLOYMENT REQUIREMENT:
+    This function must NOT be called from FastAPI's lifespan
+    startup hook.
+
+    Loading the complete multimodal inference backend can be
+    CPU-, memory-, disk-, and network-intensive. Performing
+    this work before Uvicorn binds the HTTP port can cause
+    Render's:
+
+        "Port scan timeout reached, no open ports detected"
+
+    deployment failure.
+    """
 
     global predictor
+    global PREDICTOR_INITIALISED
 
-    try:
+    # Fast path.
+    if (
+        PREDICTOR_INITIALISED
+        and predictor is not None
+    ):
+        return
 
-        predictor = (
-            FinalMultimodalInference()
-        )
+    with PREDICTOR_LOCK:
 
-        MODEL_STATUS.update(
-            {
-                "text_model":
-                    True,
+        # Double-check after acquiring lock because another
+        # request may have completed initialization while this
+        # request was waiting.
+        if (
+            PREDICTOR_INITIALISED
+            and predictor is not None
+        ):
+            return
 
-                "audio_model":
-                    True,
+        try:
 
-                "image_model":
-                    True,
+            print(
+                "[models] Importing multimodal "
+                "inference backend...",
+                flush=True,
+            )
 
-                "keystroke_model":
-                    True,
+            # ------------------------------------------------
+            # LAZY HEAVY IMPORT
+            #
+            # Do not move this import back to module scope.
+            # ------------------------------------------------
 
-                "fusion_model":
-                    True,
+            from final_multimodal_inference import (
+                FinalMultimodalInference,
+            )
 
-                "webcam_calibrated_image_model":
-                    (
-                        predictor.webcam_image_model
-                        is not None
-                    ),
+            print(
+                "[models] Initialising multimodal "
+                "models...",
+                flush=True,
+            )
 
-                "error":
-                    None,
-            }
-        )
+            new_predictor = (
+                FinalMultimodalInference()
+            )
 
-    except Exception as exc:
+            # Only publish the predictor after successful
+            # construction.
+            predictor = new_predictor
 
-        predictor = None
+            PREDICTOR_INITIALISED = True
 
-        MODEL_STATUS.update(
-            {
-                "fusion_model":
-                    False,
+            MODEL_STATUS.update(
+                {
+                    "text_model":
+                        True,
 
-                "error":
-                    str(exc),
-            }
-        )
+                    "audio_model":
+                        True,
+
+                    "image_model":
+                        True,
+
+                    "keystroke_model":
+                        True,
+
+                    "fusion_model":
+                        True,
+
+                    "webcam_calibrated_image_model":
+                        (
+                            getattr(
+                                predictor,
+                                "webcam_image_model",
+                                None,
+                            )
+                            is not None
+                        ),
+
+                    "initialised":
+                        True,
+
+                    "error":
+                        None,
+                }
+            )
+
+            print(
+                "[models] Multimodal models "
+                "initialised successfully.",
+                flush=True,
+            )
+
+        except Exception as exc:
+
+            predictor = None
+
+            PREDICTOR_INITIALISED = False
+
+            error_message = (
+                f"{type(exc).__name__}: {exc}"
+            )
+
+            MODEL_STATUS.update(
+                {
+                    "text_model":
+                        False,
+
+                    "audio_model":
+                        False,
+
+                    "image_model":
+                        False,
+
+                    "keystroke_model":
+                        False,
+
+                    "fusion_model":
+                        False,
+
+                    "webcam_calibrated_image_model":
+                        False,
+
+                    "initialised":
+                        False,
+
+                    "error":
+                        error_message,
+                }
+            )
+
+            print(
+                "[models] Model initialisation "
+                "failed: "
+                f"{error_message}",
+                flush=True,
+            )
+
+            raise
 
 
 # ============================================================
@@ -1524,6 +1663,8 @@ def run_canonical_prediction(
             "Canonical fusion model is unavailable."
         )
 
+    # Predictor inference itself is serialized because the
+    # existing multimodal backend may not be thread-safe.
     with PREDICTOR_LOCK:
 
         return predictor.predict(
@@ -2077,7 +2218,16 @@ def log_prediction(
 
 
 # ============================================================
-# LIFESPAN
+# FASTAPI LIFESPAN
+# ============================================================
+#
+# CRITICAL FIX:
+#
+# DO NOT call initialise_models() here.
+#
+# Render needs the FastAPI process to reach the lifespan yield
+# quickly so Uvicorn can finish application startup and expose
+# its HTTP listening port.
 # ============================================================
 
 @asynccontextmanager
@@ -2085,11 +2235,52 @@ async def lifespan(
     _app: FastAPI,
 ):
 
-    initialise_log_file()
+    print(
+        "[startup] Initialising web application...",
+        flush=True,
+    )
 
-    initialise_models()
+    # Log setup is lightweight. It is kept here, but a logging
+    # filesystem failure should not prevent the HTTP service
+    # from starting.
+    try:
+
+        initialise_log_file()
+
+        print(
+            "[startup] Prediction log ready.",
+            flush=True,
+        )
+
+    except Exception as exc:
+
+        print(
+            "[startup] WARNING: Could not initialise "
+            "prediction log: "
+            f"{type(exc).__name__}: {exc}",
+            flush=True,
+        )
+
+    print(
+        "[startup] Web application ready. "
+        "ML models will be loaded lazily "
+        "on the first prediction request.",
+        flush=True,
+    )
+
+    # --------------------------------------------------------
+    # Yield immediately.
+    #
+    # This allows Uvicorn to complete startup and bind Render's
+    # $PORT before heavyweight ML initialization occurs.
+    # --------------------------------------------------------
 
     yield
+
+    print(
+        "[shutdown] Web application shutting down.",
+        flush=True,
+    )
 
 
 # ============================================================
@@ -2107,7 +2298,7 @@ app = FastAPI(
 app.mount(
     "/static",
     StaticFiles(
-        directory=(
+        directory=str(
             WEB_DIR
             / "static"
         )
@@ -2118,7 +2309,7 @@ app.mount(
 
 templates = (
     Jinja2Templates(
-        directory=(
+        directory=str(
             WEB_DIR
             / "templates"
         )
@@ -2148,14 +2339,29 @@ def index(
     "/health"
 )
 def health() -> dict[str, Any]:
+    """
+    Lightweight web-service health check.
+
+    predictor_loaded=False is NOT an application error.
+    It simply means inference has not yet been requested.
+    """
 
     return {
         "status":
-            (
-                "ok"
-                if predictor
-                is not None
-                else "error"
+            "ok",
+
+        "service":
+            "web",
+
+        "predictor_loaded":
+            predictor is not None,
+
+        "predictor_initialised":
+            PREDICTOR_INITIALISED,
+
+        "model_error":
+            MODEL_STATUS.get(
+                "error"
             ),
 
         "timestamp":
@@ -2191,9 +2397,15 @@ def health() -> dict[str, Any]:
 )
 def model_status() -> dict[str, Any]:
 
-    return dict(
-        MODEL_STATUS
-    )
+    return {
+        **MODEL_STATUS,
+
+        "predictor_loaded":
+            predictor is not None,
+
+        "initialised":
+            PREDICTOR_INITIALISED,
+    }
 
 
 # ============================================================
@@ -2635,7 +2847,6 @@ async def audio_stream_socket(
 
                 continue
 
-            # PCM16 must contain complete two-byte samples.
             if len(chunk) % 2 != 0:
                 chunk = chunk[:-1]
 
@@ -2682,7 +2893,6 @@ async def audio_stream_socket(
 
                     if overflow > 0:
 
-                        # Preserve PCM16 sample alignment.
                         if overflow % 2 != 0:
                             overflow += 1
 
@@ -2799,9 +3009,6 @@ async def audio_stream_socket(
 
     finally:
 
-        # Unexpected transport loss means the microphone source
-        # is no longer valid. Reset temporal history once so an
-        # in-flight prediction cannot append after audio loss.
         with SESSION_LOCK:
 
             state = SESSION_STATES.get(
@@ -3186,14 +3393,40 @@ async def predict_live(
 
 ) -> JSONResponse:
 
+    # --------------------------------------------------------
+    # CRITICAL FIX:
+    #
+    # Lazy-load the multimodal ML backend here instead of
+    # during FastAPI application startup.
+    # --------------------------------------------------------
+
+    if predictor is None:
+
+        try:
+
+            await asyncio.to_thread(
+                initialise_models
+            )
+
+        except Exception as exc:
+
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Canonical fusion backend "
+                    "could not be initialised: "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            ) from exc
+
+    # Defensive verification.
     if predictor is None:
 
         raise HTTPException(
             status_code=503,
             detail=(
                 "Canonical fusion backend "
-                "is unavailable: "
-                f"{MODEL_STATUS.get('error')}"
+                "is unavailable after initialization."
             ),
         )
 
@@ -3232,14 +3465,6 @@ async def predict_live(
                 f"{MIN_KEYPRESSES}."
             ),
         )
-
-    # --------------------------------------------------------
-    # Snapshot session state.
-    #
-    # Audio is copied into memory under the lock so that a
-    # concurrent source change cannot delete/replace the data
-    # while the model is reading it.
-    # --------------------------------------------------------
 
     captured_audio_bytes: Optional[
         bytes
@@ -3323,10 +3548,6 @@ async def predict_live(
             state.visual_started_at
         )
 
-        # ----------------------------------------------------
-        # Streaming microphone snapshot
-        # ----------------------------------------------------
-
         if (
             audio_source_kind
             == "microphone_stream"
@@ -3375,10 +3596,6 @@ async def predict_live(
                 state.audio_diagnostics
             )
 
-        # ----------------------------------------------------
-        # Fixed-file audio snapshot
-        # ----------------------------------------------------
-
         elif (
             state.audio_path
             is not None
@@ -3411,10 +3628,6 @@ async def predict_live(
                 ),
             )
 
-    # --------------------------------------------------------
-    # Visual gating
-    # --------------------------------------------------------
-
     if (
         captured_visual_mode
         not in {
@@ -3445,10 +3658,6 @@ async def predict_live(
 
     try:
 
-        # ----------------------------------------------------
-        # Keystroke input
-        # ----------------------------------------------------
-
         keystroke_path = (
             create_keystroke_json(
                 session_id=session_id,
@@ -3456,11 +3665,6 @@ async def predict_live(
                 events=events,
             )
         )
-
-        # ----------------------------------------------------
-        # Create immutable audio snapshot used by this
-        # particular inference request.
-        # ----------------------------------------------------
 
         if captured_audio_pcm is not None:
 
@@ -3513,10 +3717,6 @@ async def predict_live(
                 temporary_audio_path
             )
 
-        # ----------------------------------------------------
-        # Static image
-        # ----------------------------------------------------
-
         if (
             captured_visual_mode
             == "image"
@@ -3536,10 +3736,6 @@ async def predict_live(
                 )
 
             image_path = visual_path
-
-        # ----------------------------------------------------
-        # Video
-        # ----------------------------------------------------
 
         elif (
             captured_visual_mode
@@ -3582,10 +3778,6 @@ async def predict_live(
                 ),
             )
 
-        # ----------------------------------------------------
-        # Webcam
-        # ----------------------------------------------------
-
         else:
 
             if not webcam_frame:
@@ -3615,10 +3807,6 @@ async def predict_live(
                 temporary_image_path,
             )
 
-        # ----------------------------------------------------
-        # Raw multimodal inference
-        # ----------------------------------------------------
-
         raw_result = await asyncio.to_thread(
             run_canonical_prediction,
             keystroke_json=(
@@ -3632,10 +3820,6 @@ async def predict_live(
                 image_path
             ),
         )
-
-        # ----------------------------------------------------
-        # Temporal aggregation
-        # ----------------------------------------------------
 
         try:
 
@@ -3705,11 +3889,6 @@ async def predict_live(
                 },
             ) from exc
 
-        # ----------------------------------------------------
-        # Confirm session/engine identity did not change
-        # during inference.
-        # ----------------------------------------------------
-
         with SESSION_LOCK:
 
             current_state = get_session(
@@ -3748,22 +3927,36 @@ async def predict_live(
             "audio_source_name"
         ] = audio_name
 
-        log_prediction(
-            session_id=session_id,
-            generation=(
-                result[
-                    "generation"
-                ]
-            ),
-            text=text,
-            keystroke_count=(
-                keydown_count
-            ),
-            audio_name=(
-                audio_name
-            ),
-            result=result,
-        )
+        # Logging should not destroy an otherwise valid
+        # inference response if the ephemeral filesystem
+        # encounters a problem.
+        try:
+
+            log_prediction(
+                session_id=session_id,
+                generation=(
+                    result[
+                        "generation"
+                    ]
+                ),
+                text=text,
+                keystroke_count=(
+                    keydown_count
+                ),
+                audio_name=(
+                    audio_name
+                ),
+                result=result,
+            )
+
+        except Exception as log_exc:
+
+            print(
+                "[logging] WARNING: Prediction "
+                "could not be written: "
+                f"{type(log_exc).__name__}: {log_exc}",
+                flush=True,
+            )
 
         return JSONResponse(
             result
@@ -3800,10 +3993,6 @@ async def predict_live(
 
 # ============================================================
 # TEMPORAL RESET
-#
-# IMPORTANT:
-# The microphone WebSocket stays alive.
-# Only probability history / generation is reset.
 # ============================================================
 
 @app.post(
@@ -3987,12 +4176,30 @@ async def full_reset(
 # ============================================================
 # ENTRY POINT
 # ============================================================
+#
+# Render itself uses:
+#
+#   uvicorn web_app.app:app --host 0.0.0.0 --port $PORT
+#
+# This block is retained so that running:
+#
+#   python web_app/app.py
+#
+# is also compatible with cloud environments.
+# ============================================================
 
 if __name__ == "__main__":
 
+    port = int(
+        os.environ.get(
+            "PORT",
+            "8000",
+        )
+    )
+
     uvicorn.run(
         "web_app.app:app",
-        host="127.0.0.1",
-        port=8000,
+        host="0.0.0.0",
+        port=port,
         reload=False,
     )
