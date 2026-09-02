@@ -24,6 +24,7 @@ import statistics
 import sys
 import threading
 import time
+import traceback
 import uuid
 import wave
 
@@ -48,12 +49,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-
-from fastapi.responses import (
-    HTMLResponse,
-    JSONResponse,
-)
-
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -62,68 +58,29 @@ from fastapi.templating import Jinja2Templates
 # PATHS
 # ============================================================
 
-ROOT_DIR = (
-    Path(__file__)
-    .resolve()
-    .parents[1]
-)
+ROOT_DIR = Path(__file__).resolve().parents[1]
+WEB_DIR = Path(__file__).resolve().parent
 
-WEB_DIR = (
-    Path(__file__)
-    .resolve()
-    .parent
-)
+UPLOAD_DIR = WEB_DIR / "uploads"
+OUTPUT_DIR = WEB_DIR / "output"
+LOG_FILE = OUTPUT_DIR / "live_predictions.csv"
 
-UPLOAD_DIR = (
-    WEB_DIR
-    / "uploads"
-)
-
-OUTPUT_DIR = (
-    WEB_DIR
-    / "output"
-)
-
-LOG_FILE = (
-    OUTPUT_DIR
-    / "live_predictions.csv"
-)
-
-UPLOAD_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
-
-OUTPUT_DIR.mkdir(
-    parents=True,
-    exist_ok=True,
-)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(
-        0,
-        str(ROOT_DIR),
-    )
+    sys.path.insert(0, str(ROOT_DIR))
 
-# Retained because the existing inference modules may rely on
-# repository-root-relative paths.
-os.chdir(
-    ROOT_DIR
-)
+# Retained for compatibility with existing project modules that
+# resolve files relative to repository root.
+os.chdir(ROOT_DIR)
 
 
 # ============================================================
-# LIGHTWEIGHT CANONICAL IMPLEMENTATIONS
-# ============================================================
+# LIGHTWEIGHT TEMPORAL COMPONENTS
 #
 # IMPORTANT:
-# FinalMultimodalInference is deliberately NOT imported here.
-#
-# Importing it at module level may transitively import/load
-# heavyweight ML frameworks and models before Uvicorn can bind
-# Render's HTTP port.
-#
-# It is imported lazily inside initialise_models().
+# Do NOT import final_multimodal_inference here.
 # ============================================================
 
 from temporal_fusion import (  # noqa: E402
@@ -148,17 +105,10 @@ LIVE_INTERVAL_MS = 2500
 
 TARGET_SR = 16000
 
-# Continuous microphone server-side rolling window.
 AUDIO_STREAM_WINDOW_SECONDS = 10.0
-
-# Inference will not use microphone audio until at least this
-# much continuous PCM has arrived.
 AUDIO_STREAM_MIN_SECONDS = 2.0
-
-# WebSocket diagnostic acknowledgement frequency.
 AUDIO_STREAM_ACK_SECONDS = 0.40
 
-# Maximum accepted binary WebSocket frame.
 MAX_AUDIO_PACKET_BYTES = 1024 * 1024
 
 NEAR_SILENCE_DBFS = -50.0
@@ -169,70 +119,43 @@ QUIET_AUDIO_DBFS = -35.0
 # GENERIC HELPERS
 # ============================================================
 
-def safe_mean(
-    values: list[float],
-) -> float:
-
-    return (
-        statistics.mean(values)
-        if values
-        else 0.0
-    )
+def safe_mean(values: list[float]) -> float:
+    return statistics.mean(values) if values else 0.0
 
 
-def safe_std(
-    values: list[float],
-) -> float:
-
-    return (
-        statistics.stdev(values)
-        if len(values) >= 2
-        else 0.0
-    )
+def safe_std(values: list[float]) -> float:
+    return statistics.stdev(values) if len(values) >= 2 else 0.0
 
 
-def safe_delete(
-    path: Optional[Path],
-) -> None:
-
+def safe_delete(path: Optional[Path]) -> None:
     if path is None:
         return
 
     try:
-        path.unlink(
-            missing_ok=True
-        )
+        path.unlink(missing_ok=True)
     except Exception:
         pass
 
 
 # ============================================================
-# KEYSTROKE FEATURE CONSTRUCTION
+# KEYSTROKE FEATURES
 # ============================================================
 
 def build_live_keystroke_features(
     typed_text: str,
-    events: list[
-        dict[str, Any]
-    ],
+    events: list[dict[str, Any]],
 ) -> dict[str, float]:
 
     downs = [
         event
         for event in events
-        if event.get("type")
-        == "down"
+        if event.get("type") == "down"
     ]
 
     down_times = [
-        float(
-            event["timestamp_perf"]
-        )
+        float(event["timestamp_perf"])
         for event in downs
-        if event.get(
-            "timestamp_perf"
-        )
-        is not None
+        if event.get("timestamp_perf") is not None
     ]
 
     if len(down_times) < 2:
@@ -244,125 +167,74 @@ def build_live_keystroke_features(
 
     if keydown_count < MIN_KEYPRESSES:
         raise ValueError(
-            f"At least {MIN_KEYPRESSES} "
-            "key-down events are required."
+            f"At least {MIN_KEYPRESSES} key-down events are required."
         )
 
     delays = [
-        down_times[index]
-        - down_times[index - 1]
-        for index
-        in range(
-            1,
-            len(down_times),
-        )
+        down_times[index] - down_times[index - 1]
+        for index in range(1, len(down_times))
     ]
 
+    active_downs: dict[str, list[float]] = {}
     hold_times: list[float] = []
 
-    active_downs: dict[
-        str,
-        list[float],
-    ] = {}
-
     for event in events:
-
         key = event.get("key")
         event_type = event.get("type")
-        timestamp = event.get(
-            "timestamp_perf"
-        )
+        timestamp = event.get("timestamp_perf")
 
-        if (
-            key is None
-            or timestamp is None
-        ):
+        if key is None or timestamp is None:
             continue
 
-        timestamp = float(
-            timestamp
-        )
+        timestamp = float(timestamp)
 
         if event_type == "down":
-
             active_downs.setdefault(
                 str(key),
                 [],
-            ).append(
-                timestamp
-            )
+            ).append(timestamp)
 
         elif event_type == "up":
-
-            queue = active_downs.get(
-                str(key)
-            )
+            queue = active_downs.get(str(key))
 
             if queue:
-
                 down_time = queue.pop(0)
+                duration = timestamp - down_time
 
-                duration = (
-                    timestamp
-                    - down_time
-                )
+                if duration >= 0:
+                    hold_times.append(duration)
 
-                if duration >= 0.0:
-                    hold_times.append(
-                        duration
-                    )
-
-    total_duration = (
-        down_times[-1]
-        - down_times[0]
-    )
-
-    word_count = len(
-        typed_text.split()
-    )
+    total_duration = down_times[-1] - down_times[0]
+    word_count = len(typed_text.split())
 
     correction_count = sum(
         1
         for event in downs
         if event.get("key")
-        in {
-            "backspace",
-            "delete",
-        }
+        in {"backspace", "delete"}
     )
 
     pauses_1000 = [
-        value
-        for value in delays
+        value for value in delays
         if value >= 1.0
     ]
 
     pauses_2000 = [
-        value
-        for value in delays
+        value for value in delays
         if value >= 2.0
     ]
 
     pauses_5000 = [
-        value
-        for value in delays
+        value for value in delays
         if value >= 5.0
     ]
 
-    delay_mean = safe_mean(
-        delays
-    )
-
-    delay_std = safe_std(
-        delays
-    )
+    delay_mean = safe_mean(delays)
+    delay_std = safe_std(delays)
 
     return {
         "total_duration_sec":
-            round(
-                total_duration,
-                4,
-            ),
+            round(total_duration, 4),
 
         "keydown_count":
             keydown_count,
@@ -371,180 +243,115 @@ def build_live_keystroke_features(
             word_count,
 
         "typing_speed_kps":
-            (
-                round(
-                    keydown_count
-                    / total_duration,
-                    4,
-                )
-                if total_duration > 0.0
-                else 0.0
-            ),
+            round(
+                keydown_count / total_duration,
+                4,
+            )
+            if total_duration > 0
+            else 0.0,
 
         "typing_speed_wpm":
-            (
-                round(
-                    (
-                        word_count
-                        / total_duration
-                    )
-                    * 60.0,
-                    4,
-                )
-                if total_duration > 0.0
-                else 0.0
-            ),
+            round(
+                (word_count / total_duration) * 60,
+                4,
+            )
+            if total_duration > 0
+            else 0.0,
 
         "delay_mean":
-            round(
-                delay_mean,
-                4,
-            ),
+            round(delay_mean, 4),
 
         "delay_std":
-            round(
-                delay_std,
-                4,
-            ),
+            round(delay_std, 4),
 
         "delay_min":
-            (
-                round(
-                    min(delays),
-                    4,
-                )
-                if delays
-                else 0.0
-            ),
+            round(min(delays), 4)
+            if delays
+            else 0.0,
 
         "delay_max":
-            (
-                round(
-                    max(delays),
-                    4,
-                )
-                if delays
-                else 0.0
-            ),
+            round(max(delays), 4)
+            if delays
+            else 0.0,
 
         "hold_mean":
-            round(
-                safe_mean(
-                    hold_times
-                ),
-                4,
-            ),
+            round(safe_mean(hold_times), 4),
 
         "hold_std":
-            round(
-                safe_std(
-                    hold_times
-                ),
-                4,
-            ),
+            round(safe_std(hold_times), 4),
 
         "pause_count_1000":
-            len(
-                pauses_1000
-            ),
+            len(pauses_1000),
 
         "pause_count_2000":
-            len(
-                pauses_2000
-            ),
+            len(pauses_2000),
 
         "pause_count_5000":
-            len(
-                pauses_5000
-            ),
+            len(pauses_5000),
 
         "pause_ratio_1000":
-            (
-                round(
-                    len(pauses_1000)
-                    / len(delays),
-                    4,
-                )
-                if delays
-                else 0.0
-            ),
+            round(
+                len(pauses_1000) / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
         "pause_ratio_2000":
-            (
-                round(
-                    len(pauses_2000)
-                    / len(delays),
-                    4,
-                )
-                if delays
-                else 0.0
-            ),
+            round(
+                len(pauses_2000) / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
         "mental_block_ratio_5000":
-            (
-                round(
-                    len(pauses_5000)
-                    / len(delays),
-                    4,
-                )
-                if delays
-                else 0.0
-            ),
+            round(
+                len(pauses_5000) / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
 
         "correction_count":
             correction_count,
 
         "correction_ratio":
-            (
-                round(
-                    correction_count
-                    / keydown_count,
-                    4,
-                )
-                if keydown_count
-                else 0.0
-            ),
+            round(
+                correction_count / keydown_count,
+                4,
+            )
+            if keydown_count
+            else 0.0,
 
         "rhythm_consistency":
-            (
-                round(
-                    1.0
-                    / (
-                        1.0
-                        + delay_std
-                    ),
-                    4,
-                )
-                if delays
-                else 1.0
-            ),
+            round(
+                1.0 / (1.0 + delay_std),
+                4,
+            )
+            if delays
+            else 1.0,
 
         "burstiness_proxy":
-            (
-                round(
-                    delay_std
-                    / delay_mean,
-                    4,
-                )
-                if delay_mean > 0.0
-                else 0.0
-            ),
+            round(
+                delay_std / delay_mean,
+                4,
+            )
+            if delay_mean > 0
+            else 0.0,
 
         "fits_starts_index":
-            (
-                round(
-                    len(pauses_1000)
-                    / len(delays),
-                    4,
-                )
-                if delays
-                else 0.0
-            ),
+            round(
+                len(pauses_1000) / len(delays),
+                4,
+            )
+            if delays
+            else 0.0,
     }
 
 
 # ============================================================
-# AUDIO DIAGNOSTICS
+# AUDIO
 # ============================================================
 
 def classify_audio_energy(
@@ -555,45 +362,26 @@ def classify_audio_energy(
 ) -> dict[str, Any]:
 
     if dbfs <= NEAR_SILENCE_DBFS:
-
         condition = "near-silence"
-
         note = (
             "Valid quiet-environment audio input; "
             "it does not force the focused label."
         )
 
     elif dbfs <= QUIET_AUDIO_DBFS:
-
         condition = "quiet"
-
-        note = (
-            "Low-energy audio input."
-        )
+        note = "Low-energy audio input."
 
     else:
-
         condition = "active-audio"
-
-        note = (
-            "Audible signal detected."
-        )
+        note = "Audible signal detected."
 
     return {
-        "condition":
-            condition,
-
-        "duration_sec":
-            float(duration),
-
-        "rms":
-            float(rms),
-
-        "dbfs":
-            float(dbfs),
-
-        "note":
-            note,
+        "condition": condition,
+        "duration_sec": float(duration),
+        "rms": float(rms),
+        "dbfs": float(dbfs),
+        "note": note,
     }
 
 
@@ -602,14 +390,11 @@ def analyse_audio_file(
 ) -> dict[str, Any]:
 
     try:
-
-        waveform, sample_rate = (
-            librosa.load(
-                path,
-                sr=TARGET_SR,
-                mono=True,
-                duration=20.0,
-            )
+        waveform, sample_rate = librosa.load(
+            path,
+            sr=TARGET_SR,
+            mono=True,
+            duration=20.0,
         )
 
         waveform = np.asarray(
@@ -618,47 +403,26 @@ def analyse_audio_file(
         )
 
         if waveform.size == 0:
-
             return {
-                "condition":
-                    "empty",
-
-                "duration_sec":
-                    0.0,
-
-                "rms":
-                    0.0,
-
-                "dbfs":
-                    -120.0,
-
-                "note":
-                    "Audio contains no samples.",
+                "condition": "empty",
+                "duration_sec": 0.0,
+                "rms": 0.0,
+                "dbfs": -120.0,
+                "note": "Audio contains no samples.",
             }
 
-        duration = (
-            waveform.size
-            / sample_rate
-        )
+        duration = waveform.size / sample_rate
 
         rms = float(
             np.sqrt(
                 np.mean(
-                    np.square(
-                        waveform
-                    )
+                    np.square(waveform)
                 )
             )
         )
 
-        dbfs = (
-            20.0
-            * math.log10(
-                max(
-                    rms,
-                    1e-12,
-                )
-            )
+        dbfs = 20.0 * math.log10(
+            max(rms, 1e-12)
         )
 
         return classify_audio_energy(
@@ -668,25 +432,14 @@ def analyse_audio_file(
         )
 
     except Exception as exc:
-
         return {
-            "condition":
-                "unknown",
-
-            "duration_sec":
-                None,
-
-            "rms":
-                None,
-
-            "dbfs":
-                None,
-
+            "condition": "unknown",
+            "duration_sec": None,
+            "rms": None,
+            "dbfs": None,
             "note":
-                (
-                    "Audio diagnostic failed: "
-                    f"{exc}"
-                ),
+                "Audio diagnostic failed: "
+                f"{type(exc).__name__}: {exc}",
         }
 
 
@@ -695,47 +448,25 @@ def analyse_pcm16_bytes(
 ) -> dict[str, Any]:
 
     if not pcm_bytes:
-
         return {
-            "condition":
-                "empty",
-
-            "duration_sec":
-                0.0,
-
-            "rms":
-                0.0,
-
-            "dbfs":
-                -120.0,
-
+            "condition": "empty",
+            "duration_sec": 0.0,
+            "rms": 0.0,
+            "dbfs": -120.0,
             "note":
                 "No streamed microphone samples available.",
         }
 
-    usable_length = (
-        len(pcm_bytes)
-        - (
-            len(pcm_bytes)
-            % 2
-        )
+    usable_length = len(pcm_bytes) - (
+        len(pcm_bytes) % 2
     )
 
     if usable_length <= 0:
-
         return {
-            "condition":
-                "empty",
-
-            "duration_sec":
-                0.0,
-
-            "rms":
-                0.0,
-
-            "dbfs":
-                -120.0,
-
+            "condition": "empty",
+            "duration_sec": 0.0,
+            "rms": 0.0,
+            "dbfs": -120.0,
             "note":
                 "No complete PCM16 samples available.",
         }
@@ -745,35 +476,22 @@ def analyse_pcm16_bytes(
             pcm_bytes[:usable_length],
             dtype="<i2",
         )
-        .astype(
-            np.float32
-        )
+        .astype(np.float32)
         / 32768.0
     )
 
-    duration = (
-        samples.size
-        / TARGET_SR
-    )
+    duration = samples.size / TARGET_SR
 
     rms = float(
         np.sqrt(
             np.mean(
-                np.square(
-                    samples
-                )
+                np.square(samples)
             )
         )
     )
 
-    dbfs = (
-        20.0
-        * math.log10(
-            max(
-                rms,
-                1e-12,
-            )
-        )
+    dbfs = 20.0 * math.log10(
+        max(rms, 1e-12)
     )
 
     return classify_audio_energy(
@@ -789,16 +507,11 @@ def write_pcm16_wav(
     pcm_bytes: bytes,
 ) -> Path:
 
-    usable_length = (
-        len(pcm_bytes)
-        - (
-            len(pcm_bytes)
-            % 2
-        )
+    usable_length = len(pcm_bytes) - (
+        len(pcm_bytes) % 2
     )
 
     if usable_length <= 0:
-
         raise ValueError(
             "Cannot create WAV from empty PCM data."
         )
@@ -808,22 +521,11 @@ def write_pcm16_wav(
         "wb",
     ) as wav_file:
 
-        wav_file.setnchannels(
-            1
-        )
-
-        wav_file.setsampwidth(
-            2
-        )
-
-        wav_file.setframerate(
-            TARGET_SR
-        )
-
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(TARGET_SR)
         wav_file.writeframes(
-            pcm_bytes[
-                :usable_length
-            ]
+            pcm_bytes[:usable_length]
         )
 
     return path
@@ -835,139 +537,70 @@ def write_pcm16_wav(
 
 @dataclass
 class SessionState:
-
-    temporal_fusion: TemporalFusionEngine = (
-        field(
-            default_factory=(
-                TemporalFusionEngine
-            )
-        )
+    temporal_fusion: TemporalFusionEngine = field(
+        default_factory=TemporalFusionEngine
     )
 
     last_seen: float = field(
         default_factory=time.time
     )
 
-    # --------------------------------------------------------
-    # Fixed audio-file mode
-    # --------------------------------------------------------
-
-    audio_path: Optional[
-        Path
-    ] = None
-
-    audio_name: Optional[
-        str
-    ] = None
-
-    audio_source_kind: Optional[
-        str
-    ] = None
-
-    audio_diagnostics: dict[
-        str,
-        Any
-    ] = field(
+    audio_path: Optional[Path] = None
+    audio_name: Optional[str] = None
+    audio_source_kind: Optional[str] = None
+    audio_diagnostics: dict[str, Any] = field(
         default_factory=dict
     )
 
-    # --------------------------------------------------------
-    # Continuous microphone mode
-    # --------------------------------------------------------
-
-    audio_stream_active: bool = (
-        False
-    )
-
-    audio_stream_token: Optional[
-        str
-    ] = None
-
+    audio_stream_active: bool = False
+    audio_stream_token: Optional[str] = None
     audio_pcm_buffer: bytearray = field(
         default_factory=bytearray
     )
-
     audio_stream_packets: int = 0
-
     audio_stream_last_packet_at: Optional[
         float
     ] = None
 
-    # --------------------------------------------------------
-    # Visual source
-    # --------------------------------------------------------
-
-    visual_mode: str = (
-        "none"
-    )
-
-    visual_path: Optional[
-        Path
-    ] = None
-
-    visual_name: Optional[
-        str
-    ] = None
-
-    visual_started_at: Optional[
-        float
-    ] = None
+    visual_mode: str = "none"
+    visual_path: Optional[Path] = None
+    visual_name: Optional[str] = None
+    visual_started_at: Optional[float] = None
 
 
 SESSION_STATES: dict[
     str,
-    SessionState
+    SessionState,
 ] = {}
 
-SESSION_LOCK = (
-    threading.RLock()
-)
+SESSION_LOCK = threading.RLock()
 
-PREDICTOR_LOCK = (
-    threading.Lock()
-)
-
-LOG_LOCK = (
-    threading.Lock()
-)
+# Separate locks are intentional.
+MODEL_INIT_LOCK = threading.Lock()
+PREDICTOR_LOCK = threading.Lock()
+LOG_LOCK = threading.Lock()
 
 
 # ============================================================
-# PREDICTOR
-# ============================================================
-#
-# IMPORTANT:
-# predictor starts as None intentionally.
-#
-# The complete multimodal ML backend is not constructed during
-# application startup. It is loaded only when /predict_live
-# actually needs inference.
+# PREDICTOR STATE MACHINE
 # ============================================================
 
 predictor: Optional[Any] = None
 
-PREDICTOR_INITIALISED = False
+MODEL_STATUS: dict[str, Any] = {
+    # Critical state-machine field.
+    #
+    # not_loaded != failed
+    "state": "not_loaded",
 
+    "initialised": False,
+    "lazy_loading": True,
 
-MODEL_STATUS: dict[
-    str,
-    Any
-] = {
-
-    "text_model":
-        False,
-
-    "audio_model":
-        False,
-
-    "image_model":
-        False,
-
-    "keystroke_model":
-        False,
-
-    "fusion_model":
-        False,
+    "text_model": False,
+    "audio_model": False,
+    "image_model": False,
+    "keystroke_model": False,
+    "fusion_model": False,
 
     "webcam_calibrated_image_model":
         False,
@@ -987,9 +620,6 @@ MODEL_STATUS: dict[
     "labels":
         list(LABELS),
 
-    "fallback_enabled":
-        False,
-
     "temporal_probability_window":
         TEMPORAL_PROBABILITY_WINDOW,
 
@@ -1005,15 +635,6 @@ MODEL_STATUS: dict[
     "audio_stream_min_seconds":
         AUDIO_STREAM_MIN_SECONDS,
 
-    "audio_stream_transport":
-        "websocket_pcm16_mono",
-
-    "audio_source_policy":
-        (
-            "fixed_file_or_continuous_"
-            "microphone_stream"
-        ),
-
     "min_text_chars":
         MIN_TEXT_CHARS,
 
@@ -1026,142 +647,131 @@ MODEL_STATUS: dict[
         "webcam",
     ],
 
-    "input_change_resets_temporal":
-        True,
+    "error": None,
 
-    "stream_packets_reset_temporal":
-        False,
-
-    "lazy_loading":
-        True,
-
-    "initialised":
-        False,
-
-    "error":
-        None,
+    # Kept internal; /model-status intentionally
+    # does not expose full server traceback.
+    "_traceback": None,
 }
 
 
 def initialise_models() -> None:
     """
-    Lazily initialise the multimodal predictor.
+    Construct the canonical predictor lazily.
 
-    CRITICAL RENDER DEPLOYMENT REQUIREMENT:
-    This function must NOT be called from FastAPI's lifespan
-    startup hook.
-
-    Loading the complete multimodal inference backend can be
-    CPU-, memory-, disk-, and network-intensive. Performing
-    this work before Uvicorn binds the HTTP port can cause
-    Render's:
-
-        "Port scan timeout reached, no open ports detected"
-
-    deployment failure.
+    This must not execute from FastAPI lifespan startup.
     """
 
     global predictor
-    global PREDICTOR_INITIALISED
 
-    # Fast path.
-    if (
-        PREDICTOR_INITIALISED
-        and predictor is not None
-    ):
+    if predictor is not None:
         return
 
-    with PREDICTOR_LOCK:
+    with MODEL_INIT_LOCK:
 
-        # Double-check after acquiring lock because another
-        # request may have completed initialization while this
-        # request was waiting.
-        if (
-            PREDICTOR_INITIALISED
-            and predictor is not None
-        ):
+        if predictor is not None:
             return
 
-        try:
+        MODEL_STATUS.update(
+            {
+                "state": "loading",
+                "initialised": False,
+                "error": None,
+                "_traceback": None,
+            }
+        )
 
+        try:
             print(
-                "[models] Importing multimodal "
-                "inference backend...",
+                "[models] Importing inference backend...",
                 flush=True,
             )
-
-            # ------------------------------------------------
-            # LAZY HEAVY IMPORT
-            #
-            # Do not move this import back to module scope.
-            # ------------------------------------------------
 
             from final_multimodal_inference import (
                 FinalMultimodalInference,
             )
 
             print(
-                "[models] Initialising multimodal "
-                "models...",
+                "[models] Constructing fusion predictor...",
                 flush=True,
             )
 
-            new_predictor = (
+            instance = (
                 FinalMultimodalInference()
             )
 
-            # Only publish the predictor after successful
-            # construction.
-            predictor = new_predictor
+            predictor = instance
 
-            PREDICTOR_INITIALISED = True
+            runtime_status = {}
+
+            try:
+                runtime_status = (
+                    instance.runtime_status()
+                )
+            except Exception:
+                runtime_status = {}
 
             MODEL_STATUS.update(
                 {
+                    "state": "ready",
+                    "initialised": True,
+
+                    # The trained fusion classifier/schema
+                    # have loaded successfully at this point.
+                    "fusion_model": True,
+
+                    "keystroke_model": True,
+
+                    # Neural encoders may themselves be
+                    # deferred inside the inference class.
                     "text_model":
-                        True,
+                        bool(
+                            runtime_status.get(
+                                "text_model_loaded",
+                                False,
+                            )
+                        ),
 
                     "audio_model":
-                        True,
+                        bool(
+                            runtime_status.get(
+                                "audio_model_loaded",
+                                False,
+                            )
+                        ),
 
                     "image_model":
-                        True,
-
-                    "keystroke_model":
-                        True,
-
-                    "fusion_model":
-                        True,
+                        bool(
+                            runtime_status.get(
+                                "image_model_loaded",
+                                False,
+                            )
+                        ),
 
                     "webcam_calibrated_image_model":
-                        (
+                        bool(
                             getattr(
-                                predictor,
+                                instance,
                                 "webcam_image_model",
                                 None,
                             )
                             is not None
                         ),
 
-                    "initialised":
-                        True,
-
-                    "error":
-                        None,
+                    "error": None,
+                    "_traceback": None,
                 }
             )
 
             print(
-                "[models] Multimodal models "
-                "initialised successfully.",
+                "[models] Fusion predictor ready.",
                 flush=True,
             )
 
         except Exception as exc:
-
             predictor = None
 
-            PREDICTOR_INITIALISED = False
+            tb = traceback.format_exc()
 
             error_message = (
                 f"{type(exc).__name__}: {exc}"
@@ -1169,40 +779,76 @@ def initialise_models() -> None:
 
             MODEL_STATUS.update(
                 {
-                    "text_model":
-                        False,
-
-                    "audio_model":
-                        False,
-
-                    "image_model":
-                        False,
-
-                    "keystroke_model":
-                        False,
-
-                    "fusion_model":
-                        False,
-
+                    "state": "failed",
+                    "initialised": False,
+                    "fusion_model": False,
+                    "text_model": False,
+                    "audio_model": False,
+                    "image_model": False,
+                    "keystroke_model": False,
                     "webcam_calibrated_image_model":
                         False,
-
-                    "initialised":
-                        False,
-
-                    "error":
-                        error_message,
+                    "error": error_message,
+                    "_traceback": tb,
                 }
             )
 
             print(
-                "[models] Model initialisation "
-                "failed: "
-                f"{error_message}",
+                "\n"
+                "========================================\n"
+                "MODEL INITIALISATION FAILED\n"
+                "========================================\n"
+                f"{tb}"
+                "========================================",
                 flush=True,
             )
 
             raise
+
+
+def public_model_status() -> dict[str, Any]:
+    status = {
+        key: value
+        for key, value
+        in MODEL_STATUS.items()
+        if not key.startswith("_")
+    }
+
+    if predictor is not None:
+        try:
+            runtime = predictor.runtime_status()
+
+            status["runtime"] = runtime
+
+            status["text_model"] = bool(
+                runtime.get(
+                    "text_model_loaded",
+                    status["text_model"],
+                )
+            )
+
+            status["audio_model"] = bool(
+                runtime.get(
+                    "audio_model_loaded",
+                    status["audio_model"],
+                )
+            )
+
+            status["image_model"] = bool(
+                runtime.get(
+                    "image_model_loaded",
+                    status["image_model"],
+                )
+            )
+
+        except Exception:
+            pass
+
+    status["predictor_loaded"] = (
+        predictor is not None
+    )
+
+    return status
 
 
 # ============================================================
@@ -1213,26 +859,18 @@ def validate_session_id(
     session_id: str,
 ) -> str:
 
-    value = str(
-        session_id
-    ).strip()
+    value = str(session_id).strip()
 
     if not value:
-
         raise HTTPException(
             status_code=400,
-            detail=(
-                "session_id is required."
-            ),
+            detail="session_id is required.",
         )
 
     if len(value) > 200:
-
         raise HTTPException(
             status_code=400,
-            detail=(
-                "session_id is too long."
-            ),
+            detail="session_id is too long.",
         )
 
     return value
@@ -1247,16 +885,10 @@ def get_session(
     )
 
     if state is None:
-
         state = SessionState()
+        SESSION_STATES[session_id] = state
 
-        SESSION_STATES[
-            session_id
-        ] = state
-
-    state.last_seen = (
-        time.time()
-    )
+    state.last_seen = time.time()
 
     return state
 
@@ -1267,17 +899,12 @@ def session_directory(
 
     token = (
         hashlib.sha256(
-            session_id.encode(
-                "utf-8"
-            )
+            session_id.encode("utf-8")
         )
         .hexdigest()[:24]
     )
 
-    directory = (
-        UPLOAD_DIR
-        / token
-    )
+    directory = UPLOAD_DIR / token
 
     directory.mkdir(
         parents=True,
@@ -1292,13 +919,10 @@ def reset_temporal_for_source_change(
 ) -> int:
 
     generation = (
-        state.temporal_fusion
-        .reset()
+        state.temporal_fusion.reset()
     )
 
-    state.last_seen = (
-        time.time()
-    )
+    state.last_seen = time.time()
 
     return generation
 
@@ -1307,21 +931,11 @@ def clear_audio_stream_state(
     state: SessionState,
 ) -> None:
 
-    state.audio_stream_active = (
-        False
-    )
-
-    state.audio_stream_token = (
-        None
-    )
-
+    state.audio_stream_active = False
+    state.audio_stream_token = None
     state.audio_pcm_buffer.clear()
-
     state.audio_stream_packets = 0
-
-    state.audio_stream_last_packet_at = (
-        None
-    )
+    state.audio_stream_last_packet_at = None
 
 
 def safe_suffix(
@@ -1333,10 +947,7 @@ def safe_suffix(
         filename or ""
     ).suffix.lower()
 
-    if not suffix:
-        return default
-
-    if len(suffix) > 10:
+    if not suffix or len(suffix) > 10:
         return default
 
     return suffix
@@ -1353,12 +964,9 @@ async def save_upload(
     content = await upload.read()
 
     if not content:
-
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"{prefix} upload is empty."
-            ),
+            detail=f"{prefix} upload is empty.",
         )
 
     suffix = safe_suffix(
@@ -1367,9 +975,7 @@ async def save_upload(
     )
 
     path = (
-        session_directory(
-            session_id
-        )
+        session_directory(session_id)
         / (
             f"{prefix}_"
             f"{uuid.uuid4().hex}"
@@ -1377,15 +983,13 @@ async def save_upload(
         )
     )
 
-    path.write_bytes(
-        content
-    )
+    path.write_bytes(content)
 
     return path
 
 
 # ============================================================
-# VISUAL CONVERSION
+# VISUAL HELPERS
 # ============================================================
 
 def canonicalise_webcam_frame(
@@ -1394,27 +998,21 @@ def canonicalise_webcam_frame(
 ) -> Path:
 
     if not image_frame:
-
         raise ValueError(
             "Webcam frame is missing."
         )
 
     if "," not in image_frame:
-
         raise ValueError(
             "Invalid webcam frame data."
         )
 
-    _header, encoded = (
-        image_frame.split(
-            ",",
-            1,
-        )
+    _, encoded = image_frame.split(
+        ",",
+        1,
     )
 
-    raw = base64.b64decode(
-        encoded
-    )
+    raw = base64.b64decode(encoded)
 
     array = np.frombuffer(
         raw,
@@ -1427,18 +1025,14 @@ def canonicalise_webcam_frame(
     )
 
     if frame is None:
-
         raise ValueError(
             "Could not decode webcam frame."
         )
 
-    success = cv2.imwrite(
+    if not cv2.imwrite(
         str(output_path),
         frame,
-    )
-
-    if not success:
-
+    ):
         raise RuntimeError(
             "Could not save webcam snapshot."
         )
@@ -1458,15 +1052,12 @@ def extract_video_snapshot(
     )
 
     if not capture.isOpened():
-
         capture.release()
-
         raise RuntimeError(
             "Could not open selected video."
         )
 
     try:
-
         fps = float(
             capture.get(
                 cv2.CAP_PROP_FPS
@@ -1481,13 +1072,13 @@ def extract_video_snapshot(
 
         if (
             not np.isfinite(fps)
-            or fps <= 0.0
+            or fps <= 0
         ):
             fps = 30.0
 
         duration = (
             frame_count / fps
-            if frame_count > 0.0
+            if frame_count > 0
             else 0.0
         )
 
@@ -1497,24 +1088,16 @@ def extract_video_snapshot(
             - started_at,
         )
 
-        if duration > 0.0:
-
-            position_seconds = (
-                elapsed % duration
-            )
-
+        if duration > 0:
             capture.set(
                 cv2.CAP_PROP_POS_MSEC,
-                position_seconds
+                (elapsed % duration)
                 * 1000.0,
             )
 
-        success, frame = (
-            capture.read()
-        )
+        success, frame = capture.read()
 
         if not success:
-
             capture.set(
                 cv2.CAP_PROP_POS_FRAMES,
                 0,
@@ -1525,18 +1108,14 @@ def extract_video_snapshot(
             )
 
         if not success:
-
             raise RuntimeError(
                 "Could not read video frame."
             )
 
-        success = cv2.imwrite(
+        if not cv2.imwrite(
             str(output_path),
             frame,
-        )
-
-        if not success:
-
+        ):
             raise RuntimeError(
                 "Could not save video snapshot."
             )
@@ -1544,7 +1123,6 @@ def extract_video_snapshot(
         return output_path
 
     finally:
-
         capture.release()
 
 
@@ -1557,42 +1135,28 @@ def parse_keystrokes(
 ) -> list[dict[str, Any]]:
 
     try:
-
-        parsed = json.loads(
-            raw_events
-        )
-
+        parsed = json.loads(raw_events)
     except Exception:
-
         return []
 
-    if not isinstance(
-        parsed,
-        list,
-    ):
+    if not isinstance(parsed, list):
         return []
 
     return [
-        event
-        for event in parsed
-        if isinstance(
-            event,
-            dict,
-        )
+        item
+        for item in parsed
+        if isinstance(item, dict)
     ]
 
 
 def count_keydowns(
-    events: list[
-        dict[str, Any]
-    ],
+    events: list[dict[str, Any]],
 ) -> int:
 
     return sum(
         1
         for event in events
-        if event.get("type")
-        == "down"
+        if event.get("type") == "down"
     )
 
 
@@ -1600,9 +1164,7 @@ def create_keystroke_json(
     *,
     session_id: str,
     text: str,
-    events: list[
-        dict[str, Any]
-    ],
+    events: list[dict[str, Any]],
 ) -> Path:
 
     features = (
@@ -1613,9 +1175,7 @@ def create_keystroke_json(
     )
 
     path = (
-        session_directory(
-            session_id
-        )
+        session_directory(session_id)
         / (
             "keystrokes_"
             f"{uuid.uuid4().hex}"
@@ -1623,20 +1183,13 @@ def create_keystroke_json(
         )
     )
 
-    payload = {
-        "features":
-            features,
-
-        "events":
-            events,
-
-        "typed_text":
-            text,
-    }
-
     path.write_text(
         json.dumps(
-            payload,
+            {
+                "features": features,
+                "events": events,
+                "typed_text": text,
+            },
             indent=2,
         ),
         encoding="utf-8",
@@ -1646,7 +1199,7 @@ def create_keystroke_json(
 
 
 # ============================================================
-# RAW MODEL INVOCATION
+# RAW PREDICTION
 # ============================================================
 
 def run_canonical_prediction(
@@ -1658,29 +1211,16 @@ def run_canonical_prediction(
 ) -> dict[str, Any]:
 
     if predictor is None:
-
         raise RuntimeError(
             "Canonical fusion model is unavailable."
         )
 
-    # Predictor inference itself is serialized because the
-    # existing multimodal backend may not be thread-safe.
     with PREDICTOR_LOCK:
-
         return predictor.predict(
-            keystroke_json=(
-                keystroke_json
-            ),
-
+            keystroke_json=keystroke_json,
             text=text,
-
-            audio_path=(
-                audio_path
-            ),
-
-            image_path=(
-                image_path
-            ),
+            audio_path=audio_path,
+            image_path=image_path,
         )
 
 
@@ -1691,18 +1231,13 @@ def run_canonical_prediction(
 def build_prediction_result(
     *,
     raw_result: dict[str, Any],
-    temporal_engine:
-        TemporalFusionEngine,
+    temporal_engine: TemporalFusionEngine,
     expected_generation: int,
-    audio_diagnostics:
-        dict[str, Any],
-    audio_source_kind:
-        Optional[str],
-    audio_buffered_seconds:
-        Optional[float],
+    audio_diagnostics: dict[str, Any],
+    audio_source_kind: Optional[str],
+    audio_buffered_seconds: Optional[float],
     visual_mode: str,
-    visual_name:
-        Optional[str],
+    visual_name: Optional[str],
 ) -> dict[str, Any]:
 
     raw_summary = (
@@ -1716,9 +1251,7 @@ def build_prediction_result(
     )
 
     raw_probabilities = (
-        raw_summary[
-            "probabilities"
-        ]
+        raw_summary["probabilities"]
     )
 
     temporal = (
@@ -1742,9 +1275,7 @@ def build_prediction_result(
 
     temporal_validation = (
         validate_probability_distribution(
-            temporal[
-                "probabilities"
-            ],
+            temporal["probabilities"],
             labels=LABELS,
             tolerance=(
                 PROBABILITY_SUM_TOLERANCE
@@ -1754,10 +1285,8 @@ def build_prediction_result(
 
     runtime_validation_pass = (
         raw_validation["valid"]
-        and
-        temporal_validation["valid"]
-        and
-        temporal["current_state"]
+        and temporal_validation["valid"]
+        and temporal["current_state"]
         in LABELS
     )
 
@@ -1770,10 +1299,7 @@ def build_prediction_result(
 
     webcam_prediction = None
 
-    if image_calibration.get(
-        "enabled"
-    ):
-
+    if image_calibration.get("enabled"):
         probability = (
             image_calibration.get(
                 "top_probability"
@@ -1791,10 +1317,8 @@ def build_prediction_result(
 
             "confidence_percent":
                 (
-                    float(probability)
-                    * 100.0
-                    if probability
-                    is not None
+                    float(probability) * 100
+                    if probability is not None
                     else None
                 ),
 
@@ -1811,67 +1335,43 @@ def build_prediction_result(
 
     return {
         "prediction":
-            temporal[
-                "current_state"
-            ],
+            temporal["current_state"],
 
         "current_state":
-            temporal[
-                "current_state"
-            ],
+            temporal["current_state"],
 
         "confidence":
-            temporal[
-                "confidence"
-            ],
+            temporal["confidence"],
 
         "confidence_percent":
-            temporal[
-                "confidence_percent"
-            ],
+            temporal["confidence_percent"],
 
         "confidence_level":
-            temporal[
-                "confidence_level"
-            ],
+            temporal["confidence_level"],
 
         "confidence_gap":
-            temporal[
-                "confidence_gap"
-            ],
+            temporal["confidence_gap"],
 
         "second_class":
-            temporal[
-                "second_class"
-            ],
+            temporal["second_class"],
 
         "second_probability":
-            temporal[
-                "second_probability"
-            ],
+            temporal["second_probability"],
 
         "probabilities":
-            temporal[
-                "probabilities"
-            ],
+            temporal["probabilities"],
 
         "raw_prediction":
             raw_result.get(
                 "prediction",
-                raw_summary[
-                    "current_state"
-                ],
+                raw_summary["current_state"],
             ),
 
         "raw_top_class":
-            raw_summary[
-                "current_state"
-            ],
+            raw_summary["current_state"],
 
         "raw_confidence":
-            raw_summary[
-                "confidence"
-            ],
+            raw_summary["confidence"],
 
         "raw_confidence_percent":
             raw_summary[
@@ -1882,14 +1382,10 @@ def build_prediction_result(
             raw_probabilities,
 
         "temporal_samples":
-            temporal[
-                "temporal_samples"
-            ],
+            temporal["temporal_samples"],
 
         "temporal_window":
-            temporal[
-                "temporal_window"
-            ],
+            temporal["temporal_window"],
 
         "temporal_window_full":
             temporal[
@@ -1897,9 +1393,7 @@ def build_prediction_result(
             ],
 
         "generation":
-            temporal[
-                "generation"
-            ],
+            temporal["generation"],
 
         "feature_dimension":
             raw_result.get(
@@ -1930,8 +1424,7 @@ def build_prediction_result(
             audio_buffered_seconds,
 
         "webcam_calibration_used":
-            webcam_prediction
-            is not None,
+            webcam_prediction is not None,
 
         "webcam_prediction":
             webcam_prediction,
@@ -1958,8 +1451,7 @@ def build_prediction_result(
                     raw_validation[
                         "ranges_valid"
                     ]
-                    and
-                    temporal_validation[
+                    and temporal_validation[
                         "ranges_valid"
                     ]
                 ),
@@ -2018,57 +1510,30 @@ LOG_COLUMNS = [
 
 
 def initialise_log_file() -> None:
-
     if LOG_FILE.exists():
-
         try:
-
             with LOG_FILE.open(
                 "r",
                 encoding="utf-8",
-            ) as file_handle:
-
+            ) as handle:
                 first_line = (
-                    file_handle
-                    .readline()
-                    .strip()
+                    handle.readline().strip()
                 )
 
-            expected = ",".join(
+            if first_line == ",".join(
                 LOG_COLUMNS
-            )
-
-            if first_line == expected:
+            ):
                 return
 
-            backup = (
-                LOG_FILE.with_name(
-                    "live_predictions_backup_"
-                    + datetime.now()
-                    .strftime(
-                        "%Y%m%d_%H%M%S"
-                    )
-                    + ".csv"
-                )
-            )
-
-            LOG_FILE.rename(
-                backup
-            )
-
         except Exception:
-
             pass
 
     with LOG_FILE.open(
         "w",
         newline="",
         encoding="utf-8",
-    ) as file_handle:
-
-        csv.writer(
-            file_handle
-        ).writerow(
+    ) as handle:
+        csv.writer(handle).writerow(
             LOG_COLUMNS
         )
 
@@ -2079,10 +1544,8 @@ def log_prediction(
     generation: int,
     text: str,
     keystroke_count: int,
-    audio_name:
-        Optional[str],
-    result:
-        dict[str, Any],
+    audio_name: Optional[str],
+    result: dict[str, Any],
 ) -> None:
 
     audio = (
@@ -2105,30 +1568,18 @@ def log_prediction(
         ).isoformat(),
 
         session_id,
-
         generation,
-
         len(text),
-
         keystroke_count,
-
         audio_name,
 
         result.get(
             "audio_source_kind"
         ),
 
-        audio.get(
-            "condition"
-        ),
-
-        audio.get(
-            "rms"
-        ),
-
-        audio.get(
-            "dbfs"
-        ),
+        audio.get("condition"),
+        audio.get("rms"),
+        audio.get("dbfs"),
 
         result.get(
             "audio_stream_buffered_seconds"
@@ -2186,9 +1637,7 @@ def log_prediction(
             "temporal_window"
         ),
 
-        validation.get(
-            "pass"
-        ),
+        validation.get("pass"),
 
         result.get(
             "feature_dimension"
@@ -2203,31 +1652,16 @@ def log_prediction(
     ]
 
     with LOG_LOCK:
-
         with LOG_FILE.open(
             "a",
             newline="",
             encoding="utf-8",
-        ) as file_handle:
-
-            csv.writer(
-                file_handle
-            ).writerow(
-                row
-            )
+        ) as handle:
+            csv.writer(handle).writerow(row)
 
 
 # ============================================================
 # FASTAPI LIFESPAN
-# ============================================================
-#
-# CRITICAL FIX:
-#
-# DO NOT call initialise_models() here.
-#
-# Render needs the FastAPI process to reach the lifespan yield
-# quickly so Uvicorn can finish application startup and expose
-# its HTTP listening port.
 # ============================================================
 
 @asynccontextmanager
@@ -2240,11 +1674,7 @@ async def lifespan(
         flush=True,
     )
 
-    # Log setup is lightweight. It is kept here, but a logging
-    # filesystem failure should not prevent the HTTP service
-    # from starting.
     try:
-
         initialise_log_file()
 
         print(
@@ -2253,27 +1683,19 @@ async def lifespan(
         )
 
     except Exception as exc:
-
         print(
-            "[startup] WARNING: Could not initialise "
-            "prediction log: "
+            "[startup] Log setup warning: "
             f"{type(exc).__name__}: {exc}",
             flush=True,
         )
 
+    # CRITICAL:
+    # Never call initialise_models() here.
     print(
         "[startup] Web application ready. "
-        "ML models will be loaded lazily "
-        "on the first prediction request.",
+        "Fusion backend is in standby.",
         flush=True,
     )
-
-    # --------------------------------------------------------
-    # Yield immediately.
-    #
-    # This allows Uvicorn to complete startup and bind Render's
-    # $PORT before heavyweight ML initialization occurs.
-    # --------------------------------------------------------
 
     yield
 
@@ -2284,41 +1706,33 @@ async def lifespan(
 
 
 # ============================================================
-# FASTAPI
+# FASTAPI APPLICATION
 # ============================================================
 
 app = FastAPI(
-    title=(
-        "SenseFuzeAI Live Fusion Web App"
-    ),
+    title="SenseFuzeAI Live Fusion Web App",
     lifespan=lifespan,
 )
-
 
 app.mount(
     "/static",
     StaticFiles(
         directory=str(
-            WEB_DIR
-            / "static"
+            WEB_DIR / "static"
         )
     ),
     name="static",
 )
 
-
-templates = (
-    Jinja2Templates(
-        directory=str(
-            WEB_DIR
-            / "templates"
-        )
+templates = Jinja2Templates(
+    directory=str(
+        WEB_DIR / "templates"
     )
 )
 
 
 # ============================================================
-# BASIC ROUTES
+# BASIC / MODEL ROUTES
 # ============================================================
 
 @app.get(
@@ -2335,96 +1749,82 @@ def index(
     )
 
 
-@app.get(
-    "/health"
-)
+@app.get("/health")
 def health() -> dict[str, Any]:
-    """
-    Lightweight web-service health check.
-
-    predictor_loaded=False is NOT an application error.
-    It simply means inference has not yet been requested.
-    """
-
     return {
-        "status":
-            "ok",
-
-        "service":
-            "web",
-
+        "status": "ok",
+        "service": "web",
+        "model_state":
+            MODEL_STATUS["state"],
         "predictor_loaded":
             predictor is not None,
-
-        "predictor_initialised":
-            PREDICTOR_INITIALISED,
-
-        "model_error":
-            MODEL_STATUS.get(
-                "error"
-            ),
-
         "timestamp":
             datetime.now(
                 timezone.utc
             ).isoformat(),
-
-        "temporal_probability_window":
-            TEMPORAL_PROBABILITY_WINDOW,
-
-        "live_interval_ms":
-            LIVE_INTERVAL_MS,
-
-        "audio_stream_window_seconds":
-            AUDIO_STREAM_WINDOW_SECONDS,
-
-        "audio_stream_min_seconds":
-            AUDIO_STREAM_MIN_SECONDS,
-
-        "target_audio_sample_rate":
-            TARGET_SR,
-
-        "temporal_fusion_backend":
-            (
-                "temporal_fusion."
-                "TemporalFusionEngine"
-            ),
     }
 
 
-@app.get(
-    "/model-status"
-)
+@app.get("/model-status")
 def model_status() -> dict[str, Any]:
+    return public_model_status()
 
-    return {
-        **MODEL_STATUS,
 
-        "predictor_loaded":
-            predictor is not None,
+@app.post("/initialize-models")
+async def initialize_models_endpoint() -> JSONResponse:
+    """
+    Explicitly initialise only the fusion inference object.
 
-        "initialised":
-            PREDICTOR_INITIALISED,
-    }
+    Neural encoders inside FinalMultimodalInference remain
+    lazy where possible.
+    """
+
+    if predictor is not None:
+        return JSONResponse(
+            {
+                "status": "ready",
+                "model_status":
+                    public_model_status(),
+            }
+        )
+
+    try:
+        await asyncio.to_thread(
+            initialise_models
+        )
+
+        return JSONResponse(
+            {
+                "status": "ready",
+                "model_status":
+                    public_model_status(),
+            }
+        )
+
+    except Exception as exc:
+        return JSONResponse(
+            {
+                "status": "failed",
+                "exception_type":
+                    type(exc).__name__,
+                "exception":
+                    str(exc),
+                "model_status":
+                    public_model_status(),
+            },
+            status_code=500,
+        )
 
 
 # ============================================================
-# FIXED AUDIO FILE
+# AUDIO FILE
 # ============================================================
 
-@app.post(
-    "/set_audio_source"
-)
+@app.post("/set_audio_source")
 async def set_audio_source(
-
     session_id: str = Form(...),
-
-    source_kind: str = Form(
-        "file"
-    ),
-
+    source_kind: str = Form("file"),
     audio_file: UploadFile = File(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
@@ -2443,17 +1843,10 @@ async def set_audio_source(
         path,
     )
 
-    old_path: Optional[Path] = None
-
     with SESSION_LOCK:
+        state = get_session(session_id)
 
-        state = get_session(
-            session_id
-        )
-
-        old_path = (
-            state.audio_path
-        )
+        old_path = state.audio_path
 
         generation = (
             reset_temporal_for_source_change(
@@ -2461,59 +1854,33 @@ async def set_audio_source(
             )
         )
 
-        clear_audio_stream_state(
-            state
-        )
+        clear_audio_stream_state(state)
 
         state.audio_path = path
-
         state.audio_name = (
             audio_file.filename
             or path.name
         )
-
-        state.audio_source_kind = (
-            "file"
-        )
-
+        state.audio_source_kind = "file"
         state.audio_diagnostics = (
             diagnostics
         )
 
-    if (
-        old_path is not None
-        and old_path != path
-    ):
-        safe_delete(
-            old_path
-        )
+    if old_path != path:
+        safe_delete(old_path)
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
-            "audio_ready":
-                True,
-
+            "status": "ok",
+            "generation": generation,
+            "audio_ready": True,
             "audio_name":
-                (
-                    audio_file.filename
-                    or path.name
-                ),
-
-            "audio_source_kind":
-                "file",
-
+                audio_file.filename
+                or path.name,
+            "audio_source_kind": "file",
             "audio_diagnostics":
                 diagnostics,
-
-            "temporal_samples":
-                0,
-
+            "temporal_samples": 0,
             "temporal_window":
                 TEMPORAL_PROBABILITY_WINDOW,
         }
@@ -2521,29 +1888,20 @@ async def set_audio_source(
 
 
 # ============================================================
-# START CONTINUOUS AUDIO STREAM
+# MICROPHONE STREAM
 # ============================================================
 
-@app.post(
-    "/audio_stream/start"
-)
+@app.post("/audio_stream/start")
 async def start_audio_stream(
-
     session_id: str = Form(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
         session_id
     )
 
-    old_path: Optional[Path] = None
-
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         old_path = state.audio_path
 
@@ -2554,43 +1912,26 @@ async def start_audio_stream(
         )
 
         state.audio_path = None
-
         state.audio_name = (
             "Live microphone"
         )
-
         state.audio_source_kind = (
             "microphone_stream"
         )
 
         state.audio_diagnostics = {
-            "condition":
-                "buffering",
-
-            "duration_sec":
-                0.0,
-
-            "rms":
-                0.0,
-
-            "dbfs":
-                -120.0,
-
+            "condition": "buffering",
+            "duration_sec": 0.0,
+            "rms": 0.0,
+            "dbfs": -120.0,
             "note":
-                (
-                    "Waiting for continuous "
-                    "microphone samples."
-                ),
+                "Waiting for continuous "
+                "microphone samples.",
         }
 
-        clear_audio_stream_state(
-            state
-        )
+        clear_audio_stream_state(state)
 
-        state.audio_stream_active = (
-            True
-        )
-
+        state.audio_stream_active = True
         state.audio_stream_token = (
             uuid.uuid4().hex
         )
@@ -2599,131 +1940,78 @@ async def start_audio_stream(
             state.audio_stream_token
         )
 
-    safe_delete(
-        old_path
-    )
+    safe_delete(old_path)
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
+            "status": "ok",
+            "generation": generation,
             "stream_token":
                 stream_token,
-
-            "audio_ready":
-                False,
-
+            "audio_ready": False,
             "audio_source_kind":
                 "microphone_stream",
-
             "target_sample_rate":
                 TARGET_SR,
-
             "audio_stream_window_seconds":
                 AUDIO_STREAM_WINDOW_SECONDS,
-
             "audio_stream_min_seconds":
                 AUDIO_STREAM_MIN_SECONDS,
-
-            "temporal_samples":
-                0,
-
+            "temporal_samples": 0,
             "temporal_window":
                 TEMPORAL_PROBABILITY_WINDOW,
         }
     )
 
 
-# ============================================================
-# STOP CONTINUOUS AUDIO STREAM
-# ============================================================
-
-@app.post(
-    "/audio_stream/stop"
-)
+@app.post("/audio_stream/stop")
 async def stop_audio_stream(
-
     session_id: str = Form(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
         session_id
     )
 
-    old_path: Optional[Path] = None
-
     with SESSION_LOCK:
+        state = get_session(session_id)
 
-        state = get_session(
-            session_id
-        )
-
-        stream_was_active = (
+        active = (
             state.audio_stream_active
-            or
-            state.audio_source_kind
+            or state.audio_source_kind
             == "microphone_stream"
         )
 
-        if stream_was_active:
-
-            generation = (
-                reset_temporal_for_source_change(
-                    state
-                )
+        generation = (
+            reset_temporal_for_source_change(
+                state
             )
-
-        else:
-
-            generation = (
-                state.temporal_fusion
-                .generation
-            )
+            if active
+            else state.temporal_fusion.generation
+        )
 
         old_path = state.audio_path
 
         state.audio_path = None
         state.audio_name = None
         state.audio_source_kind = None
-
         state.audio_diagnostics = {}
 
-        clear_audio_stream_state(
-            state
-        )
+        clear_audio_stream_state(state)
 
-    safe_delete(
-        old_path
-    )
+    safe_delete(old_path)
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
-            "audio_ready":
-                False,
-
-            "audio_source_kind":
-                None,
-
+            "status": "ok",
+            "generation": generation,
+            "audio_ready": False,
+            "audio_source_kind": None,
             "temporal_window":
                 TEMPORAL_PROBABILITY_WINDOW,
         }
     )
 
-
-# ============================================================
-# CONTINUOUS PCM16 WEBSOCKET
-# ============================================================
 
 @app.websocket(
     "/ws/audio/{session_id}"
@@ -2737,56 +2025,39 @@ async def audio_stream_socket(
     await websocket.accept()
 
     try:
-
         session_id = (
             validate_session_id(
                 session_id
             )
         )
-
     except HTTPException:
-
         await websocket.close(
             code=1008
         )
-
         return
 
     with SESSION_LOCK:
+        state = get_session(session_id)
 
-        state = get_session(
-            session_id
+        valid = (
+            state.audio_stream_active
+            and state.audio_stream_token
+            == token
         )
 
-        if (
-            not state.audio_stream_active
-            or
-            state.audio_stream_token
-            != token
-        ):
-
-            valid = False
-
-        else:
-
-            valid = True
-
     if not valid:
-
         await websocket.send_json(
             {
-                "type":
-                    "error",
-
+                "type": "error",
                 "message":
-                    "Invalid or expired audio stream token.",
+                    "Invalid or expired "
+                    "audio stream token.",
             }
         )
 
         await websocket.close(
             code=1008
         )
-
         return
 
     max_buffer_bytes = int(
@@ -2804,9 +2075,7 @@ async def audio_stream_socket(
     last_ack = 0.0
 
     try:
-
         while True:
-
             message = (
                 await websocket.receive()
             )
@@ -2817,37 +2086,26 @@ async def audio_stream_socket(
             ):
                 break
 
-            chunk = message.get(
-                "bytes"
-            )
+            chunk = message.get("bytes")
 
-            if chunk is None:
-                continue
-
-            if len(chunk) == 0:
+            if not chunk:
                 continue
 
             if (
                 len(chunk)
                 > MAX_AUDIO_PACKET_BYTES
             ):
-
                 await websocket.send_json(
                     {
-                        "type":
-                            "error",
-
+                        "type": "error",
                         "message":
-                            (
-                                "Audio packet exceeded "
-                                "server size limit."
-                            ),
+                            "Audio packet exceeded "
+                            "server size limit.",
                     }
                 )
-
                 continue
 
-            if len(chunk) % 2 != 0:
+            if len(chunk) % 2:
                 chunk = chunk[:-1]
 
             if not chunk:
@@ -2856,30 +2114,23 @@ async def audio_stream_socket(
             now = time.monotonic()
 
             with SESSION_LOCK:
-
                 state = get_session(
                     session_id
                 )
 
-                if (
-                    not state.audio_stream_active
-                    or
-                    state.audio_stream_token
-                    != token
-                ):
+                stream_valid = (
+                    state.audio_stream_active
+                    and state.audio_stream_token
+                    == token
+                )
 
-                    stream_valid = False
-
+                if not stream_valid:
                     snapshot = b""
-
                     packets = (
                         state.audio_stream_packets
                     )
 
                 else:
-
-                    stream_valid = True
-
                     state.audio_pcm_buffer.extend(
                         chunk
                     )
@@ -2892,15 +2143,12 @@ async def audio_stream_socket(
                     )
 
                     if overflow > 0:
-
-                        if overflow % 2 != 0:
+                        if overflow % 2:
                             overflow += 1
 
-                        del (
-                            state.audio_pcm_buffer[
-                                :overflow
-                            ]
-                        )
+                        del state.audio_pcm_buffer[
+                            :overflow
+                        ]
 
                     state.audio_stream_packets += 1
 
@@ -2921,36 +2169,15 @@ async def audio_stream_socket(
                     )
 
             if not stream_valid:
-
-                await websocket.send_json(
-                    {
-                        "type":
-                            "error",
-
-                        "message":
-                            "Audio stream is no longer active.",
-                    }
-                )
-
                 await websocket.close(
                     code=1008
                 )
-
                 return
 
-            should_ack = (
-                now
-                - last_ack
+            if (
+                now - last_ack
                 >= AUDIO_STREAM_ACK_SECONDS
-            )
-
-            audio_ready = (
-                len(snapshot)
-                >= minimum_buffer_bytes
-            )
-
-            if should_ack:
-
+            ):
                 diagnostics = (
                     analyse_pcm16_bytes(
                         snapshot
@@ -2959,14 +2186,15 @@ async def audio_stream_socket(
 
                 buffered_seconds = (
                     len(snapshot)
-                    / (
-                        TARGET_SR
-                        * 2
-                    )
+                    / (TARGET_SR * 2)
+                )
+
+                audio_ready = (
+                    len(snapshot)
+                    >= minimum_buffer_bytes
                 )
 
                 with SESSION_LOCK:
-
                     state = get_session(
                         session_id
                     )
@@ -2977,7 +2205,6 @@ async def audio_stream_socket(
                         state.audio_stream_token
                         == token
                     ):
-
                         state.audio_diagnostics = (
                             diagnostics
                         )
@@ -2986,16 +2213,12 @@ async def audio_stream_socket(
                     {
                         "type":
                             "audio_status",
-
                         "audio_ready":
                             audio_ready,
-
                         "buffered_seconds":
                             buffered_seconds,
-
                         "packets_received":
                             packets,
-
                         "audio_diagnostics":
                             diagnostics,
                     }
@@ -3004,13 +2227,10 @@ async def audio_stream_socket(
                 last_ack = now
 
     except WebSocketDisconnect:
-
         pass
 
     finally:
-
         with SESSION_LOCK:
-
             state = SESSION_STATES.get(
                 session_id
             )
@@ -3023,37 +2243,25 @@ async def audio_stream_socket(
                 state.audio_stream_token
                 == token
             ):
-
                 state.temporal_fusion.reset()
 
                 state.audio_name = None
-
                 state.audio_source_kind = None
-
                 state.audio_diagnostics = {}
 
                 clear_audio_stream_state(
                     state
                 )
 
-                state.last_seen = (
-                    time.time()
-                )
-
 
 # ============================================================
-# IMAGE SOURCE
+# VISUAL SOURCES
 # ============================================================
 
-@app.post(
-    "/set_visual_image"
-)
+@app.post("/set_visual_image")
 async def set_visual_image(
-
     session_id: str = Form(...),
-
     image_file: UploadFile = File(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
@@ -3067,27 +2275,22 @@ async def set_visual_image(
         default_suffix=".jpg",
     )
 
-    image = cv2.imread(
+    if cv2.imread(
         str(path),
         cv2.IMREAD_COLOR,
-    )
-
-    if image is None:
-
+    ) is None:
         safe_delete(path)
 
         raise HTTPException(
             status_code=400,
             detail=(
-                "Uploaded image could not be decoded."
+                "Uploaded image could "
+                "not be decoded."
             ),
         )
 
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         generation = (
             reset_temporal_for_source_change(
@@ -3096,58 +2299,33 @@ async def set_visual_image(
         )
 
         state.visual_mode = "image"
-
         state.visual_path = path
-
         state.visual_name = (
             image_file.filename
             or path.name
         )
-
         state.visual_started_at = None
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
-            "visual_ready":
-                True,
-
-            "visual_mode":
-                "image",
-
+            "status": "ok",
+            "generation": generation,
+            "visual_ready": True,
+            "visual_mode": "image",
             "visual_name":
-                (
-                    image_file.filename
-                    or path.name
-                ),
-
-            "temporal_samples":
-                0,
-
+                image_file.filename
+                or path.name,
+            "temporal_samples": 0,
             "temporal_window":
                 TEMPORAL_PROBABILITY_WINDOW,
         }
     )
 
 
-# ============================================================
-# VIDEO SOURCE
-# ============================================================
-
-@app.post(
-    "/set_visual_video"
-)
+@app.post("/set_visual_video")
 async def set_visual_video(
-
     session_id: str = Form(...),
-
     video_file: UploadFile = File(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
@@ -3166,28 +2344,21 @@ async def set_visual_video(
     )
 
     opened = capture.isOpened()
-
     capture.release()
 
     if not opened:
-
-        safe_delete(
-            path
-        )
+        safe_delete(path)
 
         raise HTTPException(
             status_code=400,
             detail=(
-                "Uploaded video could not be "
-                "opened by OpenCV."
+                "Uploaded video could "
+                "not be opened."
             ),
         )
 
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         generation = (
             reset_temporal_for_source_change(
@@ -3196,58 +2367,34 @@ async def set_visual_video(
         )
 
         state.visual_mode = "video"
-
         state.visual_path = path
-
         state.visual_name = (
             video_file.filename
             or path.name
         )
-
         state.visual_started_at = (
             time.monotonic()
         )
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
-            "visual_ready":
-                True,
-
-            "visual_mode":
-                "video",
-
+            "status": "ok",
+            "generation": generation,
+            "visual_ready": True,
+            "visual_mode": "video",
             "visual_name":
-                (
-                    video_file.filename
-                    or path.name
-                ),
-
-            "temporal_samples":
-                0,
-
+                video_file.filename
+                or path.name,
+            "temporal_samples": 0,
             "temporal_window":
                 TEMPORAL_PROBABILITY_WINDOW,
         }
     )
 
 
-# ============================================================
-# WEBCAM SOURCE
-# ============================================================
-
-@app.post(
-    "/set_visual_webcam"
-)
+@app.post("/set_visual_webcam")
 async def set_visual_webcam(
-
     session_id: str = Form(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
@@ -3255,10 +2402,7 @@ async def set_visual_webcam(
     )
 
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         generation = (
             reset_temporal_for_source_change(
@@ -3267,52 +2411,29 @@ async def set_visual_webcam(
         )
 
         state.visual_mode = "webcam"
-
         state.visual_path = None
-
         state.visual_name = "Webcam"
-
         state.visual_started_at = (
             time.monotonic()
         )
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
-            "visual_ready":
-                True,
-
-            "visual_mode":
-                "webcam",
-
-            "visual_name":
-                "Webcam",
-
-            "temporal_samples":
-                0,
-
+            "status": "ok",
+            "generation": generation,
+            "visual_ready": True,
+            "visual_mode": "webcam",
+            "visual_name": "Webcam",
+            "temporal_samples": 0,
             "temporal_window":
                 TEMPORAL_PROBABILITY_WINDOW,
         }
     )
 
 
-# ============================================================
-# STOP VISUAL
-# ============================================================
-
-@app.post(
-    "/stop_visual"
-)
+@app.post("/stop_visual")
 async def stop_visual(
-
     session_id: str = Form(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
@@ -3320,115 +2441,64 @@ async def stop_visual(
     )
 
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         if state.visual_mode in {
             "video",
             "webcam",
         }:
-
             state.visual_mode = "none"
-
             state.visual_path = None
-
             state.visual_name = None
-
             state.visual_started_at = None
 
-        generation = (
-            state.temporal_fusion
-            .generation
+        return JSONResponse(
+            {
+                "status": "ok",
+                "generation":
+                    state.temporal_fusion
+                    .generation,
+                "visual_mode":
+                    state.visual_mode,
+                "visual_ready":
+                    state.visual_mode
+                    == "image",
+            }
         )
-
-        visual_mode = (
-            state.visual_mode
-        )
-
-    return JSONResponse(
-        {
-            "status":
-                "ok",
-
-            "generation":
-                generation,
-
-            "visual_mode":
-                visual_mode,
-
-            "visual_ready":
-                (
-                    visual_mode
-                    == "image"
-                ),
-        }
-    )
 
 
 # ============================================================
 # LIVE PREDICTION
 # ============================================================
 
-@app.post(
-    "/predict_live"
-)
+@app.post("/predict_live")
 async def predict_live(
-
     session_id: str = Form(...),
-
     generation: int = Form(...),
-
     text: str = Form(...),
-
     keystroke_events: str = Form(...),
-
     visual_mode: str = Form(...),
-
-    webcam_frame:
-        Optional[str] = Form(
-            None
-        ),
-
+    webcam_frame: Optional[str] = Form(None),
 ) -> JSONResponse:
 
-    # --------------------------------------------------------
-    # CRITICAL FIX:
+    # Defensive backend lazy initialization.
     #
-    # Lazy-load the multimodal ML backend here instead of
-    # during FastAPI application startup.
-    # --------------------------------------------------------
-
+    # Normally script.js calls /initialize-models first,
+    # but this makes the endpoint independently correct.
     if predictor is None:
-
         try:
-
             await asyncio.to_thread(
                 initialise_models
             )
-
         except Exception as exc:
-
             raise HTTPException(
                 status_code=503,
                 detail=(
                     "Canonical fusion backend "
-                    "could not be initialised: "
+                    "could not initialise: "
                     f"{type(exc).__name__}: {exc}"
                 ),
             ) from exc
-
-    # Defensive verification.
-    if predictor is None:
-
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Canonical fusion backend "
-                "is unavailable after initialization."
-            ),
-        )
 
     session_id = validate_session_id(
         session_id
@@ -3445,7 +2515,6 @@ async def predict_live(
     )
 
     if len(text) < MIN_TEXT_CHARS:
-
         raise HTTPException(
             status_code=409,
             detail=(
@@ -3456,7 +2525,6 @@ async def predict_live(
         )
 
     if keydown_count < MIN_KEYPRESSES:
-
         raise HTTPException(
             status_code=409,
             detail=(
@@ -3466,21 +2534,12 @@ async def predict_live(
             ),
         )
 
-    captured_audio_bytes: Optional[
-        bytes
-    ] = None
-
-    captured_audio_pcm: Optional[
-        bytes
-    ] = None
-
+    captured_audio_bytes = None
+    captured_audio_pcm = None
     captured_audio_suffix = ".wav"
 
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         current_generation = (
             state.temporal_fusion
@@ -3491,32 +2550,24 @@ async def predict_live(
             int(generation)
             != current_generation
         ):
-
             raise HTTPException(
                 status_code=409,
                 detail={
                     "type":
                         "stale_generation",
-
                     "generation":
                         current_generation,
                 },
             )
 
-        if (
-            visual_mode
-            != state.visual_mode
-        ):
-
+        if visual_mode != state.visual_mode:
             raise HTTPException(
                 status_code=409,
                 detail={
                     "type":
                         "visual_mode_mismatch",
-
                     "generation":
                         current_generation,
-
                     "visual_mode":
                         state.visual_mode,
                 },
@@ -3540,9 +2591,13 @@ async def predict_live(
             state.visual_mode
         )
 
-        visual_path = state.visual_path
+        visual_path = (
+            state.visual_path
+        )
 
-        visual_name = state.visual_name
+        visual_name = (
+            state.visual_name
+        )
 
         visual_started_at = (
             state.visual_started_at
@@ -3552,9 +2607,7 @@ async def predict_live(
             audio_source_kind
             == "microphone_stream"
         ):
-
             if not state.audio_stream_active:
-
                 raise HTTPException(
                     status_code=409,
                     detail=(
@@ -3568,25 +2621,19 @@ async def predict_live(
             )
 
             buffered_seconds = (
-                len(
-                    captured_audio_pcm
-                )
-                / (
-                    TARGET_SR
-                    * 2
-                )
+                len(captured_audio_pcm)
+                / (TARGET_SR * 2)
             )
 
             if (
                 buffered_seconds
                 < AUDIO_STREAM_MIN_SECONDS
             ):
-
                 raise HTTPException(
                     status_code=409,
                     detail=(
-                        "Continuous microphone "
-                        "buffer is still warming up: "
+                        "Microphone buffer is "
+                        "still warming up: "
                         f"{buffered_seconds:.2f}/"
                         f"{AUDIO_STREAM_MIN_SECONDS:.2f}s."
                     ),
@@ -3597,12 +2644,9 @@ async def predict_live(
             )
 
         elif (
-            state.audio_path
-            is not None
-            and
-            state.audio_path.exists()
+            state.audio_path is not None
+            and state.audio_path.exists()
         ):
-
             captured_audio_bytes = (
                 state.audio_path
                 .read_bytes()
@@ -3620,7 +2664,6 @@ async def predict_live(
             )
 
         else:
-
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -3628,15 +2671,11 @@ async def predict_live(
                 ),
             )
 
-    if (
-        captured_visual_mode
-        not in {
-            "image",
-            "video",
-            "webcam",
-        }
-    ):
-
+    if captured_visual_mode not in {
+        "image",
+        "video",
+        "webcam",
+    }:
         raise HTTPException(
             status_code=409,
             detail=(
@@ -3644,20 +2683,11 @@ async def predict_live(
             ),
         )
 
-    keystroke_path: Optional[
-        Path
-    ] = None
-
-    temporary_audio_path: Optional[
-        Path
-    ] = None
-
-    temporary_image_path: Optional[
-        Path
-    ] = None
+    keystroke_path = None
+    temporary_audio_path = None
+    temporary_image_path = None
 
     try:
-
         keystroke_path = (
             create_keystroke_json(
                 session_id=session_id,
@@ -3667,13 +2697,10 @@ async def predict_live(
         )
 
         if captured_audio_pcm is not None:
-
             temporary_audio_path = (
-                session_directory(
-                    session_id
-                )
+                session_directory(session_id)
                 / (
-                    "live_audio_snapshot_"
+                    "live_audio_"
                     f"{uuid.uuid4().hex}"
                     ".wav"
                 )
@@ -3696,11 +2723,8 @@ async def predict_live(
             )
 
         else:
-
             temporary_audio_path = (
-                session_directory(
-                    session_id
-                )
+                session_directory(session_id)
                 / (
                     "audio_snapshot_"
                     f"{uuid.uuid4().hex}"
@@ -3717,51 +2741,37 @@ async def predict_live(
                 temporary_audio_path
             )
 
-        if (
-            captured_visual_mode
-            == "image"
-        ):
-
+        if captured_visual_mode == "image":
             if (
                 visual_path is None
-                or
-                not visual_path.exists()
+                or not visual_path.exists()
             ):
-
                 raise HTTPException(
                     status_code=409,
                     detail=(
-                        "Selected image is unavailable."
+                        "Selected image "
+                        "is unavailable."
                     ),
                 )
 
             image_path = visual_path
 
-        elif (
-            captured_visual_mode
-            == "video"
-        ):
-
+        elif captured_visual_mode == "video":
             if (
                 visual_path is None
-                or
-                not visual_path.exists()
-                or
-                visual_started_at
-                is None
+                or not visual_path.exists()
+                or visual_started_at is None
             ):
-
                 raise HTTPException(
                     status_code=409,
                     detail=(
-                        "Selected video is unavailable."
+                        "Selected video "
+                        "is unavailable."
                     ),
                 )
 
             temporary_image_path = (
-                session_directory(
-                    session_id
-                )
+                session_directory(session_id)
                 / (
                     "video_frame_"
                     f"{uuid.uuid4().hex}"
@@ -3769,19 +2779,19 @@ async def predict_live(
                 )
             )
 
-            image_path = await asyncio.to_thread(
-                extract_video_snapshot,
-                video_path=visual_path,
-                started_at=visual_started_at,
-                output_path=(
-                    temporary_image_path
-                ),
+            image_path = (
+                await asyncio.to_thread(
+                    extract_video_snapshot,
+                    video_path=visual_path,
+                    started_at=visual_started_at,
+                    output_path=(
+                        temporary_image_path
+                    ),
+                )
             )
 
         else:
-
             if not webcam_frame:
-
                 raise HTTPException(
                     status_code=409,
                     detail=(
@@ -3791,9 +2801,7 @@ async def predict_live(
                 )
 
             temporary_image_path = (
-                session_directory(
-                    session_id
-                )
+                session_directory(session_id)
                 / (
                     "webcam_frame_"
                     f"{uuid.uuid4().hex}"
@@ -3801,76 +2809,54 @@ async def predict_live(
                 )
             )
 
-            image_path = await asyncio.to_thread(
-                canonicalise_webcam_frame,
-                webcam_frame,
-                temporary_image_path,
+            image_path = (
+                await asyncio.to_thread(
+                    canonicalise_webcam_frame,
+                    webcam_frame,
+                    temporary_image_path,
+                )
             )
 
-        raw_result = await asyncio.to_thread(
-            run_canonical_prediction,
-            keystroke_json=(
-                keystroke_path
-            ),
-            text=text,
-            audio_path=(
-                audio_path
-            ),
-            image_path=(
-                image_path
-            ),
+        raw_result = (
+            await asyncio.to_thread(
+                run_canonical_prediction,
+                keystroke_json=(
+                    keystroke_path
+                ),
+                text=text,
+                audio_path=audio_path,
+                image_path=image_path,
+            )
         )
 
         try:
-
-            result = (
-                build_prediction_result(
-                    raw_result=(
-                        raw_result
-                    ),
-
-                    temporal_engine=(
-                        temporal_engine
-                    ),
-
-                    expected_generation=(
-                        captured_generation
-                    ),
-
-                    audio_diagnostics=(
-                        audio_diagnostics
-                    ),
-
-                    audio_source_kind=(
-                        audio_source_kind
-                    ),
-
-                    audio_buffered_seconds=(
-                        buffered_seconds
-                    ),
-
-                    visual_mode=(
-                        captured_visual_mode
-                    ),
-
-                    visual_name=(
-                        visual_name
-                    ),
-                )
+            result = build_prediction_result(
+                raw_result=raw_result,
+                temporal_engine=temporal_engine,
+                expected_generation=(
+                    captured_generation
+                ),
+                audio_diagnostics=(
+                    audio_diagnostics
+                ),
+                audio_source_kind=(
+                    audio_source_kind
+                ),
+                audio_buffered_seconds=(
+                    buffered_seconds
+                ),
+                visual_mode=(
+                    captured_visual_mode
+                ),
+                visual_name=visual_name,
             )
 
         except StaleGenerationError as exc:
-
             with SESSION_LOCK:
-
-                current_state = (
+                current_generation = (
                     get_session(
                         session_id
                     )
-                )
-
-                current_generation = (
-                    current_state
                     .temporal_fusion
                     .generation
                 )
@@ -3878,95 +2864,52 @@ async def predict_live(
             raise HTTPException(
                 status_code=409,
                 detail={
-                    "type":
-                        "stale_result",
-
+                    "type": "stale_result",
                     "generation":
                         current_generation,
-
-                    "message":
-                        str(exc),
+                    "message": str(exc),
                 },
             ) from exc
 
-        with SESSION_LOCK:
+        result["session_id"] = (
+            session_id
+        )
 
-            current_state = get_session(
-                session_id
-            )
+        result["audio_source_name"] = (
+            audio_name
+        )
 
-            if (
-                current_state.temporal_fusion
-                is not temporal_engine
-            ):
-
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "type":
-                            "stale_session",
-
-                        "generation":
-                            (
-                                current_state
-                                .temporal_fusion
-                                .generation
-                            ),
-                    },
-                )
-
-            current_state.last_seen = (
-                time.time()
-            )
-
-        result[
-            "session_id"
-        ] = session_id
-
-        result[
-            "audio_source_name"
-        ] = audio_name
-
-        # Logging should not destroy an otherwise valid
-        # inference response if the ephemeral filesystem
-        # encounters a problem.
         try:
-
             log_prediction(
                 session_id=session_id,
-                generation=(
-                    result[
-                        "generation"
-                    ]
-                ),
+                generation=result[
+                    "generation"
+                ],
                 text=text,
                 keystroke_count=(
                     keydown_count
                 ),
-                audio_name=(
-                    audio_name
-                ),
+                audio_name=audio_name,
                 result=result,
             )
-
-        except Exception as log_exc:
-
+        except Exception as exc:
             print(
-                "[logging] WARNING: Prediction "
-                "could not be written: "
-                f"{type(log_exc).__name__}: {log_exc}",
+                "[logging] Warning: "
+                f"{type(exc).__name__}: {exc}",
                 flush=True,
             )
 
-        return JSONResponse(
-            result
-        )
+        return JSONResponse(result)
 
     except HTTPException:
-
         raise
 
     except Exception as exc:
+        print(
+            "[prediction] Failure:\n"
+            f"{traceback.format_exc()}",
+            flush=True,
+        )
 
         raise HTTPException(
             status_code=500,
@@ -3977,31 +2920,18 @@ async def predict_live(
         ) from exc
 
     finally:
-
-        safe_delete(
-            keystroke_path
-        )
-
-        safe_delete(
-            temporary_audio_path
-        )
-
-        safe_delete(
-            temporary_image_path
-        )
+        safe_delete(keystroke_path)
+        safe_delete(temporary_audio_path)
+        safe_delete(temporary_image_path)
 
 
 # ============================================================
-# TEMPORAL RESET
+# RESET ROUTES
 # ============================================================
 
-@app.post(
-    "/reset_temporal"
-)
+@app.post("/reset_temporal")
 async def reset_temporal(
-
     session_id: str = Form(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
@@ -4009,90 +2939,51 @@ async def reset_temporal(
     )
 
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         generation = (
-            state.temporal_fusion
-            .reset()
-        )
-
-        state.last_seen = (
-            time.time()
+            state.temporal_fusion.reset()
         )
 
         temporal_status = (
-            state.temporal_fusion
-            .status()
+            state.temporal_fusion.status()
         )
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "session_id":
-                session_id,
-
-            "generation":
-                generation,
-
+            "status": "ok",
+            "session_id": session_id,
+            "generation": generation,
             "temporal_samples":
                 temporal_status[
                     "temporal_samples"
                 ],
-
             "temporal_window":
                 temporal_status[
                     "temporal_window"
                 ],
-
             "temporal_window_full":
                 temporal_status[
                     "temporal_window_full"
                 ],
-
-            "message":
-                (
-                    "Temporal probability "
-                    "history reset."
-                ),
         }
     )
 
 
-# ============================================================
-# FULL RESET
-# ============================================================
-
-@app.post(
-    "/full_reset"
-)
+@app.post("/full_reset")
 async def full_reset(
-
     session_id: str = Form(...),
-
 ) -> JSONResponse:
 
     session_id = validate_session_id(
         session_id
     )
 
-    old_audio_path: Optional[
-        Path
-    ] = None
-
     with SESSION_LOCK:
-
-        state = get_session(
-            session_id
-        )
+        state = get_session(session_id)
 
         generation = (
-            state.temporal_fusion
-            .reset()
+            state.temporal_fusion.reset()
         )
 
         old_audio_path = (
@@ -4104,71 +2995,41 @@ async def full_reset(
         state.audio_source_kind = None
         state.audio_diagnostics = {}
 
-        clear_audio_stream_state(
-            state
-        )
+        clear_audio_stream_state(state)
 
         state.visual_mode = "none"
-
         state.visual_path = None
-
         state.visual_name = None
-
         state.visual_started_at = None
 
-        state.last_seen = (
-            time.time()
-        )
-
         temporal_status = (
-            state.temporal_fusion
-            .status()
+            state.temporal_fusion.status()
         )
 
-    safe_delete(
-        old_audio_path
-    )
+    safe_delete(old_audio_path)
 
     return JSONResponse(
         {
-            "status":
-                "ok",
-
-            "session_id":
-                session_id,
-
-            "generation":
-                generation,
-
+            "status": "ok",
+            "session_id": session_id,
+            "generation": generation,
             "temporal_samples":
                 temporal_status[
                     "temporal_samples"
                 ],
-
             "temporal_window":
                 temporal_status[
                     "temporal_window"
                 ],
-
             "temporal_window_full":
                 temporal_status[
                     "temporal_window_full"
                 ],
-
-            "audio_ready":
-                False,
-
+            "audio_ready": False,
             "audio_stream_active":
                 False,
-
-            "visual_ready":
-                False,
-
-            "visual_mode":
-                "none",
-
-            "message":
-                "Full session reset.",
+            "visual_ready": False,
+            "visual_mode": "none",
         }
     )
 
@@ -4176,20 +3037,8 @@ async def full_reset(
 # ============================================================
 # ENTRY POINT
 # ============================================================
-#
-# Render itself uses:
-#
-#   uvicorn web_app.app:app --host 0.0.0.0 --port $PORT
-#
-# This block is retained so that running:
-#
-#   python web_app/app.py
-#
-# is also compatible with cloud environments.
-# ============================================================
 
 if __name__ == "__main__":
-
     port = int(
         os.environ.get(
             "PORT",
