@@ -1,15 +1,25 @@
-// web_app/static/script.js
-
 "use strict";
 
 /* ============================================================
    SenseFuzeAI
-   Recoverable continuous multimodal browser client
+   Final continuous live-fusion browser client
+
+   Compatible with the existing SenseFuzeAI HTML IDs/controls.
+
+   Key corrections:
+   1. "not_loaded" is NOT treated as model failure.
+   2. Input readiness does NOT depend on fusionModelLoaded.
+   3. Lazy model initialisation is supported.
+   4. /predict_live remains capable of triggering backend lazy load.
+   5. Server HTTP errors are preserved instead of becoming "Error".
+   6. Model status failure does not destroy otherwise valid UI state.
+   7. Microphone, file audio, image, video and webcam controls preserved.
+   8. Session generation / stale-result protection preserved.
    ============================================================ */
 
 
 /* ============================================================
-   HELPERS
+   GENERIC HELPERS
    ============================================================ */
 
 function getElement(id) {
@@ -45,18 +55,6 @@ function positiveInteger(value, fallback) {
 }
 
 
-function sleep(milliseconds) {
-  return new Promise(
-    resolve => {
-      window.setTimeout(
-        resolve,
-        milliseconds
-      );
-    }
-  );
-}
-
-
 function createSessionId() {
   if (
     window.crypto
@@ -74,10 +72,23 @@ function createSessionId() {
 }
 
 
-function formatServerError(
-  data,
-  fallback = "Unknown server error."
-) {
+/*
+ * Convert FastAPI / application errors into useful browser text.
+ *
+ * Supported examples:
+ *
+ *   {"detail": "Audio modality is required."}
+ *
+ *   {"detail": {
+ *       "type": "stale_generation",
+ *       "generation": 4
+ *   }}
+ *
+ *   {"error": "..."}
+ *
+ *   {"exception": "..."}
+ */
+function formatServerError(data, fallback = "Unknown server error.") {
   if (!data) {
     return fallback;
   }
@@ -99,15 +110,6 @@ function formatServerError(
     return detail;
   }
 
-  if (
-    typeof detail === "object"
-    && detail.message
-  ) {
-    return String(
-      detail.message
-    );
-  }
-
   try {
     return JSON.stringify(detail);
   } catch (_) {
@@ -116,6 +118,12 @@ function formatServerError(
 }
 
 
+/*
+ * Robust fetch helper.
+ *
+ * Unlike the previous script, this does not assume every server
+ * response contains parseable JSON.
+ */
 async function fetchJson(
   url,
   options = {}
@@ -139,32 +147,37 @@ async function fetchJson(
       )
     );
 
-    error.cause =
-      networkError;
+    error.cause = networkError;
 
     throw error;
   }
 
   let data = {};
 
-  try {
-    data =
-      await response.json();
+  const contentType =
+    response.headers.get(
+      "content-type"
+    ) || "";
 
-  } catch (_) {
-    try {
+  try {
+    if (
+      contentType.includes(
+        "application/json"
+      )
+    ) {
+      data = await response.json();
+
+    } else {
       const text =
         await response.text();
 
-      if (text) {
-        data = {
-          detail: text
-        };
-      }
-
-    } catch (_) {
-      data = {};
+      data = text
+        ? { detail: text }
+        : {};
     }
+
+  } catch (_) {
+    data = {};
   }
 
   if (!response.ok) {
@@ -222,7 +235,7 @@ async function postForm(
 
 
 /* ============================================================
-   DOM
+   DOM REFERENCES
    ============================================================ */
 
 const textInput =
@@ -441,9 +454,11 @@ const audioPacketCount =
    ============================================================ */
 
 let MIN_TEXT_CHARS = 20;
+
 let MIN_KEYPRESSES = 20;
 
-let LIVE_INTERVAL_MS = 15000;
+let LIVE_INTERVAL_MS = 2500;
+
 let TEMPORAL_WINDOW = 5;
 
 let TARGET_AUDIO_SAMPLE_RATE =
@@ -462,6 +477,17 @@ let behaviouralLabels = [];
    MODEL STATE
    ============================================================ */
 
+/*
+ * Canonical frontend states:
+ *
+ *   not_loaded
+ *   loading
+ *   ready
+ *   failed
+ *
+ * Older backend versions may not expose "state".
+ * Compatibility logic below handles that.
+ */
 let modelState =
   "not_loaded";
 
@@ -477,9 +503,12 @@ let temporalFusionBackend =
 let modelInitialisationInFlight =
   false;
 
+let explicitModelInitialisationSupported =
+  true;
+
 
 /* ============================================================
-   CLIENT / GENERATION STATE
+   GENERATION / CONCURRENCY
    ============================================================ */
 
 let serverGeneration = 0;
@@ -492,15 +521,12 @@ let stateChangeInProgress =
 let predictionInFlight =
   false;
 
-let recoveryInFlight =
-  false;
-
 let liveTimer =
   null;
 
 
 /* ============================================================
-   KEYSTROKES
+   KEYSTROKE STATE
    ============================================================ */
 
 let keystrokeEvents = [];
@@ -510,7 +536,7 @@ const activeKeys =
 
 
 /* ============================================================
-   AUDIO
+   AUDIO STATE
    ============================================================ */
 
 let audioSourceReady =
@@ -549,15 +575,6 @@ let audioStreamToken =
 let microphoneExpectedClose =
   false;
 
-let microphoneReconnectInFlight =
-  false;
-
-let microphoneReconnectAttempts =
-  0;
-
-const MAX_MICROPHONE_RECONNECT_ATTEMPTS =
-  5;
-
 let audioBufferedSec =
   0;
 
@@ -567,16 +584,9 @@ let audioPackets =
 let audioCurrentDbfs =
   null;
 
-/*
- * Fixed audio File is retained while the page remains open.
- * This permits automatic reconstruction after server restart.
- */
-let fixedAudioFile =
-  null;
-
 
 /* ============================================================
-   VISUAL
+   VISUAL STATE
    ============================================================ */
 
 let visualMode =
@@ -586,9 +596,6 @@ let visualSourceReady =
   false;
 
 let visualSourceName =
-  null;
-
-let visualSourceFile =
   null;
 
 let webcamStream =
@@ -612,7 +619,7 @@ setText(
 
 
 /* ============================================================
-   STATE CHANGE
+   EPOCH / STATE-CHANGE HELPERS
    ============================================================ */
 
 function beginStateChange(message) {
@@ -638,7 +645,8 @@ function finishStateChange(
   operationEpoch
 ) {
   if (
-    operationEpoch === clientEpoch
+    operationEpoch
+    === clientEpoch
   ) {
     stateChangeInProgress =
       false;
@@ -652,8 +660,96 @@ function operationStillCurrent(
   operationEpoch
 ) {
   return (
-    operationEpoch === clientEpoch
+    operationEpoch
+    === clientEpoch
   );
+}
+
+
+/* ============================================================
+   SERVER CONFLICT HANDLING
+   ============================================================ */
+
+function handleConflictResponse(
+  data
+) {
+  const detail =
+    data
+    && typeof data.detail
+      === "object"
+    && data.detail !== null
+      ? data.detail
+      : null;
+
+  if (!detail) {
+    return false;
+  }
+
+  if (
+    detail.generation
+    !== undefined
+  ) {
+    const generation =
+      Number(
+        detail.generation
+      );
+
+    if (
+      Number.isFinite(
+        generation
+      )
+    ) {
+      serverGeneration =
+        generation;
+    }
+  }
+
+  const type =
+    String(
+      detail.type || ""
+    );
+
+  if (
+    type === "stale_generation"
+    || type === "stale_result"
+    || type === "stale_session"
+  ) {
+    setText(
+      statusBox,
+      (
+        "Prediction was discarded because "
+        + "the input source or temporal "
+        + "generation changed."
+      )
+    );
+
+    return true;
+  }
+
+  if (
+    type ===
+    "visual_mode_mismatch"
+  ) {
+    setText(
+      statusBox,
+      (
+        "Visual-source state changed "
+        + "on the server"
+        + (
+            detail.visual_mode
+              ? (
+                  ` (${detail.visual_mode})`
+                )
+              : ""
+          )
+        + "."
+      )
+    );
+
+    return true;
+  }
+
+  return false;
 }
 
 
@@ -662,15 +758,21 @@ function operationStillCurrent(
    ============================================================ */
 
 function normaliseKey(event) {
-  if (event.key === "Backspace") {
+  if (
+    event.key === "Backspace"
+  ) {
     return "backspace";
   }
 
-  if (event.key === "Delete") {
+  if (
+    event.key === "Delete"
+  ) {
     return "delete";
   }
 
-  if (event.key === " ") {
+  if (
+    event.key === " "
+  ) {
     return "space";
   }
 
@@ -727,53 +829,73 @@ function setModelReadinessBadge() {
     "warning"
   );
 
-  if (modelState === "ready") {
-    modelReady.classList.add(
-      "active"
-    );
+  switch (modelState) {
+    case "ready":
+      modelReady.classList.add(
+        "active"
+      );
 
-    if (bold) {
-      bold.textContent = "Ready";
-    }
+      if (bold) {
+        bold.textContent =
+          "Ready";
+      }
 
-  } else if (
-    modelState === "loading"
-  ) {
-    modelReady.classList.add(
-      "warning"
-    );
+      break;
 
-    if (bold) {
-      bold.textContent = "Loading";
-    }
 
-  } else if (
-    modelState === "failed"
-  ) {
-    if (bold) {
-      bold.textContent = "Failed";
-    }
+    case "loading":
+      modelReady.classList.add(
+        "warning"
+      );
 
-  } else {
-    if (bold) {
-      bold.textContent = "Standby";
-    }
+      if (bold) {
+        bold.textContent =
+          "Loading";
+      }
+
+      break;
+
+
+    case "failed":
+      if (bold) {
+        bold.textContent =
+          "Failed";
+      }
+
+      break;
+
+
+    case "not_loaded":
+    default:
+      if (bold) {
+        bold.textContent =
+          "Standby";
+      }
+
+      break;
   }
 }
 
 
 function currentTextLength() {
   return textInput
-    ? textInput.value.trim().length
+    ? textInput
+        .value
+        .trim()
+        .length
     : 0;
 }
 
 
 function currentKeydownCount() {
-  return keystrokeEvents.filter(
-    event =>
-      event.type === "down"
-  ).length;
+  return (
+    keystrokeEvents
+      .filter(
+        event =>
+          event.type === "down"
+      )
+      .length
+  );
 }
 
 
@@ -794,7 +916,9 @@ function visualIsReady() {
     );
   }
 
-  if (visualMode === "webcam") {
+  if (
+    visualMode === "webcam"
+  ) {
     return Boolean(
       visualSourceReady
       && webcamStream
@@ -808,10 +932,24 @@ function visualIsReady() {
 }
 
 
+/*
+ * CRITICAL:
+ *
+ * This function intentionally does NOT require:
+ *
+ *     fusionModelLoaded === true
+ *
+ * The backend performs lazy model initialisation. Requiring
+ * fusionModelLoaded here would recreate the previous circular
+ * dependency:
+ *
+ * browser waits for model
+ *     -> model waits for prediction request
+ *     -> prediction request never happens
+ */
 function inputModalitiesReady() {
   return (
     !stateChangeInProgress
-    && !recoveryInFlight
     && currentTextLength()
       >= MIN_TEXT_CHARS
     && currentKeydownCount()
@@ -828,18 +966,13 @@ function updateAudioMetrics() {
     (
       microphoneStreaming
         ? (
-            audioSocket
-            && audioSocket.readyState
-              === WebSocket.OPEN
-              ? (
-                  audioSourceReady
-                    ? "Live"
-                    : "Buffering"
-                )
-              : "Reconnecting"
+            audioSourceReady
+              ? "Live"
+              : "Buffering"
           )
         : (
-            audioSourceKind === "file"
+            audioSourceKind
+              === "file"
               ? "Fixed file"
               : "Stopped"
           )
@@ -879,10 +1012,12 @@ function updateReadiness() {
     currentKeydownCount();
 
   const textOk =
-    textCount >= MIN_TEXT_CHARS;
+    textCount
+    >= MIN_TEXT_CHARS;
 
   const keyOk =
-    keydowns >= MIN_KEYPRESSES;
+    keydowns
+    >= MIN_KEYPRESSES;
 
   const audioOk =
     audioIsReady();
@@ -901,7 +1036,9 @@ function updateReadiness() {
     keydowns
   );
 
+
   setModelReadinessBadge();
+
 
   setReady(
     webcamModelReady,
@@ -910,6 +1047,7 @@ function updateReadiness() {
     "Not required"
   );
 
+
   setReady(
     textReady,
     textOk,
@@ -917,12 +1055,14 @@ function updateReadiness() {
     "Missing"
   );
 
+
   setReady(
     keyReady,
     keyOk,
     "Ready",
     "Missing"
   );
+
 
   setReady(
     audioReady,
@@ -934,14 +1074,22 @@ function updateReadiness() {
     ),
     (
       microphoneStreaming
-        ? (
-            microphoneReconnectInFlight
-              ? "Reconnecting"
-              : "Buffering"
-          )
+        ? "Buffering"
         : "Required"
     )
   );
+
+
+  if (audioReady) {
+    audioReady.classList.toggle(
+      "warning",
+      (
+        microphoneStreaming
+        && !audioOk
+      )
+    );
+  }
+
 
   setReady(
     imageReady,
@@ -950,12 +1098,29 @@ function updateReadiness() {
     "Required"
   );
 
+
   if (textCard) {
+    const active =
+      textOk && keyOk;
+
     textCard.classList.toggle(
       "active",
-      textOk && keyOk
+      active
     );
+
+    const badge =
+      textCard.querySelector(
+        ".badge"
+      );
+
+    if (badge) {
+      badge.textContent =
+        active
+          ? "active"
+          : "inactive";
+    }
   }
+
 
   if (audioCard) {
     audioCard.classList.toggle(
@@ -967,25 +1132,60 @@ function updateReadiness() {
       "streaming",
       microphoneStreaming
     );
+
+    const badge =
+      audioCard.querySelector(
+        ".badge"
+      );
+
+    if (badge) {
+      badge.textContent =
+        microphoneStreaming
+          ? (
+              audioOk
+                ? "live"
+                : "buffering"
+            )
+          : (
+              audioOk
+                ? "ready"
+                : "inactive"
+            );
+    }
   }
+
 
   if (webcamCard) {
     webcamCard.classList.toggle(
       "active",
       visualOk
     );
+
+    const badge =
+      webcamCard.querySelector(
+        ".badge"
+      );
+
+    if (badge) {
+      badge.textContent =
+        visualOk
+          ? "active"
+          : "inactive";
+    }
   }
+
 
   if (startMicBtn) {
     startMicBtn.disabled =
-      microphoneStreaming
-      || microphoneReconnectInFlight;
+      microphoneStreaming;
   }
+
 
   if (stopMicBtn) {
     stopMicBtn.disabled =
       !microphoneStreaming;
   }
+
 
   updateAudioMetrics();
 }
@@ -996,7 +1196,7 @@ function updateReadiness() {
    ============================================================ */
 
 function deriveModelState(data) {
-  const explicit =
+  const explicitState =
     String(
       data?.state || ""
     )
@@ -1009,15 +1209,23 @@ function deriveModelState(data) {
       "loading",
       "ready",
       "failed"
-    ].includes(explicit)
+    ].includes(
+      explicitState
+    )
   ) {
-    return explicit;
+    return explicitState;
   }
 
+  /*
+   * Backward compatibility with backend versions that expose
+   * booleans only.
+   */
   if (
-    data?.fusion_model
-    || data?.predictor_loaded
-    || data?.initialised
+    Boolean(
+      data?.fusion_model
+      || data?.predictor_loaded
+      || data?.initialised
+    )
   ) {
     return "ready";
   }
@@ -1042,14 +1250,17 @@ function applyModelStatus(data) {
       || modelState === "ready"
     );
 
+
   webcamModelLoaded =
     Boolean(
       data.webcam_calibrated_image_model
     );
 
+
   temporalFusionBackend =
     data.temporal_fusion_backend
     || null;
+
 
   MIN_TEXT_CHARS =
     positiveInteger(
@@ -1057,11 +1268,13 @@ function applyModelStatus(data) {
       MIN_TEXT_CHARS
     );
 
+
   MIN_KEYPRESSES =
     positiveInteger(
       data.min_keypresses,
       MIN_KEYPRESSES
     );
+
 
   LIVE_INTERVAL_MS =
     positiveInteger(
@@ -1069,11 +1282,13 @@ function applyModelStatus(data) {
       LIVE_INTERVAL_MS
     );
 
+
   TEMPORAL_WINDOW =
     positiveInteger(
       data.temporal_probability_window,
       TEMPORAL_WINDOW
     );
+
 
   TARGET_AUDIO_SAMPLE_RATE =
     positiveInteger(
@@ -1081,11 +1296,13 @@ function applyModelStatus(data) {
       TARGET_AUDIO_SAMPLE_RATE
     );
 
+
   AUDIO_STREAM_WINDOW_SECONDS =
     finiteNumber(
       data.audio_stream_window_seconds,
       AUDIO_STREAM_WINDOW_SECONDS
     );
+
 
   AUDIO_STREAM_MIN_SECONDS =
     finiteNumber(
@@ -1093,8 +1310,11 @@ function applyModelStatus(data) {
       AUDIO_STREAM_MIN_SECONDS
     );
 
+
   if (
-    Array.isArray(data.labels)
+    Array.isArray(
+      data.labels
+    )
   ) {
     behaviouralLabels =
       data.labels
@@ -1102,65 +1322,80 @@ function applyModelStatus(data) {
           value =>
             String(value).trim()
         )
-        .filter(Boolean);
+        .filter(
+          value =>
+            value.length > 0
+        );
   }
+
 
   setText(
     temporalWindow,
     TEMPORAL_WINDOW
   );
 
-  if (modelState === "ready") {
-    setText(
-      modelStatusText,
-      (
-        "Fusion backend ready"
-        + (
-            temporalFusionBackend
-              ? (
-                  " | Temporal backend: "
-                  + temporalFusionBackend
-                )
-              : ""
-          )
-      )
-    );
 
-  } else if (
-    modelState === "loading"
-  ) {
-    setText(
-      modelStatusText,
-      (
-        "Fusion backend is loading. "
-        + "First inference may take longer."
-      )
-    );
+  switch (modelState) {
+    case "ready":
+      setText(
+        modelStatusText,
+        (
+          "Fusion backend ready"
+          + (
+              temporalFusionBackend
+                ? (
+                    " | Temporal backend: "
+                    + temporalFusionBackend
+                  )
+                : ""
+            )
+        )
+      );
 
-  } else if (
-    modelState === "failed"
-  ) {
-    setText(
-      modelStatusText,
-      (
-        "Fusion backend failed: "
-        + String(
-            data.error
-            || "unknown error"
-          )
-      )
-    );
+      break;
 
-  } else {
-    setText(
-      modelStatusText,
-      (
-        "Fusion backend in standby. "
-        + "It will initialise when "
-        + "inference becomes ready."
-      )
-    );
+
+    case "loading":
+      setText(
+        modelStatusText,
+        (
+          "Fusion backend is loading. "
+          + "The first inference may take longer."
+        )
+      );
+
+      break;
+
+
+    case "failed":
+      setText(
+        modelStatusText,
+        (
+          "Fusion backend failed: "
+          + String(
+              data.error
+              || "unknown server error"
+            )
+        )
+      );
+
+      break;
+
+
+    case "not_loaded":
+    default:
+      setText(
+        modelStatusText,
+        (
+          "Fusion backend in standby. "
+          + "It will initialise when live "
+          + "inference becomes ready."
+        )
+      );
+
+      break;
   }
+
 
   setText(
     webcamModelStatusText,
@@ -1177,6 +1412,7 @@ function applyModelStatus(data) {
     )
   );
 
+
   updateReadiness();
 }
 
@@ -1191,11 +1427,19 @@ async function checkModelStatus() {
         }
       );
 
-    applyModelStatus(data);
+    applyModelStatus(
+      data
+    );
 
     return data;
 
   } catch (error) {
+    /*
+     * Do NOT arbitrarily set fusionModelLoaded=false here.
+     *
+     * A temporary status endpoint/network failure should not
+     * destroy a previously valid model state.
+     */
     console.error(
       "[SenseFuzeAI] "
       + "Model-status query failed:",
@@ -1213,11 +1457,24 @@ async function checkModelStatus() {
       )
     );
 
+    updateReadiness();
+
     return null;
   }
 }
 
 
+/*
+ * Explicit model initialisation.
+ *
+ * This works with the revised backend exposing:
+ *
+ *     POST /initialize-models
+ *
+ * Compatibility behaviour:
+ * if that route does not exist, /predict_live itself is still
+ * allowed to invoke backend lazy initialisation.
+ */
 async function ensureModelsReady() {
   if (
     modelState === "ready"
@@ -1226,17 +1483,31 @@ async function ensureModelsReady() {
     return true;
   }
 
-  if (modelInitialisationInFlight) {
+
+  if (
+    modelInitialisationInFlight
+  ) {
     return false;
   }
+
+
+  /*
+   * If a previous request established that the explicit endpoint
+   * does not exist, do not keep calling it. Let /predict_live
+   * perform its backend-side lazy initialisation.
+   */
+  if (
+    !explicitModelInitialisationSupported
+  ) {
+    return true;
+  }
+
 
   modelInitialisationInFlight =
     true;
 
   modelState =
     "loading";
-
-  updateReadiness();
 
   setText(
     statusBox,
@@ -1246,9 +1517,12 @@ async function ensureModelsReady() {
     )
   );
 
+  updateReadiness();
+
+
   try {
-    const data =
-      await fetchJson(
+    const response =
+      await fetch(
         "/initialize-models",
         {
           method: "POST",
@@ -1256,7 +1530,70 @@ async function ensureModelsReady() {
         }
       );
 
-    if (data.model_status) {
+
+    /*
+     * Compatibility with an app.py version that has lazy
+     * /predict_live but no /initialize-models endpoint.
+     */
+    if (
+      response.status === 404
+      || response.status === 405
+    ) {
+      explicitModelInitialisationSupported =
+        false;
+
+      modelState =
+        "not_loaded";
+
+      fusionModelLoaded =
+        false;
+
+      setText(
+        modelStatusText,
+        (
+          "Fusion backend will initialise "
+          + "inside the first prediction request."
+        )
+      );
+
+      return true;
+    }
+
+
+    let data = {};
+
+    try {
+      data =
+        await response.json();
+    } catch (_) {
+      data = {};
+    }
+
+
+    if (!response.ok) {
+      const error =
+        new Error(
+          formatServerError(
+            data,
+            `HTTP ${response.status}`
+          )
+        );
+
+      error.status =
+        response.status;
+
+      error.data =
+        data;
+
+      throw error;
+    }
+
+
+    if (
+      data.model_status
+      && typeof data.model_status
+        === "object"
+    ) {
       applyModelStatus(
         data.model_status
       );
@@ -1265,25 +1602,43 @@ async function ensureModelsReady() {
       await checkModelStatus();
     }
 
+
     return (
       modelState === "ready"
-      && fusionModelLoaded
+      || fusionModelLoaded
     );
 
-  } catch (error) {
-    modelState =
-      "failed";
 
-    fusionModelLoaded =
-      false;
+  } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Model initialisation failed:",
+      error
+    );
+
+
+    const serverStatus =
+      error?.data
+        ?.model_status;
+
 
     if (
-      error.data?.model_status
+      serverStatus
+      && typeof serverStatus
+        === "object"
     ) {
       applyModelStatus(
-        error.data.model_status
+        serverStatus
       );
+
+    } else {
+      modelState =
+        "failed";
+
+      fusionModelLoaded =
+        false;
     }
+
 
     setText(
       statusBox,
@@ -1296,7 +1651,9 @@ async function ensureModelsReady() {
       )
     );
 
+
     return false;
+
 
   } finally {
     modelInitialisationInFlight =
@@ -1308,7 +1665,7 @@ async function ensureModelsReady() {
 
 
 /* ============================================================
-   KEYSTROKES
+   KEYSTROKE ACQUISITION
    ============================================================ */
 
 if (textInput) {
@@ -1318,28 +1675,42 @@ if (textInput) {
       const key =
         normaliseKey(event);
 
-      if (activeKeys.has(key)) {
+
+      /*
+       * Suppress key-repeat events while the physical key
+       * remains down.
+       */
+      if (
+        activeKeys.has(key)
+      ) {
         return;
       }
 
+
       activeKeys.add(key);
+
 
       keystrokeEvents.push(
         {
           type: "down",
+
           key,
 
           timestamp_perf:
-            performance.now() / 1000,
+            performance.now()
+            / 1000,
 
           timestamp_epoch:
-            Date.now() / 1000
+            Date.now()
+            / 1000
         }
       );
+
 
       updateReadiness();
     }
   );
+
 
   textInput.addEventListener(
     "keyup",
@@ -1347,30 +1718,42 @@ if (textInput) {
       const key =
         normaliseKey(event);
 
+
       activeKeys.delete(key);
+
 
       keystrokeEvents.push(
         {
           type: "up",
+
           key,
 
           timestamp_perf:
-            performance.now() / 1000,
+            performance.now()
+            / 1000,
 
           timestamp_epoch:
-            Date.now() / 1000
+            Date.now()
+            / 1000
         }
       );
+
 
       updateReadiness();
     }
   );
+
 
   textInput.addEventListener(
     "input",
     updateReadiness
   );
 
+
+  /*
+   * Avoid an active key remaining logically stuck if focus is
+   * lost before keyup arrives.
+   */
   textInput.addEventListener(
     "blur",
     () => {
@@ -1393,14 +1776,22 @@ function resampleLinear(
     !input
     || input.length === 0
   ) {
-    return new Float32Array(0);
-  }
-
-  if (inputRate === outputRate) {
-    return new Float32Array(
-      input
+    return (
+      new Float32Array(0)
     );
   }
+
+
+  if (
+    inputRate === outputRate
+  ) {
+    return (
+      new Float32Array(
+        input
+      )
+    );
+  }
+
 
   const outputLength =
     Math.max(
@@ -1412,13 +1803,17 @@ function resampleLinear(
       )
     );
 
+
   const output =
     new Float32Array(
       outputLength
     );
 
+
   const ratio =
-    inputRate / outputRate;
+    inputRate
+    / outputRate;
+
 
   for (
     let index = 0;
@@ -1428,8 +1823,12 @@ function resampleLinear(
     const position =
       index * ratio;
 
+
     const left =
-      Math.floor(position);
+      Math.floor(
+        position
+      );
+
 
     const right =
       Math.min(
@@ -1437,8 +1836,10 @@ function resampleLinear(
         input.length - 1
       );
 
+
     const fraction =
       position - left;
+
 
     output[index] =
       input[left]
@@ -1446,21 +1847,28 @@ function resampleLinear(
           input[right]
           - input[left]
         )
-      * fraction;
+        * fraction;
   }
+
 
   return output;
 }
 
 
-function float32ToPCM16Buffer(samples) {
+function float32ToPCM16Buffer(
+  samples
+) {
   const buffer =
     new ArrayBuffer(
       samples.length * 2
     );
 
+
   const view =
-    new DataView(buffer);
+    new DataView(
+      buffer
+    );
+
 
   for (
     let index = 0;
@@ -1476,10 +1884,12 @@ function float32ToPCM16Buffer(samples) {
         )
       );
 
+
     const pcm =
       value < 0
         ? value * 32768
         : value * 32767;
+
 
     view.setInt16(
       index * 2,
@@ -1488,11 +1898,14 @@ function float32ToPCM16Buffer(samples) {
     );
   }
 
+
   return buffer;
 }
 
 
-function calculateDbfs(samples) {
+function calculateDbfs(
+  samples
+) {
   if (
     !samples
     || samples.length === 0
@@ -1500,7 +1913,9 @@ function calculateDbfs(samples) {
     return -120;
   }
 
+
   let squareSum = 0;
+
 
   for (
     let index = 0;
@@ -1514,11 +1929,13 @@ function calculateDbfs(samples) {
       value * value;
   }
 
+
   const rms =
     Math.sqrt(
       squareSum
       / samples.length
     );
+
 
   return (
     20
@@ -1532,18 +1949,29 @@ function calculateDbfs(samples) {
 }
 
 
-function updateAudioDiagnostic(audio) {
+/* ============================================================
+   AUDIO DIAGNOSTICS
+   ============================================================ */
+
+function updateAudioDiagnostic(
+  audio
+) {
   const value =
     audio || {};
 
+
   const dbfs =
-    Number(value.dbfs);
+    Number(
+      value.dbfs
+    );
+
 
   const duration =
     Number(
       value.duration_sec
       ?? value.analysed_duration_sec
     );
+
 
   let text =
     (
@@ -1554,7 +1982,10 @@ function updateAudioDiagnostic(audio) {
         )
     );
 
-  if (Number.isFinite(duration)) {
+
+  if (
+    Number.isFinite(duration)
+  ) {
     text +=
       (
         " | Window: "
@@ -1563,7 +1994,10 @@ function updateAudioDiagnostic(audio) {
       );
   }
 
-  if (Number.isFinite(dbfs)) {
+
+  if (
+    Number.isFinite(dbfs)
+  ) {
     text +=
       (
         " | Level: "
@@ -1571,36 +2005,44 @@ function updateAudioDiagnostic(audio) {
         + " dBFS"
       );
 
+
     audioCurrentDbfs =
       dbfs;
   }
+
 
   if (value.note) {
     text +=
       (
         " | "
-        + String(value.note)
+        + String(
+            value.note
+          )
       );
   }
+
 
   setText(
     audioDiagnostic,
     text
   );
 
+
   updateAudioMetrics();
 }
 
 
 /* ============================================================
-   MICROPHONE TRANSPORT
+   CONTINUOUS MICROPHONE WEBSOCKET
    ============================================================ */
 
 function websocketUrl(token) {
   const scheme =
-    window.location.protocol === "https:"
+    window.location.protocol
+      === "https:"
       ? "wss"
       : "ws";
+
 
   return (
     `${scheme}://${window.location.host}`
@@ -1610,7 +2052,9 @@ function websocketUrl(token) {
 }
 
 
-function waitForSocketOpen(socket) {
+function waitForSocketOpen(
+  socket
+) {
   return new Promise(
     (resolve, reject) => {
       const timeout =
@@ -1625,6 +2069,7 @@ function waitForSocketOpen(socket) {
           10000
         );
 
+
       socket.addEventListener(
         "open",
         () => {
@@ -1638,6 +2083,7 @@ function waitForSocketOpen(socket) {
           once: true
         }
       );
+
 
       socket.addEventListener(
         "error",
@@ -1661,61 +2107,84 @@ function waitForSocketOpen(socket) {
 }
 
 
-function closeAudioSocketOnly() {
-  if (!audioSocket) {
-    return;
-  }
-
-  const socket =
-    audioSocket;
-
-  audioSocket =
-    null;
-
-  socket.onmessage =
-    null;
-
-  socket.onerror =
-    null;
-
-  socket.onclose =
-    null;
-
+async function synchroniseAfterUnexpectedAudioClose() {
   try {
-    socket.close();
-  } catch (_) {}
+    const data =
+      await postForm(
+        "/audio_stream/stop",
+        {
+          session_id:
+            sessionId
+        }
+      );
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+  } catch (error) {
+    console.warn(
+      "[SenseFuzeAI] Could not "
+      + "synchronise disconnected "
+      + "audio stream:",
+      error
+    );
+  }
 }
 
 
-function cleanupMicrophoneCapture() {
+function cleanupMicrophoneLocal() {
   microphoneStreaming =
     false;
 
-  closeAudioSocketOnly();
 
   if (microphoneProcessor) {
     microphoneProcessor
       .onaudioprocess =
         null;
 
+
     try {
-      microphoneProcessor.disconnect();
-    } catch (_) {}
+      microphoneProcessor
+        .disconnect();
+    } catch (_) {
+      // Ignore.
+    }
   }
 
-  try {
-    microphoneSourceNode?.disconnect();
-  } catch (_) {}
 
-  try {
-    microphoneSilentGain?.disconnect();
-  } catch (_) {}
+  if (microphoneSourceNode) {
+    try {
+      microphoneSourceNode
+        .disconnect();
+    } catch (_) {
+      // Ignore.
+    }
+  }
 
-  microphoneStream
-    ?.getTracks()
-    .forEach(
-      track => track.stop()
-    );
+
+  if (microphoneSilentGain) {
+    try {
+      microphoneSilentGain
+        .disconnect();
+    } catch (_) {
+      // Ignore.
+    }
+  }
+
+
+  if (microphoneStream) {
+    microphoneStream
+      .getTracks()
+      .forEach(
+        track =>
+          track.stop()
+      );
+  }
+
 
   microphoneStream =
     null;
@@ -1729,6 +2198,7 @@ function cleanupMicrophoneCapture() {
   microphoneSilentGain =
     null;
 
+
   if (microphoneContext) {
     const context =
       microphoneContext;
@@ -1738,11 +2208,92 @@ function cleanupMicrophoneCapture() {
 
     void context
       .close()
-      .catch(() => {});
+      .catch(
+        () => {}
+      );
   }
+
+
+  if (audioSocket) {
+    const socket =
+      audioSocket;
+
+    audioSocket =
+      null;
+
+    socket.onmessage =
+      null;
+
+    socket.onerror =
+      null;
+
+    socket.onclose =
+      null;
+
+
+    try {
+      socket.close();
+    } catch (_) {
+      // Ignore.
+    }
+  }
+
 
   audioStreamToken =
     null;
+
+
+  updateReadiness();
+}
+
+
+async function handleUnexpectedAudioDisconnect() {
+  if (
+    microphoneExpectedClose
+  ) {
+    return;
+  }
+
+
+  cleanupMicrophoneLocal();
+
+
+  audioSourceReady =
+    false;
+
+  audioSourceName =
+    null;
+
+  audioSourceKind =
+    null;
+
+  audioBufferedSec =
+    0;
+
+  audioPackets =
+    0;
+
+
+  setText(
+    audioStatus,
+    (
+      "Microphone stream disconnected."
+    )
+  );
+
+
+  setText(
+    statusBox,
+    (
+      "Continuous microphone stream disconnected."
+    )
+  );
+
+
+  await synchroniseAfterUnexpectedAudioClose();
+
+
+  resetPredictionDisplay();
 
   updateReadiness();
 }
@@ -1765,22 +2316,32 @@ function installAudioSocketHandlers(
         return;
       }
 
-      if (data.type === "error") {
-        console.warn(
-          "[SenseFuzeAI] "
-          + "Audio socket server error:",
-          data
+
+      if (
+        data.type === "error"
+      ) {
+        setText(
+          audioStatus,
+          (
+            "Microphone stream error: "
+            + String(
+                data.message
+                || "unknown error"
+              )
+          )
         );
 
         return;
       }
 
+
       if (
-        data.type !==
-        "audio_status"
+        data.type
+        !== "audio_status"
       ) {
         return;
       }
+
 
       audioBufferedSec =
         finiteNumber(
@@ -1788,16 +2349,19 @@ function installAudioSocketHandlers(
           0
         );
 
+
       audioPackets =
         finiteNumber(
           data.packets_received,
           0
         );
 
+
       audioSourceReady =
         Boolean(
           data.audio_ready
         );
+
 
       if (
         data.audio_diagnostics
@@ -1807,13 +2371,14 @@ function installAudioSocketHandlers(
         );
       }
 
+
       setText(
         audioStatus,
         (
           audioSourceReady
             ? (
                 "Live microphone streaming"
-                + ` | ${audioBufferedSec.toFixed(1)}s buffer`
+                + ` | rolling ${audioBufferedSec.toFixed(1)}s buffer`
               )
             : (
                 "Live microphone buffering"
@@ -1822,6 +2387,7 @@ function installAudioSocketHandlers(
               )
         )
       );
+
 
       updateReadiness();
     };
@@ -1834,7 +2400,9 @@ function installAudioSocketHandlers(
       ) {
         setText(
           audioStatus,
-          "Microphone transport interrupted."
+          (
+            "Microphone transport error."
+          )
         );
       }
     };
@@ -1843,213 +2411,21 @@ function installAudioSocketHandlers(
   socket.onclose =
     () => {
       if (
-        microphoneExpectedClose
+        !microphoneExpectedClose
       ) {
-        return;
+        void handleUnexpectedAudioDisconnect();
       }
-
-      if (
-        socket !== audioSocket
-      ) {
-        return;
-      }
-
-      audioSocket =
-        null;
-
-      audioSourceReady =
-        false;
-
-      updateReadiness();
-
-      void recoverMicrophoneConnection();
     };
 }
 
 
-async function attachAudioSocket(
-  token
-) {
-  closeAudioSocketOnly();
-
-  const socket =
-    new WebSocket(
-      websocketUrl(token)
-    );
-
-  audioSocket =
-    socket;
-
-  await waitForSocketOpen(
-    socket
-  );
-
-  installAudioSocketHandlers(
-    socket
-  );
-}
-
-
-/* ============================================================
-   MICROPHONE RECOVERY
-   ============================================================ */
-
-async function recoverMicrophoneConnection() {
-  if (
-    microphoneExpectedClose
-    || !microphoneStreaming
-    || !microphoneStream
-    || microphoneReconnectInFlight
-  ) {
-    return false;
-  }
-
-  microphoneReconnectInFlight =
-    true;
-
-  audioSourceReady =
-    false;
-
-  updateReadiness();
-
-  try {
-    for (
-      let attempt = 1;
-      attempt <=
-        MAX_MICROPHONE_RECONNECT_ATTEMPTS;
-      attempt += 1
-    ) {
-      if (
-        microphoneExpectedClose
-        || !microphoneStreaming
-      ) {
-        return false;
-      }
-
-      microphoneReconnectAttempts =
-        attempt;
-
-      setText(
-        audioStatus,
-        (
-          "Microphone connection interrupted. "
-          + `Recovering ${attempt}/`
-          + `${MAX_MICROPHONE_RECONNECT_ATTEMPTS}...`
-        )
-      );
-
-      await sleep(
-        Math.min(
-          attempt * 1000,
-          5000
-        )
-      );
-
-      try {
-        const data =
-          await postForm(
-            "/audio_stream/reconnect",
-            {
-              session_id:
-                sessionId
-            }
-          );
-
-        serverGeneration =
-          finiteNumber(
-            data.generation,
-            serverGeneration
-          );
-
-        audioStreamToken =
-          String(
-            data.stream_token
-          );
-
-        await attachAudioSocket(
-          audioStreamToken
-        );
-
-        audioSourceKind =
-          "microphone_stream";
-
-        audioSourceName =
-          "Live microphone";
-
-        audioBufferedSec =
-          0;
-
-        audioPackets =
-          0;
-
-        setText(
-          audioStatus,
-          (
-            "Microphone transport recovered; "
-            + "rebuilding audio buffer..."
-          )
-        );
-
-        setText(
-          statusBox,
-          (
-            "Microphone connection recovered"
-            + ` | Generation=${serverGeneration}.`
-          )
-        );
-
-        microphoneReconnectAttempts =
-          0;
-
-        return true;
-
-      } catch (error) {
-        console.warn(
-          "[SenseFuzeAI] "
-          + `Microphone recovery attempt ${attempt} failed:`,
-          error
-        );
-      }
-    }
-
-    setText(
-      audioStatus,
-      (
-        "Automatic microphone recovery failed. "
-        + "Press Start Microphone to retry."
-      )
-    );
-
-    return false;
-
-  } finally {
-    microphoneReconnectInFlight =
-      false;
-
-    updateReadiness();
-  }
-}
-
-
-/* ============================================================
-   MICROPHONE START
-   ============================================================ */
-
 async function startMicrophoneStream() {
   if (
     microphoneStreaming
-    && microphoneStream
   ) {
-    if (
-      !audioSocket
-      || audioSocket.readyState
-        !== WebSocket.OPEN
-    ) {
-      await recoverMicrophoneConnection();
-    }
-
     return;
   }
+
 
   if (
     !navigator.mediaDevices
@@ -2058,35 +2434,53 @@ async function startMicrophoneStream() {
   ) {
     setText(
       statusBox,
-      "Microphone API unavailable."
+      (
+        "Microphone API is unavailable."
+      )
     );
 
     return;
   }
+
 
   const AudioContextClass =
     window.AudioContext
     || window.webkitAudioContext;
 
-  if (!AudioContextClass) {
+
+  if (
+    !AudioContextClass
+  ) {
     setText(
       statusBox,
-      "Web Audio API unavailable."
+      (
+        "Web Audio API is unavailable."
+      )
     );
 
     return;
   }
 
+
   const operationEpoch =
     beginStateChange(
-      "Starting microphone..."
+      (
+        "Starting continuous "
+        + "microphone stream..."
+      )
     );
+
 
   microphoneExpectedClose =
     false;
 
-  let stream = null;
-  let context = null;
+
+  let stream =
+    null;
+
+  let context =
+    null;
+
 
   try {
     stream =
@@ -2104,6 +2498,23 @@ async function startMicrophoneStream() {
           }
         );
 
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      stream
+        .getTracks()
+        .forEach(
+          track =>
+            track.stop()
+        );
+
+      return;
+    }
+
+
     try {
       context =
         new AudioContextClass(
@@ -2118,7 +2529,9 @@ async function startMicrophoneStream() {
         new AudioContextClass();
     }
 
+
     await context.resume();
+
 
     const startData =
       await postForm(
@@ -2129,6 +2542,7 @@ async function startMicrophoneStream() {
         }
       );
 
+
     if (
       !operationStillCurrent(
         operationEpoch
@@ -2137,13 +2551,17 @@ async function startMicrophoneStream() {
       stream
         .getTracks()
         .forEach(
-          track => track.stop()
+          track =>
+            track.stop()
         );
 
-      await context.close();
+      try {
+        await context.close();
+      } catch (_) {}
 
       return;
     }
+
 
     serverGeneration =
       finiteNumber(
@@ -2151,14 +2569,37 @@ async function startMicrophoneStream() {
         serverGeneration
       );
 
+
     audioStreamToken =
       String(
         startData.stream_token
       );
 
-    await attachAudioSocket(
-      audioStreamToken
+
+    resetPredictionDisplay();
+
+
+    const socket =
+      new WebSocket(
+        websocketUrl(
+          audioStreamToken
+        )
+      );
+
+
+    audioSocket =
+      socket;
+
+
+    await waitForSocketOpen(
+      socket
     );
+
+
+    installAudioSocketHandlers(
+      socket
+    );
+
 
     microphoneStream =
       stream;
@@ -2166,11 +2607,13 @@ async function startMicrophoneStream() {
     microphoneContext =
       context;
 
+
     microphoneSourceNode =
       context
         .createMediaStreamSource(
           stream
         );
+
 
     microphoneProcessor =
       context
@@ -2180,56 +2623,63 @@ async function startMicrophoneStream() {
           1
         );
 
+
     microphoneSilentGain =
       context
         .createGain();
+
 
     microphoneSilentGain
       .gain
       .value =
         0;
 
+
     microphoneStreaming =
       true;
 
-    audioSourceReady =
-      false;
 
-    audioSourceKind =
-      "microphone_stream";
+    microphoneSourceNode
+      .connect(
+        microphoneProcessor
+      );
 
-    audioSourceName =
-      "Live microphone";
 
-    fixedAudioFile =
-      null;
+    microphoneProcessor
+      .connect(
+        microphoneSilentGain
+      );
 
-    audioBufferedSec =
-      0;
 
-    audioPackets =
-      0;
+    microphoneSilentGain
+      .connect(
+        context.destination
+      );
+
 
     microphoneProcessor
       .onaudioprocess =
         event => {
           if (
-            !microphoneStreaming
-            || !audioSocket
+            !audioSocket
             || audioSocket.readyState
               !== WebSocket.OPEN
           ) {
             return;
           }
 
+
           const input =
-            event.inputBuffer
+            event
+              .inputBuffer
               .getChannelData(0);
+
 
           audioCurrentDbfs =
             calculateDbfs(
               input
             );
+
 
           const resampled =
             resampleLinear(
@@ -2238,52 +2688,67 @@ async function startMicrophoneStream() {
               TARGET_AUDIO_SAMPLE_RATE
             );
 
-          if (
-            resampled.length === 0
-          ) {
-            return;
-          }
+
+          const pcmBuffer =
+            float32ToPCM16Buffer(
+              resampled
+            );
+
 
           try {
             audioSocket.send(
-              float32ToPCM16Buffer(
-                resampled
-              )
+              pcmBuffer
             );
+          } catch (_) {
+            // Socket-close handler repairs state.
+          }
 
-          } catch (_) {}
+
+          updateAudioMetrics();
         };
 
-    microphoneSourceNode
-      .connect(
-        microphoneProcessor
-      );
 
-    microphoneProcessor
-      .connect(
-        microphoneSilentGain
-      );
+    audioSourceReady =
+      false;
 
-    microphoneSilentGain
-      .connect(
-        context.destination
-      );
+    audioSourceName =
+      "Live microphone";
+
+    audioSourceKind =
+      "microphone_stream";
+
+    audioBufferedSec =
+      0;
+
+    audioPackets =
+      0;
+
 
     setText(
       audioStatus,
       (
-        "Microphone connected; "
-        + "building audio buffer..."
+        "Live microphone buffering..."
       )
     );
+
+
+    setText(
+      sessionStatus,
+      (
+        "Continuous microphone active."
+      )
+    );
+
 
     setText(
       statusBox,
       (
-        "Continuous microphone started"
+        "Microphone connected"
         + ` | Generation=${serverGeneration}.`
+        + " Waiting for sufficient audio buffer."
       )
     );
+
 
   } catch (error) {
     console.error(
@@ -2292,28 +2757,46 @@ async function startMicrophoneStream() {
       error
     );
 
-    try {
+
+    /*
+     * Stop temporary resources which may have been created before
+     * assignment to global state.
+     */
+    if (
       stream
-        ?.getTracks()
+      && stream !== microphoneStream
+    ) {
+      stream
+        .getTracks()
         .forEach(
-          track => track.stop()
+          track =>
+            track.stop()
         );
-    } catch (_) {}
+    }
 
-    try {
-      await context?.close();
-    } catch (_) {}
 
-    cleanupMicrophoneCapture();
+    if (
+      context
+      && context !== microphoneContext
+    ) {
+      try {
+        await context.close();
+      } catch (_) {}
+    }
+
+
+    cleanupMicrophoneLocal();
+
 
     audioSourceReady =
       false;
 
+    audioSourceName =
+      null;
+
     audioSourceKind =
       null;
 
-    audioSourceName =
-      null;
 
     setText(
       statusBox,
@@ -2326,6 +2809,7 @@ async function startMicrophoneStream() {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -2334,28 +2818,21 @@ async function startMicrophoneStream() {
 }
 
 
-/* ============================================================
-   EXPLICIT MICROPHONE STOP
-   ============================================================ */
-
 async function stopMicrophoneStream(
   resetDisplay = true
 ) {
-  if (
-    !microphoneStreaming
-    && audioSourceKind
-      !== "microphone_stream"
-  ) {
-    return;
-  }
-
   const operationEpoch =
     beginStateChange(
-      "Stopping microphone..."
+      (
+        "Stopping continuous "
+        + "microphone stream..."
+      )
     );
+
 
   microphoneExpectedClose =
     true;
+
 
   try {
     const data =
@@ -2367,29 +2844,33 @@ async function stopMicrophoneStream(
         }
       );
 
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      return;
+    }
+
+
     serverGeneration =
       finiteNumber(
         data.generation,
         serverGeneration
       );
 
-  } catch (error) {
-    console.warn(
-      "[SenseFuzeAI] "
-      + "Server microphone stop failed:",
-      error
-    );
 
-  } finally {
-    cleanupMicrophoneCapture();
+    cleanupMicrophoneLocal();
+
 
     audioSourceReady =
       false;
 
-    audioSourceKind =
+    audioSourceName =
       null;
 
-    audioSourceName =
+    audioSourceKind =
       null;
 
     audioBufferedSec =
@@ -2401,17 +2882,68 @@ async function stopMicrophoneStream(
     audioCurrentDbfs =
       null;
 
+
     if (resetDisplay) {
       resetPredictionDisplay();
     }
 
+
     setText(
       audioStatus,
-      "Microphone stopped."
+      (
+        "Microphone stream stopped."
+      )
     );
 
+
+    setText(
+      audioDiagnostic,
+      (
+        "Audio condition: —"
+      )
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Continuous microphone stopped"
+        + ` | Generation=${serverGeneration}.`
+      )
+    );
+
+
+  } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Microphone stop failed:",
+      error
+    );
+
+
+    cleanupMicrophoneLocal();
+
+
+    audioSourceReady =
+      false;
+
+
+    setText(
+      statusBox,
+      (
+        "Microphone stop failed: "
+        + (
+            error?.message
+            || String(error)
+          )
+      )
+    );
+
+
+  } finally {
     microphoneExpectedClose =
       false;
+
 
     finishStateChange(
       operationEpoch
@@ -2421,118 +2953,158 @@ async function stopMicrophoneStream(
 
 
 /* ============================================================
-   FIXED AUDIO
+   FIXED AUDIO FILE
    ============================================================ */
 
-async function uploadFixedAudio(
-  file,
-  {
-    recovery = false
-  } = {}
+async function setAudioFile(
+  file
 ) {
-  const form =
-    new FormData();
-
-  form.append(
-    "session_id",
-    sessionId
-  );
-
-  form.append(
-    "source_kind",
-    "file"
-  );
-
-  form.append(
-    "audio_file",
-    file,
-    file.name
-  );
-
-  const data =
-    await fetchJson(
-      "/set_audio_source",
-      {
-        method: "POST",
-        body: form
-      }
-    );
-
-  serverGeneration =
-    finiteNumber(
-      data.generation,
-      serverGeneration
-    );
-
-  audioSourceReady =
-    true;
-
-  audioSourceName =
-    data.audio_name
-    || file.name;
-
-  audioSourceKind =
-    "file";
-
-  fixedAudioFile =
-    file;
-
-  audioBufferedSec =
-    finiteNumber(
-      data.audio_diagnostics
-        ?.duration_sec,
-      0
-    );
-
-  updateAudioDiagnostic(
-    data.audio_diagnostics
-  );
-
-  setText(
-    audioStatus,
-    (
-      recovery
-        ? (
-            "Fixed audio source "
-            + "restored after server-state loss."
-          )
-        : (
-            "Fixed audio file: "
-            + audioSourceName
-          )
-    )
-  );
-
-  return data;
-}
-
-
-async function setAudioFile(file) {
   if (!file) {
     return;
   }
 
-  if (microphoneStreaming) {
+
+  if (
+    microphoneStreaming
+  ) {
     await stopMicrophoneStream(
       false
     );
   }
 
+
   const operationEpoch =
     beginStateChange(
-      "Loading audio file..."
+      (
+        "Loading fixed audio file..."
+      )
     );
 
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+    "session_id",
+    sessionId
+  );
+
+
+  formData.append(
+    "source_kind",
+    "file"
+  );
+
+
+  formData.append(
+    "audio_file",
+    file,
+    file.name
+  );
+
+
   try {
-    await uploadFixedAudio(
-      file
-    );
+    const data =
+      await fetchJson(
+        "/set_audio_source",
+        {
+          method: "POST",
+          body: formData
+        }
+      );
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      return;
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
+    audioSourceReady =
+      Boolean(
+        data.audio_ready
+        ?? true
+      );
+
+
+    audioSourceName =
+      data.audio_name
+      || file.name;
+
+
+    audioSourceKind =
+      data.audio_source_kind
+      || "file";
+
+
+    audioBufferedSec =
+      finiteNumber(
+        data.audio_diagnostics
+          ?.duration_sec,
+        0
+      );
+
+
+    audioPackets =
+      0;
+
 
     resetPredictionDisplay();
 
+
+    updateAudioDiagnostic(
+      data.audio_diagnostics
+    );
+
+
+    setText(
+      audioStatus,
+      (
+        "Fixed audio file: "
+        + audioSourceName
+      )
+    );
+
+
+    setText(
+      sessionStatus,
+      (
+        "Fixed audio source active."
+      )
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Fixed audio source ready"
+        + ` | Generation=${serverGeneration}.`
+      )
+    );
+
+
   } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Audio file failed:",
+      error
+    );
+
+
     audioSourceReady =
       false;
+
 
     setText(
       statusBox,
@@ -2545,6 +3117,7 @@ async function setAudioFile(file) {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -2554,11 +3127,13 @@ async function setAudioFile(file) {
 
 
 /* ============================================================
-   VISUAL UTILITIES
+   VISUAL UTILITY FUNCTIONS
    ============================================================ */
 
 function revokeVisualObjectUrl() {
-  if (visualObjectUrl) {
+  if (
+    visualObjectUrl
+  ) {
     URL.revokeObjectURL(
       visualObjectUrl
     );
@@ -2570,28 +3145,43 @@ function revokeVisualObjectUrl() {
 
 
 function hideStaticImagePreview() {
-  if (!staticImagePreview) {
+  if (
+    !staticImagePreview
+  ) {
     return;
   }
 
-  staticImagePreview
-    .classList
-    .add("hidden");
 
   staticImagePreview
-    .removeAttribute("src");
+    .classList
+    .add(
+      "hidden"
+    );
+
+
+  staticImagePreview
+    .removeAttribute(
+      "src"
+    );
 }
 
 
 function stopWebcamStreamLocally() {
-  webcamStream
-    ?.getTracks()
-    .forEach(
-      track => track.stop()
-    );
+  if (
+    webcamStream
+  ) {
+    webcamStream
+      .getTracks()
+      .forEach(
+        track =>
+          track.stop()
+      );
+  }
+
 
   webcamStream =
     null;
+
 
   if (webcam) {
     webcam.srcObject =
@@ -2605,133 +3195,53 @@ function stopVideoPreview() {
     return;
   }
 
+
   try {
     webcam.pause();
-  } catch (_) {}
+  } catch (_) {
+    // Ignore.
+  }
+
 
   webcam.removeAttribute(
     "src"
   );
 
+
   try {
     webcam.load();
-  } catch (_) {}
+  } catch (_) {
+    // Ignore.
+  }
 }
 
 
 /* ============================================================
-   VISUAL REGISTRATION HELPERS
+   STATIC IMAGE SOURCE
    ============================================================ */
 
-async function registerImageWithServer(
+async function setVisualImage(
   file
 ) {
-  const form =
-    new FormData();
-
-  form.append(
-    "session_id",
-    sessionId
-  );
-
-  form.append(
-    "image_file",
-    file,
-    file.name
-  );
-
-  const data =
-    await fetchJson(
-      "/set_visual_image",
-      {
-        method: "POST",
-        body: form
-      }
-    );
-
-  serverGeneration =
-    finiteNumber(
-      data.generation,
-      serverGeneration
-    );
-
-  return data;
-}
-
-
-async function registerVideoWithServer(
-  file
-) {
-  const form =
-    new FormData();
-
-  form.append(
-    "session_id",
-    sessionId
-  );
-
-  form.append(
-    "video_file",
-    file,
-    file.name
-  );
-
-  const data =
-    await fetchJson(
-      "/set_visual_video",
-      {
-        method: "POST",
-        body: form
-      }
-    );
-
-  serverGeneration =
-    finiteNumber(
-      data.generation,
-      serverGeneration
-    );
-
-  return data;
-}
-
-
-async function registerWebcamWithServer() {
-  const data =
-    await postForm(
-      "/set_visual_webcam",
-      {
-        session_id:
-          sessionId
-      }
-    );
-
-  serverGeneration =
-    finiteNumber(
-      data.generation,
-      serverGeneration
-    );
-
-  return data;
-}
-
-
-/* ============================================================
-   IMAGE
-   ============================================================ */
-
-async function setVisualImage(file) {
   if (!file) {
     return;
   }
 
+
   const operationEpoch =
     beginStateChange(
-      "Loading image source..."
+      (
+        "Loading image source..."
+      )
     );
 
+
   stopWebcamStreamLocally();
+
   stopVideoPreview();
+
   revokeVisualObjectUrl();
+
 
   visualMode =
     "none";
@@ -2739,11 +3249,37 @@ async function setVisualImage(file) {
   visualSourceReady =
     false;
 
+  visualSourceName =
+    null;
+
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+    "session_id",
+    sessionId
+  );
+
+
+  formData.append(
+    "image_file",
+    file,
+    file.name
+  );
+
+
   try {
     const data =
-      await registerImageWithServer(
-        file
+      await fetchJson(
+        "/set_visual_image",
+        {
+          method: "POST",
+          body: formData
+        }
       );
+
 
     if (
       !operationStillCurrent(
@@ -2753,38 +3289,62 @@ async function setVisualImage(file) {
       return;
     }
 
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
+
     visualMode =
       "image";
 
+
     visualSourceReady =
-      true;
+      Boolean(
+        data.visual_ready
+        ?? true
+      );
+
 
     visualSourceName =
       data.visual_name
       || file.name;
 
-    visualSourceFile =
-      file;
 
     visualObjectUrl =
-      URL.createObjectURL(file);
+      URL.createObjectURL(
+        file
+      );
 
-    if (staticImagePreview) {
+
+    if (
+      staticImagePreview
+    ) {
       staticImagePreview.src =
         visualObjectUrl;
 
+
       staticImagePreview
         .classList
-        .remove("hidden");
+        .remove(
+          "hidden"
+        );
     }
+
 
     if (webcam) {
       webcam
         .classList
-        .add("hidden");
+        .add(
+          "hidden"
+        );
     }
 
+
     resetPredictionDisplay();
+
 
     setText(
       webcamStatus,
@@ -2794,15 +3354,44 @@ async function setVisualImage(file) {
       )
     );
 
+
+    setText(
+      sessionStatus,
+      (
+        "Static image source active."
+      )
+    );
+
+
+    if (startBtn) {
+      startBtn.disabled =
+        false;
+    }
+
+
+    if (stopBtn) {
+      stopBtn.disabled =
+        true;
+    }
+
+
   } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Image source failed:",
+      error
+    );
+
+
     visualMode =
       "none";
 
     visualSourceReady =
       false;
 
-    visualSourceFile =
+    visualSourceName =
       null;
+
 
     setText(
       statusBox,
@@ -2815,6 +3404,7 @@ async function setVisualImage(file) {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -2824,69 +3414,147 @@ async function setVisualImage(file) {
 
 
 /* ============================================================
-   VIDEO
+   VIDEO SOURCE
    ============================================================ */
 
-async function setVisualVideo(file) {
+async function setVisualVideo(
+  file
+) {
   if (!file) {
     return;
   }
 
+
   const operationEpoch =
     beginStateChange(
-      "Loading video source..."
+      (
+        "Loading video source..."
+      )
     );
 
+
   stopWebcamStreamLocally();
+
   stopVideoPreview();
+
   hideStaticImagePreview();
+
   revokeVisualObjectUrl();
+
+
+  visualMode =
+    "none";
+
+  visualSourceReady =
+    false;
+
+  visualSourceName =
+    null;
+
+
+  const formData =
+    new FormData();
+
+
+  formData.append(
+    "session_id",
+    sessionId
+  );
+
+
+  formData.append(
+    "video_file",
+    file,
+    file.name
+  );
+
 
   try {
     const data =
-      await registerVideoWithServer(
-        file
+      await fetchJson(
+        "/set_visual_video",
+        {
+          method: "POST",
+          body: formData
+        }
       );
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      return;
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
 
     visualMode =
       "video";
 
+
     visualSourceReady =
-      true;
+      Boolean(
+        data.visual_ready
+        ?? true
+      );
+
 
     visualSourceName =
       data.visual_name
       || file.name;
 
-    visualSourceFile =
-      file;
 
     visualObjectUrl =
-      URL.createObjectURL(file);
+      URL.createObjectURL(
+        file
+      );
+
 
     if (webcam) {
       webcam
         .classList
-        .remove("hidden");
+        .remove(
+          "hidden"
+        );
+
 
       webcam.srcObject =
         null;
 
+
       webcam.src =
         visualObjectUrl;
+
 
       webcam.loop =
         true;
 
+
       webcam.muted =
         true;
 
+
       try {
         await webcam.play();
-      } catch (_) {}
+      } catch (_) {
+        /*
+         * Browser playback is only a preview.
+         * Server inference still uses uploaded video frames.
+         */
+      }
     }
 
+
     resetPredictionDisplay();
+
 
     setText(
       webcamStatus,
@@ -2896,15 +3564,44 @@ async function setVisualVideo(file) {
       )
     );
 
+
+    setText(
+      sessionStatus,
+      (
+        "Video source running."
+      )
+    );
+
+
+    if (startBtn) {
+      startBtn.disabled =
+        true;
+    }
+
+
+    if (stopBtn) {
+      stopBtn.disabled =
+        false;
+    }
+
+
   } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Video source failed:",
+      error
+    );
+
+
     visualMode =
       "none";
 
     visualSourceReady =
       false;
 
-    visualSourceFile =
+    visualSourceName =
       null;
+
 
     setText(
       statusBox,
@@ -2917,6 +3614,7 @@ async function setVisualVideo(file) {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -2926,7 +3624,7 @@ async function setVisualVideo(file) {
 
 
 /* ============================================================
-   WEBCAM
+   WEBCAM SOURCE
    ============================================================ */
 
 async function startWebcamMode() {
@@ -2937,23 +3635,43 @@ async function startWebcamMode() {
   ) {
     setText(
       statusBox,
-      "Webcam API unavailable."
+      (
+        "Webcam API is unavailable."
+      )
     );
 
     return;
   }
+
 
   const operationEpoch =
     beginStateChange(
       "Starting webcam..."
     );
 
+
   stopWebcamStreamLocally();
+
   stopVideoPreview();
+
   hideStaticImagePreview();
+
   revokeVisualObjectUrl();
 
-  let stream = null;
+
+  visualMode =
+    "none";
+
+  visualSourceReady =
+    false;
+
+  visualSourceName =
+    null;
+
+
+  let stream =
+    null;
+
 
   try {
     stream =
@@ -2965,76 +3683,177 @@ async function startWebcamMode() {
           }
         );
 
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      stream
+        .getTracks()
+        .forEach(
+          track =>
+            track.stop()
+        );
+
+      return;
+    }
+
+
     if (!webcam) {
       throw new Error(
-        "Webcam video element missing."
+        (
+          "Webcam video element "
+          + "is missing."
+        )
       );
     }
+
 
     webcamStream =
       stream;
 
+
     webcam
       .classList
-      .remove("hidden");
+      .remove(
+        "hidden"
+      );
+
 
     webcam.removeAttribute(
       "src"
     );
 
+
     webcam.srcObject =
-      stream;
+      webcamStream;
+
 
     webcam.muted =
       true;
 
+
     await webcam.play();
 
-    await registerWebcamWithServer();
+
+    const data =
+      await postForm(
+        "/set_visual_webcam",
+        {
+          session_id:
+            sessionId
+        }
+      );
+
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      stopWebcamStreamLocally();
+
+      return;
+    }
+
+
+    serverGeneration =
+      finiteNumber(
+        data.generation,
+        serverGeneration
+      );
+
 
     visualMode =
       "webcam";
 
+
     visualSourceReady =
-      true;
+      Boolean(
+        data.visual_ready
+        ?? true
+      );
+
 
     visualSourceName =
-      "Webcam";
+      data.visual_name
+      || "Webcam";
 
-    visualSourceFile =
-      null;
 
     resetPredictionDisplay();
 
+
     setText(
       webcamStatus,
-      "Webcam active."
+      (
+        "Webcam active."
+      )
     );
+
+
+    setText(
+      sessionStatus,
+      (
+        "Live webcam source active."
+      )
+    );
+
+
+    setText(
+      statusBox,
+      (
+        "Webcam source ready"
+        + ` | Generation=${serverGeneration}.`
+      )
+    );
+
 
     if (startBtn) {
       startBtn.disabled =
         true;
     }
 
+
     if (stopBtn) {
       stopBtn.disabled =
         false;
     }
 
+
   } catch (error) {
-    stream
-      ?.getTracks()
-      .forEach(
-        track => track.stop()
-      );
+    console.error(
+      "[SenseFuzeAI] "
+      + "Webcam start failed:",
+      error
+    );
+
+
+    if (
+      stream
+      && stream !== webcamStream
+    ) {
+      stream
+        .getTracks()
+        .forEach(
+          track =>
+            track.stop()
+        );
+    }
+
 
     stopWebcamStreamLocally();
+
 
     visualMode =
       "none";
 
     visualSourceReady =
       false;
+
+    visualSourceName =
+      null;
+
 
     setText(
       statusBox,
@@ -3047,6 +3866,7 @@ async function startWebcamMode() {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -3055,11 +3875,23 @@ async function startWebcamMode() {
 }
 
 
+/* ============================================================
+   STOP VISUAL
+   ============================================================ */
+
 async function stopVisualMode() {
   const operationEpoch =
     beginStateChange(
-      "Stopping visual input..."
+      (
+        "Stopping visual stream..."
+      )
     );
+
+
+  stopWebcamStreamLocally();
+
+  stopVideoPreview();
+
 
   try {
     const data =
@@ -3071,37 +3903,95 @@ async function stopVisualMode() {
         }
       );
 
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      return;
+    }
+
+
     serverGeneration =
       finiteNumber(
         data.generation,
         serverGeneration
       );
 
-    stopWebcamStreamLocally();
-    stopVideoPreview();
-    hideStaticImagePreview();
-    revokeVisualObjectUrl();
 
     visualMode =
-      "none";
+      String(
+        data.visual_mode
+        || "none"
+      );
+
 
     visualSourceReady =
-      false;
+      Boolean(
+        data.visual_ready
+      );
 
-    visualSourceName =
-      null;
 
-    visualSourceFile =
-      null;
+    if (
+      visualMode === "none"
+    ) {
+      visualSourceName =
+        null;
+    }
 
-    setText(
-      webcamStatus,
-      "Visual input inactive."
-    );
 
     resetPredictionDisplay();
 
+
+    setText(
+      webcamStatus,
+      (
+        visualMode === "image"
+          ? (
+              "Static image source retained."
+            )
+          : (
+              "Visual input inactive."
+            )
+      )
+    );
+
+
+    setText(
+      sessionStatus,
+      (
+        visualMode === "image"
+          ? (
+              "Static image source active."
+            )
+          : (
+              "Visual stream stopped."
+            )
+      )
+    );
+
+
+    if (startBtn) {
+      startBtn.disabled =
+        false;
+    }
+
+
+    if (stopBtn) {
+      stopBtn.disabled =
+        true;
+    }
+
+
   } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Stop visual failed:",
+      error
+    );
+
+
     setText(
       statusBox,
       (
@@ -3113,6 +4003,7 @@ async function stopVisualMode() {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -3120,6 +4011,10 @@ async function stopVisualMode() {
   }
 }
 
+
+/* ============================================================
+   WEBCAM FRAME CAPTURE
+   ============================================================ */
 
 function captureWebcamFrame() {
   if (
@@ -3133,20 +4028,25 @@ function captureWebcamFrame() {
     return null;
   }
 
+
   canvas.width =
     webcam.videoWidth;
 
+
   canvas.height =
     webcam.videoHeight;
+
 
   const context =
     canvas.getContext(
       "2d"
     );
 
+
   if (!context) {
     return null;
   }
+
 
   context.drawImage(
     webcam,
@@ -3156,6 +4056,7 @@ function captureWebcamFrame() {
     canvas.height
   );
 
+
   return canvas.toDataURL(
     "image/jpeg",
     0.85
@@ -3164,331 +4065,18 @@ function captureWebcamFrame() {
 
 
 /* ============================================================
-   SERVER SESSION RECOVERY
-   ============================================================ */
-
-async function recoverVisualRegistration() {
-  if (
-    visualMode === "none"
-  ) {
-    return false;
-  }
-
-  try {
-    if (
-      visualMode === "webcam"
-      && webcamStream
-    ) {
-      await registerWebcamWithServer();
-
-      setText(
-        statusBox,
-        (
-          "Server visual state recovered: "
-          + "webcam re-registered."
-        )
-      );
-
-      return true;
-    }
-
-    if (
-      visualMode === "image"
-      && visualSourceFile
-    ) {
-      await registerImageWithServer(
-        visualSourceFile
-      );
-
-      setText(
-        statusBox,
-        (
-          "Server visual state recovered: "
-          + "image re-uploaded."
-        )
-      );
-
-      return true;
-    }
-
-    if (
-      visualMode === "video"
-      && visualSourceFile
-    ) {
-      await registerVideoWithServer(
-        visualSourceFile
-      );
-
-      setText(
-        statusBox,
-        (
-          "Server visual state recovered: "
-          + "video re-uploaded."
-        )
-      );
-
-      return true;
-    }
-
-  } catch (error) {
-    console.error(
-      "[SenseFuzeAI] "
-      + "Visual recovery failed:",
-      error
-    );
-  }
-
-  return false;
-}
-
-
-async function recoverAudioRegistration() {
-  try {
-    if (
-      microphoneStreaming
-      && microphoneStream
-    ) {
-      return await recoverMicrophoneConnection();
-    }
-
-    if (
-      audioSourceKind === "file"
-      && fixedAudioFile
-    ) {
-      await uploadFixedAudio(
-        fixedAudioFile,
-        {
-          recovery: true
-        }
-      );
-
-      return true;
-    }
-
-  } catch (error) {
-    console.error(
-      "[SenseFuzeAI] "
-      + "Audio recovery failed:",
-      error
-    );
-  }
-
-  return false;
-}
-
-
-async function synchroniseSessionFromServer() {
-  try {
-    const data =
-      await fetchJson(
-        (
-          "/session-status/"
-          + encodeURIComponent(
-              sessionId
-            )
-        ),
-        {
-          cache: "no-store"
-        }
-      );
-
-    serverGeneration =
-      finiteNumber(
-        data.generation,
-        serverGeneration
-      );
-
-    return data;
-
-  } catch (error) {
-    console.warn(
-      "[SenseFuzeAI] "
-      + "Session status unavailable:",
-      error
-    );
-
-    return null;
-  }
-}
-
-
-async function recoverServerSession(
-  detail = {}
-) {
-  if (recoveryInFlight) {
-    return true;
-  }
-
-  recoveryInFlight =
-    true;
-
-  predictionInFlight =
-    false;
-
-  updateReadiness();
-
-  try {
-    if (
-      detail.generation
-      !== undefined
-    ) {
-      serverGeneration =
-        finiteNumber(
-          detail.generation,
-          serverGeneration
-        );
-    }
-
-    const server =
-      await synchroniseSessionFromServer();
-
-    let visualRecovered =
-      true;
-
-    let audioRecovered =
-      true;
-
-    /*
-     * If server state differs from browser state,
-     * reconstruct the browser-selected source.
-     */
-    if (
-      visualMode !== "none"
-      && server?.visual_mode
-        !== visualMode
-    ) {
-      visualRecovered =
-        await recoverVisualRegistration();
-    }
-
-    if (
-      audioSourceKind
-      === "microphone_stream"
-      && (
-        server?.audio_source_kind
-        !== "microphone_stream"
-        || !server
-          ?.audio_stream_connected
-      )
-    ) {
-      audioRecovered =
-        await recoverAudioRegistration();
-
-    } else if (
-      audioSourceKind === "file"
-      && server?.audio_source_kind
-        !== "file"
-    ) {
-      audioRecovered =
-        await recoverAudioRegistration();
-    }
-
-    await synchroniseSessionFromServer();
-
-    return (
-      visualRecovered
-      && audioRecovered
-    );
-
-  } finally {
-    recoveryInFlight =
-      false;
-
-    updateReadiness();
-  }
-}
-
-
-/* ============================================================
-   CONFLICT HANDLING
-   ============================================================ */
-
-async function handleConflictResponse(
-  data
-) {
-  const detail =
-    data
-    && typeof data.detail
-      === "object"
-    && data.detail !== null
-      ? data.detail
-      : null;
-
-  if (!detail) {
-    return false;
-  }
-
-  if (
-    detail.generation
-    !== undefined
-  ) {
-    serverGeneration =
-      finiteNumber(
-        detail.generation,
-        serverGeneration
-      );
-  }
-
-  const type =
-    String(
-      detail.type || ""
-    );
-
-  if (
-    type === "visual_mode_mismatch"
-    || type === "audio_state_mismatch"
-    || type === "stale_session"
-  ) {
-    setText(
-      statusBox,
-      (
-        "Server session state changed. "
-        + "Recovering active inputs..."
-      )
-    );
-
-    await recoverServerSession(
-      detail
-    );
-
-    return true;
-  }
-
-  if (
-    type === "stale_generation"
-    || type === "stale_result"
-  ) {
-    /*
-     * Generation mismatch alone does not require destroying
-     * any active browser source. Adopt the server generation.
-     */
-    setText(
-      statusBox,
-      (
-        "Prediction generation resynchronised "
-        + `to ${serverGeneration}.`
-      )
-    );
-
-    return true;
-  }
-
-  return false;
-}
-
-
-/* ============================================================
-   PROBABILITY UI
+   PROBABILITY DISPLAY
    ============================================================ */
 
 function resolveRenderLabels(
   probabilities
 ) {
   if (
-    behaviouralLabels.length
+    behaviouralLabels.length > 0
   ) {
     return behaviouralLabels;
   }
+
 
   if (
     probabilities
@@ -3499,6 +4087,7 @@ function resolveRenderLabels(
       probabilities
     );
   }
+
 
   return [];
 }
@@ -3514,8 +4103,10 @@ function renderProbabilityBars(
     return;
   }
 
+
   container.innerHTML =
     "";
+
 
   if (
     !probabilities
@@ -3525,15 +4116,21 @@ function renderProbabilityBars(
     return;
   }
 
-  resolveRenderLabels(
-    probabilities
-  ).forEach(
+
+  const labels =
+    resolveRenderLabels(
+      probabilities
+    );
+
+
+  labels.forEach(
     label => {
       const probability =
         finiteNumber(
           probabilities[label],
           0
         );
+
 
       const percent =
         Math.max(
@@ -3544,76 +4141,97 @@ function renderProbabilityBars(
           )
         );
 
+
       const row =
         document.createElement(
           "div"
         );
 
+
       row.className =
         "sf-prob-row";
+
 
       const labelRow =
         document.createElement(
           "div"
         );
 
+
       labelRow.className =
         "sf-prob-label";
+
 
       const name =
         document.createElement(
           "span"
         );
 
+
       name.textContent =
         label;
+
 
       const value =
         document.createElement(
           "strong"
         );
 
+
       value.textContent =
         `${percent.toFixed(2)}%`;
+
 
       labelRow.append(
         name,
         value
       );
 
+
       const track =
         document.createElement(
           "div"
         );
 
+
       track.className =
         "sf-prob-track";
+
 
       const fill =
         document.createElement(
           "div"
         );
 
+
       fill.className =
-        `sf-prob-fill ${kind}`;
+        (
+          "sf-prob-fill "
+          + String(kind)
+        );
+
 
       fill.style.width =
         `${percent}%`;
 
+
       track.appendChild(
         fill
       );
+
 
       row.append(
         labelRow,
         track
       );
 
+
       container.appendChild(
         row
       );
     }
   );
+
 
   if (
     probabilitySum !== null
@@ -3626,16 +4244,20 @@ function renderProbabilityBars(
         "div"
       );
 
+
     row.className =
       "sf-prob-sum";
+
 
     row.textContent =
       (
         "Probability sum: "
         + Number(
             probabilitySum
-          ).toFixed(6)
+          )
+          .toFixed(6)
       );
+
 
     container.appendChild(
       row
@@ -3645,10 +4267,12 @@ function renderProbabilityBars(
 
 
 /* ============================================================
-   RESULT UI
+   RESULT DISPLAY
    ============================================================ */
 
-function updatePredictionUI(data) {
+function updatePredictionUI(
+  data
+) {
   const state =
     String(
       data.current_state
@@ -3656,33 +4280,52 @@ function updatePredictionUI(data) {
       || "unknown"
     );
 
+
   const confidencePct =
     finiteNumber(
       data.confidence_percent,
       0
     );
 
+
+  const gap =
+    finiteNumber(
+      data.confidence_gap,
+      0
+    );
+
+
+  const level =
+    String(
+      data.confidence_level
+      || "Low"
+    );
+
+
   const validation =
     data.runtime_validation
     || {};
+
 
   setText(
     predictionBox,
     state.toUpperCase()
   );
 
+
   setText(
     confidencePercent,
     `${confidencePct.toFixed(2)}%`
   );
 
+
   if (confidenceFill) {
     confidenceFill.style.width =
       (
-        Math.max(
-          0,
-          Math.min(
-            100,
+        Math.min(
+          100,
+          Math.max(
+            0,
             confidencePct
           )
         )
@@ -3690,22 +4333,28 @@ function updatePredictionUI(data) {
       );
   }
 
+
   setText(
     confidenceLevel,
-    data.confidence_level || "—"
+    level
   );
+
 
   setText(
     rawPrediction,
-    data.raw_top_class
-    || data.raw_prediction
-    || "—"
+    (
+      data.raw_top_class
+      || data.raw_prediction
+      || "—"
+    )
   );
+
 
   const rawPct =
     Number(
       data.raw_confidence_percent
     );
+
 
   setText(
     rawConfidence,
@@ -3716,55 +4365,75 @@ function updatePredictionUI(data) {
     )
   );
 
-  const samples =
+
+  const temporalSampleCount =
     finiteNumber(
       data.temporal_samples,
       0
     );
 
-  const windowSize =
+
+  const temporalWindowSize =
     positiveInteger(
       data.temporal_window,
       TEMPORAL_WINDOW
     );
 
+
   setText(
     temporalSamples,
-    samples
+    temporalSampleCount
   );
+
 
   setText(
     temporalWindow,
-    windowSize
+    temporalWindowSize
   );
+
 
   setText(
     temporalWindowStatus,
-    `${samples} / ${windowSize}`
+    (
+      `${temporalSampleCount}`
+      + " / "
+      + `${temporalWindowSize}`
+    )
   );
+
 
   setText(
     secondaryState,
-    data.second_class || "—"
+    (
+      data.second_class
+      || "—"
+    )
   );
+
 
   setText(
     confidenceGap,
-    finiteNumber(
-      data.confidence_gap,
-      0
-    ).toFixed(4)
+    gap.toFixed(4)
   );
+
 
   setText(
     featureDimension,
-    data.feature_dimension ?? "—"
+    (
+      data.feature_dimension
+      ?? "—"
+    )
   );
+
 
   setText(
     deviceInfo,
-    data.device || "—"
+    (
+      data.device
+      || "—"
+    )
   );
+
 
   renderProbabilityBars(
     probabilitiesBox,
@@ -3774,6 +4443,7 @@ function updatePredictionUI(data) {
       .temporal_probability_sum
   );
 
+
   renderProbabilityBars(
     rawProbabilitiesBox,
     data.raw_probabilities,
@@ -3782,21 +4452,44 @@ function updatePredictionUI(data) {
       .raw_probability_sum
   );
 
+
   const modalities =
     data.used_modalities
     || {};
 
-  const active =
-    Array.isArray(modalities)
-      ? modalities.map(String)
-      : Object.entries(modalities)
-          .filter(
-            ([, enabled]) =>
-              Boolean(enabled)
-          )
-          .map(
-            ([name]) => name
-          );
+
+  let active = [];
+
+
+  if (
+    Array.isArray(
+      modalities
+    )
+  ) {
+    active =
+      modalities.map(
+        String
+      );
+
+  } else if (
+    modalities
+    && typeof modalities
+      === "object"
+  ) {
+    active =
+      Object.entries(
+        modalities
+      )
+        .filter(
+          ([, enabled]) =>
+            Boolean(enabled)
+        )
+        .map(
+          ([name]) =>
+            name
+        );
+  }
+
 
   setText(
     activeModalities,
@@ -3807,46 +4500,65 @@ function updatePredictionUI(data) {
     )
   );
 
+
   setText(
     technicalRawState,
-    data.raw_top_class
-    || data.raw_prediction
-    || "—"
+    (
+      data.raw_top_class
+      || data.raw_prediction
+      || "—"
+    )
   );
+
 
   setText(
     technicalTemporalSamples,
-    `${samples}/${windowSize}`
+    (
+      `${temporalSampleCount}`
+      + "/"
+      + `${temporalWindowSize}`
+    )
   );
+
 
   const webcamResult =
     data.webcam_prediction;
 
+
   if (webcamResult) {
     setText(
       webcamPrediction,
-      webcamResult.current_state
-      || "—"
+      (
+        webcamResult.current_state
+        || "—"
+      )
     );
 
-    const pct =
+
+    const webcamPct =
       Number(
-        webcamResult.confidence_percent
+        webcamResult
+          .confidence_percent
       );
+
 
     setText(
       webcamConfidence,
       (
-        Number.isFinite(pct)
-          ? `${pct.toFixed(2)}%`
+        Number.isFinite(
+          webcamPct
+        )
+          ? `${webcamPct.toFixed(2)}%`
           : "—"
       )
     );
+
 
     setText(
       webcamCalibrationUsed,
       "Yes"
     );
+
 
     renderProbabilityBars(
       webcamProbabilityBars,
@@ -3854,21 +4566,25 @@ function updatePredictionUI(data) {
       "webcam"
     );
 
+
   } else {
     setText(
       webcamPrediction,
       "Not used"
     );
 
+
     setText(
       webcamConfidence,
       "—"
     );
 
+
     setText(
       webcamCalibrationUsed,
       "No"
     );
+
 
     if (
       webcamProbabilityBars
@@ -3878,6 +4594,7 @@ function updatePredictionUI(data) {
     }
   }
 
+
   if (
     data.audio_diagnostics
   ) {
@@ -3886,18 +4603,22 @@ function updatePredictionUI(data) {
     );
   }
 
-  const rawSum =
+
+  const rawProbabilitySum =
     Number(
-      validation.raw_probability_sum
+      validation
+        .raw_probability_sum
     );
 
-  const temporalSum =
+
+  const temporalProbabilitySum =
     Number(
-      validation.temporal_probability_sum
+      validation
+        .temporal_probability_sum
     );
 
-  setText(
-    validationStatus,
+
+  const validationText =
     (
       "Runtime validation: "
       + (
@@ -3906,44 +4627,43 @@ function updatePredictionUI(data) {
             : "CHECK"
         )
       + (
-          Number.isFinite(rawSum)
+          Number.isFinite(
+            rawProbabilitySum
+          )
             ? (
                 " | Raw sum: "
-                + rawSum.toFixed(6)
+                + rawProbabilitySum
+                  .toFixed(6)
               )
             : ""
         )
       + (
-          Number.isFinite(temporalSum)
+          Number.isFinite(
+            temporalProbabilitySum
+          )
             ? (
                 " | Temporal sum: "
-                + temporalSum.toFixed(6)
+                + temporalProbabilitySum
+                  .toFixed(6)
               )
             : ""
         )
-    )
+    );
+
+
+  setText(
+    validationStatus,
+    validationText
   );
 
-  const inferenceSeconds =
-    Number(
-      data.inference_seconds
-    );
 
   setText(
     statusBox,
     (
       "Live prediction successful"
-      + ` | ${state}`
-      + ` | ${confidencePct.toFixed(2)}%`
-      + (
-          Number.isFinite(
-            inferenceSeconds
-          )
-            ? (
-                ` | inference ${inferenceSeconds.toFixed(1)}s`
-              )
-            : ""
-        )
+      + ` | State=${state}`
+      + ` | Confidence=${confidencePct.toFixed(2)}%`
+      + ` | Temporal=${temporalSampleCount}/${temporalWindowSize}.`
     )
   );
 }
@@ -3955,110 +4675,132 @@ function resetPredictionDisplay() {
     "—"
   );
 
+
   setText(
     confidencePercent,
     "—"
   );
+
 
   setText(
     confidenceLevel,
     "—"
   );
 
+
   if (confidenceFill) {
     confidenceFill.style.width =
       "0%";
   }
+
 
   setText(
     rawPrediction,
     "—"
   );
 
+
   setText(
     rawConfidence,
     "—"
   );
+
 
   setText(
     temporalSamples,
     "0"
   );
 
+
   setText(
     temporalWindow,
     TEMPORAL_WINDOW
   );
+
 
   setText(
     temporalWindowStatus,
     `0 / ${TEMPORAL_WINDOW}`
   );
 
+
   setText(
     secondaryState,
     "—"
   );
+
 
   setText(
     confidenceGap,
     "—"
   );
 
+
   setText(
     featureDimension,
     "—"
   );
+
 
   setText(
     deviceInfo,
     "—"
   );
 
+
   setText(
     webcamPrediction,
     "—"
   );
+
 
   setText(
     webcamConfidence,
     "—"
   );
 
+
   setText(
     webcamCalibrationUsed,
     "—"
   );
+
 
   setText(
     activeModalities,
     "—"
   );
 
+
   setText(
     technicalRawState,
     "—"
   );
+
 
   setText(
     technicalTemporalSamples,
     "0"
   );
 
+
   setText(
     validationStatus,
     ""
   );
+
 
   if (probabilitiesBox) {
     probabilitiesBox.innerHTML =
       "";
   }
 
+
   if (rawProbabilitiesBox) {
     rawProbabilitiesBox.innerHTML =
       "";
   }
+
 
   if (
     webcamProbabilityBars
@@ -4074,37 +4816,55 @@ function resetPredictionDisplay() {
    ============================================================ */
 
 async function runLivePrediction() {
+  /*
+   * Never overlap inference requests.
+   */
   if (
     predictionInFlight
     || stateChangeInProgress
     || modelInitialisationInFlight
-    || recoveryInFlight
   ) {
     return;
   }
 
+
   updateReadiness();
 
+
+  /*
+   * Only multimodal INPUT readiness is checked here.
+   *
+   * Model readiness is handled separately immediately below.
+   */
   if (
     !inputModalitiesReady()
   ) {
     return;
   }
 
+
+  /*
+   * Initialise model when inputs become usable.
+   */
   if (
     modelState !== "ready"
     || !fusionModelLoaded
   ) {
-    const ready =
+    const modelCanProceed =
       await ensureModelsReady();
 
-    if (!ready) {
+
+    if (
+      !modelCanProceed
+    ) {
       return;
     }
   }
 
+
   let webcamFrame =
     null;
+
 
   if (
     visualMode === "webcam"
@@ -4112,87 +4872,124 @@ async function runLivePrediction() {
     webcamFrame =
       captureWebcamFrame();
 
-    if (!webcamFrame) {
+
+    if (
+      !webcamFrame
+    ) {
+      setText(
+        statusBox,
+        (
+          "Current webcam frame "
+          + "is unavailable."
+        )
+      );
+
       return;
     }
   }
 
+
   predictionInFlight =
     true;
+
 
   const requestEpoch =
     clientEpoch;
 
+
   const requestGeneration =
     serverGeneration;
 
+
   try {
-    const form =
+    const formData =
       new FormData();
 
-    form.append(
+
+    formData.append(
       "session_id",
       sessionId
     );
 
-    form.append(
+
+    formData.append(
       "generation",
       String(
         requestGeneration
       )
     );
 
-    form.append(
+
+    formData.append(
       "text",
       (
         textInput
-          ? textInput.value.trim()
+          ? textInput
+              .value
+              .trim()
           : ""
       )
     );
 
-    form.append(
+
+    formData.append(
       "keystroke_events",
       JSON.stringify(
         keystrokeEvents
       )
     );
 
-    form.append(
+
+    formData.append(
       "visual_mode",
       visualMode
     );
 
-    if (webcamFrame) {
-      form.append(
+
+    if (
+      webcamFrame
+    ) {
+      formData.append(
         "webcam_frame",
         webcamFrame
       );
     }
 
+
     setText(
       statusBox,
       (
-        "Running multimodal fusion inference..."
+        "Running canonical "
+        + "multimodal fusion inference..."
       )
     );
+
 
     const response =
       await fetch(
         "/predict_live",
         {
           method: "POST",
-          body: form
+          body: formData
         }
       );
 
+
     let data = {};
+
 
     try {
       data =
         await response.json();
-    } catch (_) {}
 
+    } catch (_) {
+      data = {};
+    }
+
+
+    /*
+     * Preserve the REAL backend error.
+     */
     if (!response.ok) {
       console.error(
         "[SenseFuzeAI] "
@@ -4201,15 +4998,20 @@ async function runLivePrediction() {
         data
       );
 
+
       if (
         response.status === 409
-        && await handleConflictResponse(
+        && handleConflictResponse(
           data
         )
       ) {
         return;
       }
 
+
+      /*
+       * 503 often means model initialisation failed.
+       */
       if (
         response.status === 503
       ) {
@@ -4222,6 +5024,7 @@ async function runLivePrediction() {
         void checkModelStatus();
       }
 
+
       const error =
         new Error(
           formatServerError(
@@ -4230,25 +5033,35 @@ async function runLivePrediction() {
           )
         );
 
+
       error.status =
         response.status;
 
       error.data =
         data;
 
+
       throw error;
     }
 
+
+    /*
+     * Do not display a result generated before a local
+     * input/reset transition.
+     */
     if (
-      requestEpoch !== clientEpoch
+      requestEpoch
+      !== clientEpoch
     ) {
       return;
     }
+
 
     const returnedGeneration =
       Number(
         data.generation
       );
+
 
     if (
       !Number.isFinite(
@@ -4263,36 +5076,52 @@ async function runLivePrediction() {
       );
     }
 
+
     if (
       returnedGeneration
       !== requestGeneration
     ) {
+      console.warn(
+        "[SenseFuzeAI] "
+        + "Discarded generation-mismatched "
+        + "prediction.",
+        {
+          requested:
+            requestGeneration,
+
+          returned:
+            returnedGeneration
+        }
+      );
+
       serverGeneration =
         returnedGeneration;
-
-      setText(
-        statusBox,
-        (
-          "Prediction completed after "
-          + "generation change; result discarded."
-        )
-      );
 
       return;
     }
 
+
     serverGeneration =
       returnedGeneration;
 
+
+    /*
+     * Successful inference proves the backend predictor is usable.
+     */
     modelState =
       "ready";
 
     fusionModelLoaded =
       true;
 
+
+    updateReadiness();
+
+
     updatePredictionUI(
       data
     );
+
 
   } catch (error) {
     console.error(
@@ -4301,19 +5130,10 @@ async function runLivePrediction() {
       error
     );
 
-    /*
-     * A network failure may indicate worker restart.
-     * Attempt recovery without deleting browser sources.
-     */
-    if (
-      !error.status
-      && requestEpoch === clientEpoch
-    ) {
-      await recoverServerSession();
-    }
 
     if (
-      requestEpoch === clientEpoch
+      requestEpoch
+      === clientEpoch
     ) {
       setText(
         statusBox,
@@ -4327,6 +5147,7 @@ async function runLivePrediction() {
       );
     }
 
+
   } finally {
     predictionInFlight =
       false;
@@ -4335,14 +5156,18 @@ async function runLivePrediction() {
 
 
 /* ============================================================
-   RESETS
+   TEMPORAL RESET
    ============================================================ */
 
 async function resetTemporalWindow() {
   const operationEpoch =
     beginStateChange(
-      "Resetting temporal history..."
+      (
+        "Resetting temporal "
+        + "probability history..."
+      )
     );
+
 
   try {
     const data =
@@ -4354,11 +5179,22 @@ async function resetTemporalWindow() {
         }
       );
 
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      return;
+    }
+
+
     serverGeneration =
       finiteNumber(
         data.generation,
         serverGeneration
       );
+
 
     TEMPORAL_WINDOW =
       positiveInteger(
@@ -4366,17 +5202,34 @@ async function resetTemporalWindow() {
         TEMPORAL_WINDOW
       );
 
+
     resetPredictionDisplay();
+
 
     setText(
       statusBox,
       (
-        "Temporal history reset"
+        "Temporal probability history reset"
         + ` | Generation=${serverGeneration}.`
+        + (
+            microphoneStreaming
+              ? (
+                  " Live microphone remains streaming."
+                )
+              : ""
+          )
       )
     );
 
+
   } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Temporal reset failed:",
+      error
+    );
+
+
     setText(
       statusBox,
       (
@@ -4388,6 +5241,7 @@ async function resetTemporalWindow() {
       )
     );
 
+
   } finally {
     finishStateChange(
       operationEpoch
@@ -4396,14 +5250,32 @@ async function resetTemporalWindow() {
 }
 
 
+/* ============================================================
+   FULL RESET
+   ============================================================ */
+
 async function resetSession() {
   const operationEpoch =
     beginStateChange(
-      "Resetting session..."
+      (
+        "Performing full "
+        + "session reset..."
+      )
     );
+
 
   microphoneExpectedClose =
     true;
+
+
+  stopWebcamStreamLocally();
+
+  stopVideoPreview();
+
+  hideStaticImagePreview();
+
+  revokeVisualObjectUrl();
+
 
   try {
     const data =
@@ -4415,36 +5287,38 @@ async function resetSession() {
         }
       );
 
+
+    if (
+      !operationStillCurrent(
+        operationEpoch
+      )
+    ) {
+      return;
+    }
+
+
     serverGeneration =
       finiteNumber(
         data.generation,
         serverGeneration
       );
 
-  } catch (error) {
-    console.warn(
-      "[SenseFuzeAI] "
-      + "Server full reset failed:",
-      error
-    );
 
-  } finally {
-    cleanupMicrophoneCapture();
+    cleanupMicrophoneLocal();
 
-    stopWebcamStreamLocally();
-    stopVideoPreview();
-    hideStaticImagePreview();
-    revokeVisualObjectUrl();
 
     if (textInput) {
       textInput.value =
         "";
     }
 
+
     keystrokeEvents =
       [];
 
+
     activeKeys.clear();
+
 
     audioSourceReady =
       false;
@@ -4453,9 +5327,6 @@ async function resetSession() {
       null;
 
     audioSourceKind =
-      null;
-
-    fixedAudioFile =
       null;
 
     audioBufferedSec =
@@ -4467,6 +5338,7 @@ async function resetSession() {
     audioCurrentDbfs =
       null;
 
+
     visualMode =
       "none";
 
@@ -4476,30 +5348,59 @@ async function resetSession() {
     visualSourceName =
       null;
 
-    visualSourceFile =
-      null;
+
+    if (audioFileInput) {
+      audioFileInput.value =
+        "";
+    }
+
+
+    if (imageFileInput) {
+      imageFileInput.value =
+        "";
+    }
+
+
+    if (videoFileInput) {
+      videoFileInput.value =
+        "";
+    }
+
 
     resetPredictionDisplay();
 
+
     setText(
       audioStatus,
-      "Microphone stream inactive."
+      (
+        "Microphone stream inactive."
+      )
     );
+
 
     setText(
       audioDiagnostic,
-      "Audio condition: —"
+      (
+        "Audio condition: —"
+      )
     );
+
 
     setText(
       webcamStatus,
-      "Visual input inactive."
+      (
+        "Visual input inactive."
+      )
     );
+
 
     setText(
       sessionStatus,
-      "Session reset."
+      (
+        "Session reset."
+      )
     );
+
 
     setText(
       statusBox,
@@ -4509,18 +5410,46 @@ async function resetSession() {
       )
     );
 
+
     if (startBtn) {
       startBtn.disabled =
         false;
     }
+
 
     if (stopBtn) {
       stopBtn.disabled =
         true;
     }
 
+
+  } catch (error) {
+    console.error(
+      "[SenseFuzeAI] "
+      + "Full reset failed:",
+      error
+    );
+
+
+    cleanupMicrophoneLocal();
+
+
+    setText(
+      statusBox,
+      (
+        "Full reset failed: "
+        + (
+            error?.message
+            || String(error)
+          )
+      )
+    );
+
+
+  } finally {
     microphoneExpectedClose =
       false;
+
 
     finishStateChange(
       operationEpoch
@@ -4530,127 +5459,170 @@ async function resetSession() {
 
 
 /* ============================================================
-   BUTTON BINDINGS
+   BUTTON / FILE BINDINGS
    ============================================================ */
 
-startMicBtn?.addEventListener(
-  "click",
-  () => {
-    void startMicrophoneStream();
-  }
-);
-
-
-stopMicBtn?.addEventListener(
-  "click",
-  () => {
-    void stopMicrophoneStream();
-  }
-);
-
-
-chooseAudioBtn?.addEventListener(
-  "click",
-  () => {
-    audioFileInput?.click();
-  }
-);
-
-
-audioFileInput?.addEventListener(
-  "change",
-  () => {
-    const file =
-      audioFileInput.files?.[0];
-
-    if (file) {
-      void setAudioFile(file);
+if (startMicBtn) {
+  startMicBtn.addEventListener(
+    "click",
+    () => {
+      void startMicrophoneStream();
     }
-
-    audioFileInput.value =
-      "";
-  }
-);
+  );
+}
 
 
-chooseImageBtn?.addEventListener(
-  "click",
-  () => {
-    imageFileInput?.click();
-  }
-);
-
-
-chooseVideoBtn?.addEventListener(
-  "click",
-  () => {
-    videoFileInput?.click();
-  }
-);
-
-
-imageFileInput?.addEventListener(
-  "change",
-  () => {
-    const file =
-      imageFileInput.files?.[0];
-
-    if (file) {
-      void setVisualImage(file);
+if (stopMicBtn) {
+  stopMicBtn.addEventListener(
+    "click",
+    () => {
+      void stopMicrophoneStream();
     }
-
-    imageFileInput.value =
-      "";
-  }
-);
+  );
+}
 
 
-videoFileInput?.addEventListener(
-  "change",
-  () => {
-    const file =
-      videoFileInput.files?.[0];
-
-    if (file) {
-      void setVisualVideo(file);
+if (chooseAudioBtn) {
+  chooseAudioBtn.addEventListener(
+    "click",
+    () => {
+      if (
+        audioFileInput
+      ) {
+        audioFileInput.click();
+      }
     }
-
-    videoFileInput.value =
-      "";
-  }
-);
+  );
+}
 
 
-startBtn?.addEventListener(
-  "click",
-  () => {
-    void startWebcamMode();
-  }
-);
+if (audioFileInput) {
+  audioFileInput.addEventListener(
+    "change",
+    () => {
+      const file =
+        audioFileInput
+          .files?.[0];
 
 
-stopBtn?.addEventListener(
-  "click",
-  () => {
-    void stopVisualMode();
-  }
-);
+      if (file) {
+        void setAudioFile(
+          file
+        );
+      }
 
 
-resetTemporalBtn?.addEventListener(
-  "click",
-  () => {
-    void resetTemporalWindow();
-  }
-);
+      audioFileInput.value =
+        "";
+    }
+  );
+}
 
 
-resetBtn?.addEventListener(
-  "click",
-  () => {
-    void resetSession();
-  }
-);
+if (chooseImageBtn) {
+  chooseImageBtn.addEventListener(
+    "click",
+    () => {
+      imageFileInput?.click();
+    }
+  );
+}
+
+
+if (chooseVideoBtn) {
+  chooseVideoBtn.addEventListener(
+    "click",
+    () => {
+      videoFileInput?.click();
+    }
+  );
+}
+
+
+if (imageFileInput) {
+  imageFileInput.addEventListener(
+    "change",
+    () => {
+      const file =
+        imageFileInput
+          .files?.[0];
+
+
+      if (file) {
+        void setVisualImage(
+          file
+        );
+      }
+
+
+      imageFileInput.value =
+        "";
+    }
+  );
+}
+
+
+if (videoFileInput) {
+  videoFileInput.addEventListener(
+    "change",
+    () => {
+      const file =
+        videoFileInput
+          .files?.[0];
+
+
+      if (file) {
+        void setVisualVideo(
+          file
+        );
+      }
+
+
+      videoFileInput.value =
+        "";
+    }
+  );
+}
+
+
+if (startBtn) {
+  startBtn.addEventListener(
+    "click",
+    () => {
+      void startWebcamMode();
+    }
+  );
+}
+
+
+if (stopBtn) {
+  stopBtn.addEventListener(
+    "click",
+    () => {
+      void stopVisualMode();
+    }
+  );
+}
+
+
+if (resetTemporalBtn) {
+  resetTemporalBtn.addEventListener(
+    "click",
+    () => {
+      void resetTemporalWindow();
+    }
+  );
+}
+
+
+if (resetBtn) {
+  resetBtn.addEventListener(
+    "click",
+    () => {
+      void resetSession();
+    }
+  );
+}
 
 
 /* ============================================================
@@ -4663,13 +5635,20 @@ window.addEventListener(
     microphoneExpectedClose =
       true;
 
-    if (liveTimer !== null) {
+
+    if (
+      liveTimer !== null
+    ) {
       window.clearInterval(
         liveTimer
       );
+
+      liveTimer =
+        null;
     }
 
-    cleanupMicrophoneCapture();
+
+    cleanupMicrophoneLocal();
 
     stopWebcamStreamLocally();
 
@@ -4683,31 +5662,61 @@ window.addEventListener(
    ============================================================ */
 
 async function initialiseBrowserClient() {
+  /*
+   * Query configuration/model state first.
+   *
+   * A model that has not yet been lazy-loaded is expected and
+   * should be represented as Standby rather than Failed.
+   */
   await checkModelStatus();
+
 
   resetPredictionDisplay();
 
   updateReadiness();
 
-  setText(
-    sessionStatus,
-    "Session ready."
-  );
 
   setText(
-    statusBox,
+    sessionStatus,
     (
-      "Ready. Provide text/keystrokes, "
-      + "audio and a visual source. "
-      + "Live inference will start automatically."
+      "Session ready."
     )
   );
 
-  if (liveTimer !== null) {
+
+  if (
+    modelState === "failed"
+  ) {
+    setText(
+      statusBox,
+      (
+        "Web client ready, but the "
+        + "fusion backend currently "
+        + "reports an initialization failure."
+      )
+    );
+
+  } else {
+    setText(
+      statusBox,
+      (
+        "Ready. Provide text and keystrokes, "
+        + "an audio source, and a visual source. "
+        + "Live inference will begin automatically "
+        + "when all input modalities are ready."
+      )
+    );
+  }
+
+
+  if (
+    liveTimer !== null
+  ) {
     window.clearInterval(
       liveTimer
     );
   }
+
 
   liveTimer =
     window.setInterval(

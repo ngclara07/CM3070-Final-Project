@@ -4,26 +4,22 @@ final_multimodal_inference.py
 SenseFuzeAI
 Canonical stateless multimodal behavioural-state inference.
 
-Deployment-oriented changes:
-
-1. Fusion artifact is loaded once.
-2. MPNet / WavLM / CLIP are lazy.
-3. Encoder retention is configurable.
-4. Repeated identical modality observations are cached.
-5. Static audio/image inputs therefore avoid repeated neural extraction.
-6. The canonical trained fusion feature schema is preserved.
+Deployment changes:
+- fusion artifact is loaded immediately
+- MPNet/WavLM/CLIP are loaded only when required
+- local pretrained directories are preferred
+- Hugging Face IDs are fallback sources
+- optional low-memory encoder unloading is supported
 """
 
 from __future__ import annotations
 
 import argparse
 import gc
-import hashlib
 import json
 import os
+import statistics
 import threading
-
-from collections import OrderedDict
 from pathlib import Path
 from typing import Any
 
@@ -49,11 +45,7 @@ from temporal_fusion import (
 # PATHS
 # ============================================================
 
-ROOT_DIR = (
-    Path(__file__)
-    .resolve()
-    .parent
-)
+ROOT_DIR = Path(__file__).resolve().parent
 
 FUSION_MODEL_PATH = (
     ROOT_DIR
@@ -110,7 +102,7 @@ WEBCAM_IMAGE_METADATA_PATH = (
 
 
 # ============================================================
-# REMOTE MODEL FALLBACKS
+# REMOTE FALLBACK IDS
 # ============================================================
 
 TEXT_MODEL_ID = os.environ.get(
@@ -136,62 +128,33 @@ CLIP_MODEL_ID = os.environ.get(
 TARGET_SR = 16000
 MAX_AUDIO_SECONDS = 20
 
-TORCH_THREADS = max(
-    1,
-    int(
-        os.environ.get(
-            "SENSEFUZE_TORCH_THREADS",
-            "1",
-        )
-    ),
-)
-
 torch.set_num_threads(
-    TORCH_THREADS
+    max(
+        1,
+        int(
+            os.environ.get(
+                "SENSEFUZE_TORCH_THREADS",
+                "1",
+            )
+        ),
+    )
 )
 
-# ------------------------------------------------------------
-# Encoder residency policy
-#
-# "retain":
-#   Once loaded, an encoder remains resident and subsequent
-#   predictions avoid model reload.
-#
-# "release":
-#   Encoder is removed after feature extraction. Lower peak
-#   long-lived memory, but slower.
-#
-# For an adequately sized inference instance, use "retain".
-# ------------------------------------------------------------
-
-ENCODER_RESIDENCY = (
+LOW_MEMORY_MODE = (
     os.environ.get(
-        "SENSEFUZE_ENCODER_RESIDENCY",
-        "retain",
+        "SENSEFUZE_LOW_MEMORY",
+        (
+            "1"
+            if os.environ.get("RENDER")
+            else "0"
+        ),
     )
     .strip()
     .lower()
+    in {"1", "true", "yes", "on"}
 )
 
-if ENCODER_RESIDENCY not in {
-    "retain",
-    "release",
-}:
-    ENCODER_RESIDENCY = "retain"
-
-CACHE_SIZE = max(
-    1,
-    int(
-        os.environ.get(
-            "SENSEFUZE_FEATURE_CACHE_SIZE",
-            "32",
-        )
-    ),
-)
-
-CLASSES = list(
-    LABELS
-)
+CLASSES = list(LABELS)
 
 WEBCAM_PROBABILITY_COLUMNS = [
     "image_webcam_focused_prob",
@@ -212,11 +175,11 @@ EXPECTED_WEBCAM_FUSION_COLUMNS = {
 
 
 # ============================================================
-# GENERIC HELPERS
+# GENERAL UTILITIES
 # ============================================================
 
 def get_device() -> torch.device:
-
+    # Render standard CPU services do not provide a CUDA GPU.
     return torch.device(
         "cuda"
         if torch.cuda.is_available()
@@ -224,18 +187,12 @@ def get_device() -> torch.device:
     )
 
 
-def clean_float(
-    value: Any,
-) -> float:
-
+def clean_float(value: Any) -> float:
     try:
-        numeric = float(value)
+        result = float(value)
 
-        if np.isfinite(
-            numeric
-        ):
-            return numeric
-
+        if np.isfinite(result):
+            return result
     except (
         TypeError,
         ValueError,
@@ -261,10 +218,7 @@ def load_json_list(
     ) as handle:
         value = json.load(handle)
 
-    if not isinstance(
-        value,
-        list,
-    ):
+    if not isinstance(value, list):
         raise ValueError(
             f"Expected JSON list:\n{path}"
         )
@@ -274,15 +228,11 @@ def load_json_list(
         for item in value
     ]
 
-    if (
-        not result
-        or any(
-            not item
-            for item in result
-        )
+    if not result or any(
+        not item for item in result
     ):
         raise ValueError(
-            f"Invalid JSON list:\n{path}"
+            f"Invalid JSON feature list:\n{path}"
         )
 
     return result
@@ -302,29 +252,23 @@ def load_optional_json_object(
         ) as handle:
             value = json.load(handle)
 
-        if isinstance(
-            value,
-            dict,
-        ):
-            return value
+        return (
+            value
+            if isinstance(value, dict)
+            else {}
+        )
 
     except Exception:
-        pass
-
-    return {}
+        return {}
 
 
-def normalise_label(
-    value: Any,
-) -> str:
-
-    if value is None:
-        return ""
-
+def normalise_label(value: Any) -> str:
     return (
-        str(value)
-        .strip()
-        .lower()
+        ""
+        if value is None
+        else str(value)
+            .strip()
+            .lower()
     )
 
 
@@ -383,41 +327,23 @@ def softmax(
             "Cannot softmax an empty array."
         )
 
-    values = np.nan_to_num(
-        values,
-        nan=0.0,
-        posinf=0.0,
-        neginf=0.0,
-    )
+    values = np.nan_to_num(values)
 
-    values = (
-        values
-        - np.max(values)
-    )
+    values -= np.max(values)
 
-    exp_values = np.exp(
-        values
-    )
+    exp_values = np.exp(values)
 
     total = float(
-        np.sum(exp_values)
+        exp_values.sum()
     )
 
-    if (
-        not np.isfinite(total)
-        or total <= 0
-    ):
+    if total <= 0 or not np.isfinite(total):
         return (
-            np.ones_like(
-                exp_values,
-                dtype=np.float64,
-            )
+            np.ones_like(exp_values)
             / len(exp_values)
         )
 
-    return (
-        exp_values / total
-    )
+    return exp_values / total
 
 
 def resolve_model_source(
@@ -426,168 +352,50 @@ def resolve_model_source(
 ) -> str:
 
     if local_path.exists():
-        return str(
-            local_path
-        )
+        return str(local_path)
 
     return remote_id
 
 
 def release_memory() -> None:
-
     gc.collect()
 
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
 
-def bytes_sha256(
-    value: bytes,
-) -> str:
-
-    return (
-        hashlib.sha256(
-            value
-        )
-        .hexdigest()
-    )
-
-
-def file_sha256(
-    path: Path,
-) -> str:
-
-    digest = hashlib.sha256()
-
-    with Path(path).open(
-        "rb"
-    ) as handle:
-        while True:
-            chunk = handle.read(
-                1024 * 1024
-            )
-
-            if not chunk:
-                break
-
-            digest.update(chunk)
-
-    return digest.hexdigest()
-
-
 # ============================================================
-# SMALL THREAD-SAFE LRU CACHE
-# ============================================================
-
-class FeatureCache:
-
-    def __init__(
-        self,
-        max_size: int,
-    ) -> None:
-
-        self.max_size = max_size
-
-        self._values: OrderedDict[
-            str,
-            dict[str, float],
-        ] = OrderedDict()
-
-        self._lock = (
-            threading.RLock()
-        )
-
-
-    def get(
-        self,
-        key: str,
-    ) -> dict[str, float] | None:
-
-        with self._lock:
-            value = self._values.get(
-                key
-            )
-
-            if value is None:
-                return None
-
-            self._values.move_to_end(
-                key
-            )
-
-            return dict(value)
-
-
-    def put(
-        self,
-        key: str,
-        value: dict[str, float],
-    ) -> None:
-
-        with self._lock:
-            self._values[key] = dict(
-                value
-            )
-
-            self._values.move_to_end(
-                key
-            )
-
-            while (
-                len(self._values)
-                > self.max_size
-            ):
-                self._values.popitem(
-                    last=False
-                )
-
-
-    def __len__(
-        self,
-    ) -> int:
-
-        with self._lock:
-            return len(
-                self._values
-            )
-
-
-# ============================================================
-# INFERENCE ENGINE
+# INFERENCE
 # ============================================================
 
 class FinalMultimodalInference:
 
-    def __init__(
-        self,
-    ) -> None:
+    def __init__(self) -> None:
 
-        if (
-            not FUSION_MODEL_PATH.exists()
-        ):
+        # ----------------------------------------------
+        # Only project-specific artifacts are mandatory
+        # at predictor construction time.
+        # ----------------------------------------------
+
+        if not FUSION_MODEL_PATH.exists():
             raise FileNotFoundError(
                 "Fusion model artifact is missing:\n"
-                f"{FUSION_MODEL_PATH}"
+                f"{FUSION_MODEL_PATH}\n\n"
+                "This trained project-specific artifact "
+                "must exist in the deployed repository "
+                "or attached storage."
             )
 
-        if (
-            not
-            FUSION_FEATURE_COLUMNS_PATH
-            .exists()
-        ):
+        if not FUSION_FEATURE_COLUMNS_PATH.exists():
             raise FileNotFoundError(
                 "Fusion feature schema is missing:\n"
                 f"{FUSION_FEATURE_COLUMNS_PATH}"
             )
 
-        self.device = (
-            get_device()
-        )
+        self.device = get_device()
 
-        self.fusion_model = (
-            joblib.load(
-                FUSION_MODEL_PATH
-            )
+        self.fusion_model = joblib.load(
+            FUSION_MODEL_PATH
         )
 
         self.feature_columns = (
@@ -617,7 +425,10 @@ class FinalMultimodalInference:
             )
         )
 
-        # Heavy encoders.
+        # ----------------------------------------------
+        # Heavy encoders deliberately begin unloaded.
+        # ----------------------------------------------
+
         self.text_model = None
 
         self.wavlm_extractor = None
@@ -630,26 +441,6 @@ class FinalMultimodalInference:
             threading.RLock()
         )
 
-        # Reusable feature caches.
-        self._text_cache = (
-            FeatureCache(
-                CACHE_SIZE
-            )
-        )
-
-        self._audio_cache = (
-            FeatureCache(
-                CACHE_SIZE
-            )
-        )
-
-        self._image_cache = (
-            FeatureCache(
-                CACHE_SIZE
-            )
-        )
-
-        # Optional calibrated image classifier.
         self.webcam_image_model = None
 
         self.webcam_image_feature_columns: list[
@@ -685,20 +476,12 @@ class FinalMultimodalInference:
         )
 
         print(
-            f"Fusion features: "
-            f"{len(self.feature_columns)}",
+            f"Fusion features: {len(self.feature_columns)}",
             flush=True,
         )
 
         print(
-            "Encoder residency: "
-            f"{ENCODER_RESIDENCY}",
-            flush=True,
-        )
-
-        print(
-            "Feature cache size: "
-            f"{CACHE_SIZE}",
+            f"Low-memory mode: {LOW_MEMORY_MODE}",
             flush=True,
         )
 
@@ -713,20 +496,16 @@ class FinalMultimodalInference:
 
         return {
             "fusion_model_loaded":
-                self.fusion_model
-                is not None,
+                self.fusion_model is not None,
 
             "text_model_loaded":
-                self.text_model
-                is not None,
+                self.text_model is not None,
 
             "audio_model_loaded":
-                self.wavlm_model
-                is not None,
+                self.wavlm_model is not None,
 
             "image_model_loaded":
-                self.clip_model
-                is not None,
+                self.clip_model is not None,
 
             "webcam_calibration_loaded":
                 self.webcam_image_model
@@ -735,26 +514,8 @@ class FinalMultimodalInference:
             "device":
                 str(self.device),
 
-            "encoder_residency":
-                ENCODER_RESIDENCY,
-
-            "feature_cache_size":
-                CACHE_SIZE,
-
-            "text_cache_entries":
-                len(
-                    self._text_cache
-                ),
-
-            "audio_cache_entries":
-                len(
-                    self._audio_cache
-                ),
-
-            "image_cache_entries":
-                len(
-                    self._image_cache
-                ),
+            "low_memory_mode":
+                LOW_MEMORY_MODE,
 
             "text_model_source":
                 resolve_model_source(
@@ -789,15 +550,13 @@ class FinalMultimodalInference:
         matching = [
             column
             for column in columns
-            if column.startswith(
-                prefix
-            )
+            if column.startswith(prefix)
         ]
 
         if not matching:
             return None
 
-        indices: list[int] = []
+        indices = []
 
         for column in matching:
             suffix = column[
@@ -817,20 +576,15 @@ class FinalMultimodalInference:
         indices.sort()
 
         expected = list(
-            range(
-                indices[-1] + 1
-            )
+            range(indices[-1] + 1)
         )
 
         if indices != expected:
             raise ValueError(
-                "Non-contiguous embedding "
-                f"schema for {prefix}"
+                f"Non-contiguous schema: {prefix}"
             )
 
-        return (
-            indices[-1] + 1
-        )
+        return indices[-1] + 1
 
 
     @staticmethod
@@ -852,8 +606,7 @@ class FinalMultimodalInference:
             != len(columns)
         ):
             raise ValueError(
-                f"{model_name} feature-count "
-                "mismatch. "
+                f"{model_name} feature-count mismatch. "
                 f"Model={n_features}, "
                 f"schema={len(columns)}"
             )
@@ -883,21 +636,17 @@ class FinalMultimodalInference:
         model_name: str,
     ) -> list[str]:
 
-        classes = (
-            get_model_classes(
-                model
-            )
+        classes = get_model_classes(
+            model
         )
 
         if not classes:
             raise ValueError(
-                f"{model_name} exposes "
-                "no class ordering."
+                f"{model_name} exposes no "
+                "class ordering."
             )
 
-        if set(classes) != set(
-            LABELS
-        ):
+        if set(classes) != set(LABELS):
             raise ValueError(
                 f"{model_name} class mismatch. "
                 f"Expected={list(LABELS)}, "
@@ -911,22 +660,16 @@ class FinalMultimodalInference:
     # LAZY ENCODERS
     # ========================================================
 
-    def _ensure_text_model(
-        self,
-    ):
-
+    def _ensure_text_model(self):
         with self._encoder_lock:
-
             if self.text_model is None:
                 from sentence_transformers import (
                     SentenceTransformer,
                 )
 
-                source = (
-                    resolve_model_source(
-                        LOCAL_TEXT_MODEL_PATH,
-                        TEXT_MODEL_ID,
-                    )
+                source = resolve_model_source(
+                    LOCAL_TEXT_MODEL_PATH,
+                    TEXT_MODEL_ID,
                 )
 
                 print(
@@ -938,38 +681,27 @@ class FinalMultimodalInference:
                 self.text_model = (
                     SentenceTransformer(
                         source,
-                        device=str(
-                            self.device
-                        ),
+                        device=str(self.device),
                     )
                 )
 
         return self.text_model
 
 
-    def _ensure_audio_model(
-        self,
-    ):
-
+    def _ensure_audio_model(self):
         with self._encoder_lock:
-
             if (
-                self.wavlm_extractor
-                is None
-                or
-                self.wavlm_model
-                is None
+                self.wavlm_extractor is None
+                or self.wavlm_model is None
             ):
                 from transformers import (
                     Wav2Vec2FeatureExtractor,
                     WavLMModel,
                 )
 
-                source = (
-                    resolve_model_source(
-                        LOCAL_WAVLM_MODEL_PATH,
-                        WAVLM_MODEL_ID,
-                    )
+                source = resolve_model_source(
+                    LOCAL_WAVLM_MODEL_PATH,
+                    WAVLM_MODEL_ID,
                 )
 
                 print(
@@ -980,19 +712,13 @@ class FinalMultimodalInference:
 
                 self.wavlm_extractor = (
                     Wav2Vec2FeatureExtractor
-                    .from_pretrained(
-                        source
-                    )
+                    .from_pretrained(source)
                 )
 
                 self.wavlm_model = (
                     WavLMModel
-                    .from_pretrained(
-                        source
-                    )
-                    .to(
-                        self.device
-                    )
+                    .from_pretrained(source)
+                    .to(self.device)
                 )
 
                 self.wavlm_model.eval()
@@ -1003,29 +729,20 @@ class FinalMultimodalInference:
         )
 
 
-    def _ensure_clip_model(
-        self,
-    ):
-
+    def _ensure_clip_model(self):
         with self._encoder_lock:
-
             if (
-                self.clip_processor
-                is None
-                or
-                self.clip_model
-                is None
+                self.clip_processor is None
+                or self.clip_model is None
             ):
                 from transformers import (
                     CLIPModel,
                     CLIPProcessor,
                 )
 
-                source = (
-                    resolve_model_source(
-                        LOCAL_CLIP_MODEL_PATH,
-                        CLIP_MODEL_ID,
-                    )
+                source = resolve_model_source(
+                    LOCAL_CLIP_MODEL_PATH,
+                    CLIP_MODEL_ID,
                 )
 
                 print(
@@ -1036,19 +753,13 @@ class FinalMultimodalInference:
 
                 self.clip_processor = (
                     CLIPProcessor
-                    .from_pretrained(
-                        source
-                    )
+                    .from_pretrained(source)
                 )
 
                 self.clip_model = (
                     CLIPModel
-                    .from_pretrained(
-                        source
-                    )
-                    .to(
-                        self.device
-                    )
+                    .from_pretrained(source)
+                    .to(self.device)
                 )
 
                 self.clip_model.eval()
@@ -1059,43 +770,23 @@ class FinalMultimodalInference:
         )
 
 
-    def _release_text_model(
-        self,
-    ) -> None:
-
-        if (
-            ENCODER_RESIDENCY
-            == "release"
-        ):
+    def _release_text_model(self):
+        if LOW_MEMORY_MODE:
             self.text_model = None
             release_memory()
 
 
-    def _release_audio_model(
-        self,
-    ) -> None:
-
-        if (
-            ENCODER_RESIDENCY
-            == "release"
-        ):
+    def _release_audio_model(self):
+        if LOW_MEMORY_MODE:
             self.wavlm_model = None
             self.wavlm_extractor = None
-
             release_memory()
 
 
-    def _release_clip_model(
-        self,
-    ) -> None:
-
-        if (
-            ENCODER_RESIDENCY
-            == "release"
-        ):
+    def _release_clip_model(self):
+        if LOW_MEMORY_MODE:
             self.clip_model = None
             self.clip_processor = None
-
             release_memory()
 
 
@@ -1107,7 +798,7 @@ class FinalMultimodalInference:
         self,
     ) -> None:
 
-        fusion_webcam_columns = {
+        required = {
             column
             for column
             in self.feature_columns
@@ -1116,45 +807,32 @@ class FinalMultimodalInference:
             )
         }
 
-        if not fusion_webcam_columns:
+        if not required:
             return
 
         if (
-            fusion_webcam_columns
-            !=
-            EXPECTED_WEBCAM_FUSION_COLUMNS
+            required
+            != EXPECTED_WEBCAM_FUSION_COLUMNS
         ):
             raise ValueError(
-                (
-                    "Unsupported or incomplete "
-                    "image_webcam_* feature set."
-                )
+                "Unsupported/incomplete "
+                "image_webcam_* fusion schema."
             )
 
-        if (
-            not
-            WEBCAM_IMAGE_MODEL_PATH
-            .exists()
-        ):
+        if not WEBCAM_IMAGE_MODEL_PATH.exists():
             raise FileNotFoundError(
-                (
-                    "Fusion schema requires webcam "
-                    "calibration model:\n"
-                    f"{WEBCAM_IMAGE_MODEL_PATH}"
-                )
+                "Fusion schema requires webcam "
+                "calibration model, but it is missing:\n"
+                f"{WEBCAM_IMAGE_MODEL_PATH}"
             )
 
-        if (
-            not
+        if not (
             WEBCAM_IMAGE_FEATURE_COLUMNS_PATH
             .exists()
         ):
             raise FileNotFoundError(
-                (
-                    "Webcam image feature schema "
-                    "is missing:\n"
-                    f"{WEBCAM_IMAGE_FEATURE_COLUMNS_PATH}"
-                )
+                "Webcam feature schema missing:\n"
+                f"{WEBCAM_IMAGE_FEATURE_COLUMNS_PATH}"
             )
 
         self.webcam_image_feature_columns = (
@@ -1194,7 +872,7 @@ class FinalMultimodalInference:
 
 
     # ========================================================
-    # PROBABILITY PREDICTION
+    # PROBABILITIES
     # ========================================================
 
     def _predict_probability_dict(
@@ -1205,32 +883,14 @@ class FinalMultimodalInference:
         model_name: str,
     ) -> dict[str, float]:
 
-        classes = (
-            get_model_classes(
-                model
-            )
+        classes = get_model_classes(
+            model
         )
-
-        if (
-            classes
-            and set(classes)
-            != set(LABELS)
-        ):
-            raise ValueError(
-                f"{model_name} returned "
-                f"unexpected classes: {classes}"
-            )
 
         if hasattr(
             model,
             "predict_proba",
         ):
-            if not classes:
-                raise ValueError(
-                    f"{model_name} exposes "
-                    "no class ordering."
-                )
-
             values = np.asarray(
                 model.predict_proba(X)[0],
                 dtype=np.float64,
@@ -1240,35 +900,27 @@ class FinalMultimodalInference:
             model,
             "decision_function",
         ):
-            values = np.asarray(
+            scores = np.asarray(
                 model.decision_function(X),
                 dtype=np.float64,
             )
 
-            if values.ndim > 1:
-                values = values[0]
+            if scores.ndim > 1:
+                scores = scores[0]
 
-            values = softmax(
-                values
-            )
+            values = softmax(scores)
 
         else:
-            predicted = (
-                normalise_label(
-                    model.predict(X)[0]
-                )
+            predicted = normalise_label(
+                model.predict(X)[0]
             )
 
             values = np.asarray(
                 [
-                    (
-                        1.0
-                        if label
-                        == predicted
-                        else 0.0
-                    )
-                    for label
-                    in classes
+                    1.0
+                    if label == predicted
+                    else 0.0
+                    for label in classes
                 ],
                 dtype=np.float64,
             )
@@ -1276,15 +928,10 @@ class FinalMultimodalInference:
         probabilities = (
             normalise_probability_dict(
                 {
-                    label:
-                        clean_float(
-                            probability
-                        )
-                    for label, probability
-                    in zip(
-                        classes,
-                        values,
-                    )
+                    class_name:
+                        clean_float(probability)
+                    for class_name, probability
+                    in zip(classes, values)
                 },
                 labels=LABELS,
             )
@@ -1300,9 +947,7 @@ class FinalMultimodalInference:
             )
         )
 
-        if not validation[
-            "valid"
-        ]:
+        if not validation["valid"]:
             raise ValueError(
                 f"{model_name} generated "
                 "invalid probabilities."
@@ -1335,8 +980,8 @@ class FinalMultimodalInference:
         ) as handle:
             data = json.load(handle)
 
-        raw_features = (
-            data.get("features")
+        raw_features = data.get(
+            "features"
         )
 
         if not isinstance(
@@ -1344,10 +989,8 @@ class FinalMultimodalInference:
             dict,
         ):
             raise ValueError(
-                (
-                    "Keystroke JSON requires "
-                    "a 'features' object."
-                )
+                "Keystroke JSON requires "
+                "a 'features' object."
             )
 
         output = {}
@@ -1356,9 +999,7 @@ class FinalMultimodalInference:
             raw_features.items()
         ):
             name = str(key)
-            numeric = clean_float(
-                value
-            )
+            numeric = clean_float(value)
 
             output[name] = numeric
 
@@ -1388,24 +1029,6 @@ class FinalMultimodalInference:
                 "Text input is empty."
             )
 
-        cache_key = (
-            "text:"
-            + bytes_sha256(
-                text.encode(
-                    "utf-8"
-                )
-            )
-        )
-
-        cached = (
-            self._text_cache.get(
-                cache_key
-            )
-        )
-
-        if cached is not None:
-            return cached
-
         model = (
             self._ensure_text_model()
         )
@@ -1433,28 +1056,19 @@ class FinalMultimodalInference:
             != self.expected_text_embedding_dim
         ):
             raise ValueError(
-                (
-                    "MPNet embedding dimension "
-                    "does not match fusion schema. "
-                    f"Expected="
-                    f"{self.expected_text_embedding_dim}, "
-                    f"observed={embedding.size}"
-                )
+                "MPNet embedding dimension "
+                "does not match fusion schema. "
+                f"Expected="
+                f"{self.expected_text_embedding_dim}, "
+                f"observed={embedding.size}"
             )
 
-        features = {
+        return {
             f"text_mpnet_emb_{index}":
                 clean_float(value)
             for index, value
             in enumerate(embedding)
         }
-
-        self._text_cache.put(
-            cache_key,
-            features,
-        )
-
-        return features
 
 
     # ========================================================
@@ -1466,28 +1080,12 @@ class FinalMultimodalInference:
         audio_path: Path,
     ) -> dict[str, float]:
 
-        path = Path(
-            audio_path
-        )
+        path = Path(audio_path)
 
         if not path.exists():
             raise FileNotFoundError(
                 f"Audio file missing:\n{path}"
             )
-
-        cache_key = (
-            "audio:"
-            + file_sha256(path)
-        )
-
-        cached = (
-            self._audio_cache.get(
-                cache_key
-            )
-        )
-
-        if cached is not None:
-            return cached
 
         waveform, sample_rate = (
             librosa.load(
@@ -1504,16 +1102,13 @@ class FinalMultimodalInference:
 
         if waveform.size == 0:
             raise ValueError(
-                (
-                    "Audio file contains "
-                    "no samples."
-                )
+                "Audio file contains no samples."
             )
 
         waveform = waveform[
             :
-            TARGET_SR
-            * MAX_AUDIO_SECONDS
+            TARGET_SR *
+            MAX_AUDIO_SECONDS
         ]
 
         duration = (
@@ -1523,12 +1118,9 @@ class FinalMultimodalInference:
             )
         )
 
-        rms = (
-            librosa.feature
-            .rms(
-                y=waveform
-            )[0]
-        )
+        rms = librosa.feature.rms(
+            y=waveform
+        )[0]
 
         zcr = (
             librosa.feature
@@ -1537,13 +1129,10 @@ class FinalMultimodalInference:
             )[0]
         )
 
-        mfcc = (
-            librosa.feature
-            .mfcc(
-                y=waveform,
-                sr=sample_rate,
-                n_mfcc=13,
-            )
+        mfcc = librosa.feature.mfcc(
+            y=waveform,
+            sr=sample_rate,
+            n_mfcc=13,
         )
 
         centroid = (
@@ -1582,11 +1171,7 @@ class FinalMultimodalInference:
         ]
 
         threshold = (
-            float(
-                np.median(
-                    positive
-                )
-            )
+            float(np.median(positive))
             if positive.size
             else 0.0
         )
@@ -1595,11 +1180,9 @@ class FinalMultimodalInference:
             magnitudes > threshold
         ]
 
-        pitch_values = (
-            pitch_values[
-                pitch_values > 0
-            ]
-        )
+        pitch_values = pitch_values[
+            pitch_values > 0
+        ]
 
         features = {
             "audio_duration":
@@ -1656,65 +1239,45 @@ class FinalMultimodalInference:
                 ),
 
             "audio_pitch_mean":
-                (
-                    clean_float(
-                        np.mean(
-                            pitch_values
-                        )
-                    )
-                    if pitch_values.size
-                    else 0.0
-                ),
+                clean_float(
+                    np.mean(pitch_values)
+                )
+                if pitch_values.size
+                else 0.0,
 
             "audio_pitch_std":
-                (
-                    clean_float(
-                        np.std(
-                            pitch_values
-                        )
-                    )
-                    if pitch_values.size
-                    else 0.0
-                ),
+                clean_float(
+                    np.std(pitch_values)
+                )
+                if pitch_values.size
+                else 0.0,
 
             "audio_pitch_min":
-                (
-                    clean_float(
-                        np.min(
-                            pitch_values
-                        )
-                    )
-                    if pitch_values.size
-                    else 0.0
-                ),
+                clean_float(
+                    np.min(pitch_values)
+                )
+                if pitch_values.size
+                else 0.0,
 
             "audio_pitch_max":
-                (
-                    clean_float(
-                        np.max(
-                            pitch_values
-                        )
-                    )
-                    if pitch_values.size
-                    else 0.0
-                ),
+                clean_float(
+                    np.max(pitch_values)
+                )
+                if pitch_values.size
+                else 0.0,
         }
 
         for index in range(13):
             features[
                 f"audio_mfcc_{index}_mean"
             ] = clean_float(
-                np.mean(
-                    mfcc[index]
-                )
+                np.mean(mfcc[index])
             )
 
             features[
                 f"audio_mfcc_{index}_std"
             ] = clean_float(
-                np.std(
-                    mfcc[index]
-                )
+                np.std(mfcc[index])
             )
 
         extractor, model = (
@@ -1731,31 +1294,24 @@ class FinalMultimodalInference:
 
             inputs = {
                 key:
-                    value.to(
-                        self.device
-                    )
+                    value.to(self.device)
                 for key, value
                 in inputs.items()
             }
 
             with torch.inference_mode():
-                outputs = model(
-                    **inputs
-                )
+                outputs = model(**inputs)
 
             embedding = (
-                outputs
-                .last_hidden_state
+                outputs.last_hidden_state
                 .mean(dim=1)
                 .squeeze(0)
             )
 
-            embedding = (
-                F.normalize(
-                    embedding,
-                    p=2,
-                    dim=0,
-                )
+            embedding = F.normalize(
+                embedding,
+                p=2,
+                dim=0,
             )
 
             embedding = (
@@ -1763,9 +1319,7 @@ class FinalMultimodalInference:
                 .detach()
                 .cpu()
                 .numpy()
-                .astype(
-                    np.float32
-                )
+                .astype(np.float32)
                 .reshape(-1)
             )
 
@@ -1779,13 +1333,10 @@ class FinalMultimodalInference:
             != self.expected_wavlm_embedding_dim
         ):
             raise ValueError(
-                (
-                    "WavLM embedding dimension "
-                    "does not match fusion schema. "
-                    f"Expected="
-                    f"{self.expected_wavlm_embedding_dim}, "
-                    f"observed={embedding.size}"
-                )
+                "WavLM embedding dimension mismatch. "
+                f"Expected="
+                f"{self.expected_wavlm_embedding_dim}, "
+                f"observed={embedding.size}"
             )
 
         for index, value in (
@@ -1795,16 +1346,11 @@ class FinalMultimodalInference:
                 f"audio_wavlm_emb_{index}"
             ] = clean_float(value)
 
-        self._audio_cache.put(
-            cache_key,
-            features,
-        )
-
         return features
 
 
     # ========================================================
-    # CLIP IMAGE
+    # IMAGE
     # ========================================================
 
     def extract_clip_embedding(
@@ -1818,21 +1364,13 @@ class FinalMultimodalInference:
 
         try:
             inputs = processor(
-                images=(
-                    image.convert(
-                        "RGB"
-                    )
-                ),
+                images=image.convert("RGB"),
                 return_tensors="pt",
             )
 
             pixel_values = (
-                inputs[
-                    "pixel_values"
-                ]
-                .to(
-                    self.device
-                )
+                inputs["pixel_values"]
+                .to(self.device)
             )
 
             with torch.inference_mode():
@@ -1860,18 +1398,14 @@ class FinalMultimodalInference:
 
             else:
                 raise TypeError(
-                    (
-                        "Unsupported CLIP output "
-                        f"type: {type(output)}"
-                    )
+                    "Unsupported CLIP output "
+                    f"type: {type(output)}"
                 )
 
-            image_features = (
-                F.normalize(
-                    image_features,
-                    p=2,
-                    dim=-1,
-                )
+            image_features = F.normalize(
+                image_features,
+                p=2,
+                dim=-1,
             )
 
             embedding = (
@@ -1880,9 +1414,7 @@ class FinalMultimodalInference:
                 .detach()
                 .cpu()
                 .numpy()
-                .astype(
-                    np.float32
-                )
+                .astype(np.float32)
                 .reshape(-1)
             )
 
@@ -1896,13 +1428,10 @@ class FinalMultimodalInference:
             != self.expected_clip_embedding_dim
         ):
             raise ValueError(
-                (
-                    "CLIP embedding dimension "
-                    "does not match fusion schema. "
-                    f"Expected="
-                    f"{self.expected_clip_embedding_dim}, "
-                    f"observed={embedding.size}"
-                )
+                "CLIP embedding dimension mismatch. "
+                f"Expected="
+                f"{self.expected_clip_embedding_dim}, "
+                f"observed={embedding.size}"
             )
 
         return embedding
@@ -1913,10 +1442,7 @@ class FinalMultimodalInference:
         clip_features: dict[str, float],
     ) -> dict[str, float]:
 
-        if (
-            self.webcam_image_model
-            is None
-        ):
+        if self.webcam_image_model is None:
             return {}
 
         missing = [
@@ -1928,11 +1454,8 @@ class FinalMultimodalInference:
 
         if missing:
             raise ValueError(
-                (
-                    "Webcam calibration CLIP "
-                    "features missing: "
-                    f"{missing[:10]}"
-                )
+                "Webcam calibration CLIP "
+                f"features missing: {missing[:10]}"
             )
 
         X = pd.DataFrame(
@@ -1940,9 +1463,7 @@ class FinalMultimodalInference:
                 {
                     column:
                         clean_float(
-                            clip_features[
-                                column
-                            ]
+                            clip_features[column]
                         )
                     for column
                     in self.webcam_image_feature_columns
@@ -1973,9 +1494,7 @@ class FinalMultimodalInference:
 
         return {
             "image_webcam_focused_prob":
-                probabilities[
-                    "focused"
-                ],
+                probabilities["focused"],
 
             "image_webcam_distracted_prob":
                 probabilities[
@@ -1983,27 +1502,19 @@ class FinalMultimodalInference:
                 ],
 
             "image_webcam_fatigued_prob":
-                probabilities[
-                    "fatigued"
-                ],
+                probabilities["fatigued"],
 
             "image_webcam_overloaded_prob":
-                probabilities[
-                    "overloaded"
-                ],
+                probabilities["overloaded"],
 
             "image_webcam_top_probability":
                 float(
-                    summary[
-                        "confidence"
-                    ]
+                    summary["confidence"]
                 ),
 
             "image_webcam_confidence_gap":
                 float(
-                    summary[
-                        "confidence_gap"
-                    ]
+                    summary["confidence_gap"]
                 ),
         }
 
@@ -2013,37 +1524,17 @@ class FinalMultimodalInference:
         image_path: Path,
     ) -> dict[str, float]:
 
-        path = Path(
-            image_path
-        )
+        path = Path(image_path)
 
         if not path.exists():
             raise FileNotFoundError(
                 f"Image file missing:\n{path}"
             )
 
-        cache_key = (
-            "image:"
-            + file_sha256(path)
-        )
-
-        cached = (
-            self._image_cache.get(
-                cache_key
-            )
-        )
-
-        if cached is not None:
-            return cached
-
-        with Image.open(
-            path
-        ) as handle:
+        with Image.open(path) as handle:
             embedding = (
                 self.extract_clip_embedding(
-                    handle.convert(
-                        "RGB"
-                    )
+                    handle.convert("RGB")
                 )
             )
 
@@ -2054,25 +1545,16 @@ class FinalMultimodalInference:
             in enumerate(embedding)
         }
 
-        features = {
+        return {
             **clip_features,
-
-            **self
-            .extract_webcam_calibration_features(
+            **self.extract_webcam_calibration_features(
                 clip_features
             ),
         }
 
-        self._image_cache.put(
-            cache_key,
-            features,
-        )
-
-        return features
-
 
     # ========================================================
-    # FUSION DATAFRAME
+    # FUSION
     # ========================================================
 
     def build_fusion_dataframe(
@@ -2089,12 +1571,10 @@ class FinalMultimodalInference:
 
         if missing:
             raise ValueError(
-                (
-                    "Fusion feature mismatch. "
-                    f"Missing {len(missing)} "
-                    "features; examples: "
-                    f"{missing[:30]}"
-                )
+                "Fusion feature mismatch. "
+                f"Missing {len(missing)} "
+                f"features; examples: "
+                f"{missing[:30]}"
             )
 
         row = {
@@ -2108,33 +1588,23 @@ class FinalMultimodalInference:
 
         X = pd.DataFrame(
             [row],
-            columns=(
-                self.feature_columns
-            ),
-        )
-
-        numeric = X.to_numpy(
-            dtype=np.float64
+            columns=self.feature_columns,
         )
 
         if not np.all(
             np.isfinite(
-                numeric
+                X.to_numpy(
+                    dtype=np.float64
+                )
             )
         ):
             raise ValueError(
-                (
-                    "Fusion input contains "
-                    "non-finite values."
-                )
+                "Fusion input contains "
+                "non-finite values."
             )
 
         return X
 
-
-    # ========================================================
-    # CANONICAL PREDICTION
-    # ========================================================
 
     def predict(
         self,
@@ -2144,11 +1614,10 @@ class FinalMultimodalInference:
         image_path: Path,
     ) -> dict[str, Any]:
 
-        features: dict[
-            str,
-            Any
-        ] = {}
+        features = {}
 
+        # Sequential extraction is deliberate for
+        # low-memory deployment.
         features.update(
             self.extract_keystroke_features(
                 keystroke_json
@@ -2177,10 +1646,8 @@ class FinalMultimodalInference:
             image_features
         )
 
-        X = (
-            self.build_fusion_dataframe(
-                features
-            )
+        X = self.build_fusion_dataframe(
+            features
         )
 
         native_prediction = (
@@ -2207,16 +1674,6 @@ class FinalMultimodalInference:
             )
         )
 
-        probability_validation = (
-            validate_probability_distribution(
-                probabilities,
-                labels=LABELS,
-                tolerance=(
-                    PROBABILITY_SUM_TOLERANCE
-                ),
-            )
-        )
-
         webcam_probabilities = None
         webcam_summary = None
 
@@ -2235,8 +1692,7 @@ class FinalMultimodalInference:
                                 ),
                                 0.0,
                             )
-                        for label
-                        in LABELS
+                        for label in LABELS
                     },
                     labels=LABELS,
                 )
@@ -2251,19 +1707,13 @@ class FinalMultimodalInference:
 
         return {
             "prediction":
-                summary[
-                    "current_state"
-                ],
+                summary["current_state"],
 
             "current_state":
-                summary[
-                    "current_state"
-                ],
+                summary["current_state"],
 
             "confidence":
-                summary[
-                    "confidence"
-                ],
+                summary["confidence"],
 
             "confidence_percent":
                 summary[
@@ -2274,14 +1724,10 @@ class FinalMultimodalInference:
                 probabilities,
 
             "feature_dimension":
-                int(
-                    X.shape[1]
-                ),
+                int(X.shape[1]),
 
             "device":
-                str(
-                    self.device
-                ),
+                str(self.device),
 
             "used_modalities": {
                 "keystroke": True,
@@ -2290,10 +1736,8 @@ class FinalMultimodalInference:
                 "image": True,
 
                 "webcam_image_calibration":
-                    (
-                        self.webcam_image_model
-                        is not None
-                    ),
+                    self.webcam_image_model
+                    is not None,
             },
 
             "image_calibration": {
@@ -2339,57 +1783,14 @@ class FinalMultimodalInference:
                 "native_model_prediction":
                     native_prediction,
 
-                "probability_argmax":
-                    summary[
-                        "current_state"
-                    ],
-
-                "prediction_consistent":
-                    (
-                        native_prediction
-                        ==
-                        summary[
-                            "current_state"
-                        ]
-                    ),
-
-                "probability_sum":
-                    probability_validation[
-                        "probability_sum"
-                    ],
-
-                "probability_contract_valid":
-                    probability_validation[
-                        "valid"
-                    ],
-
                 "feature_dimension":
-                    int(
-                        X.shape[1]
-                    ),
+                    int(X.shape[1]),
 
                 "device":
-                    str(
-                        self.device
-                    ),
+                    str(self.device),
 
-                "encoder_residency":
-                    ENCODER_RESIDENCY,
-
-                "text_cache_entries":
-                    len(
-                        self._text_cache
-                    ),
-
-                "audio_cache_entries":
-                    len(
-                        self._audio_cache
-                    ),
-
-                "image_cache_entries":
-                    len(
-                        self._image_cache
-                    ),
+                "low_memory_mode":
+                    LOW_MEMORY_MODE,
 
                 "temporal_fusion_applied":
                     False,
@@ -2402,13 +1803,7 @@ class FinalMultimodalInference:
 # ============================================================
 
 def main() -> None:
-
-    parser = argparse.ArgumentParser(
-        description=(
-            "SenseFuzeAI canonical "
-            "multimodal inference."
-        )
-    )
+    parser = argparse.ArgumentParser()
 
     parser.add_argument(
         "--keystroke_json",
@@ -2433,12 +1828,6 @@ def main() -> None:
         type=Path,
     )
 
-    parser.add_argument(
-        "--output",
-        default=None,
-        type=Path,
-    )
-
     args = parser.parse_args()
 
     inference = (
@@ -2454,23 +1843,12 @@ def main() -> None:
         image_path=args.image,
     )
 
-    output_json = json.dumps(
-        result,
-        indent=4,
+    print(
+        json.dumps(
+            result,
+            indent=2,
+        )
     )
-
-    print(output_json)
-
-    if args.output is not None:
-        args.output.parent.mkdir(
-            parents=True,
-            exist_ok=True,
-        )
-
-        args.output.write_text(
-            output_json,
-            encoding="utf-8",
-        )
 
 
 if __name__ == "__main__":
